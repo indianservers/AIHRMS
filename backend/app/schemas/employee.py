@@ -1,0 +1,226 @@
+from datetime import date
+from decimal import Decimal
+from typing import List, Optional
+from pydantic import BaseModel, EmailStr
+
+
+class EmployeeEducationBase(BaseModel):
+    degree: str
+    specialization: Optional[str] = None
+    institution: Optional[str] = None
+    board_university: Optional[str] = None
+    pass_year: Optional[int] = None
+    percentage_cgpa: Optional[Decimal] = None
+    document_url: Optional[str] = None
+
+
+class EmployeeEducationCreate(EmployeeEducationBase):
+    pass
+
+
+class EmployeeEducationSchema(EmployeeEducationBase):
+    id: int
+    employee_id: int
+
+    class Config:
+        from_attributes = True
+
+
+class EmployeeExperienceBase(BaseModel):
+    company_name: str
+    designation: Optional[str] = None
+    from_date: Optional[date] = None
+    to_date: Optional[date] = None
+    is_current: bool = False
+    responsibilities: Optional[str] = None
+    relieving_letter_url: Optional[str] = None
+
+
+class EmployeeExperienceCreate(EmployeeExperienceBase):
+    pass
+
+
+class EmployeeExperienceSchema(EmployeeExperienceBase):
+    id: int
+    employee_id: int
+
+    class Config:
+        from_attributes = True
+
+
+class EmployeeSkillBase(BaseModel):
+    skill_name: str
+    proficiency: Optional[str] = None
+    years_experience: Optional[Decimal] = None
+
+
+class EmployeeSkillCreate(EmployeeSkillBase):
+    pass
+
+
+class EmployeeSkillSchema(EmployeeSkillBase):
+    id: int
+    employee_id: int
+
+    class Config:
+        from_attributes = True
+
+
+class EmployeeDocumentBase(BaseModel):
+    document_type: str
+    document_name: Optional[str] = None
+    document_number: Optional[str] = None
+    file_url: Optional[str] = None
+    expiry_date: Optional[date] = None
+
+
+class EmployeeDocumentCreate(EmployeeDocumentBase):
+    pass
+
+
+class EmployeeDocumentSchema(EmployeeDocumentBase):
+    id: int
+    employee_id: int
+    is_verified: bool
+
+    class Config:
+        from_attributes = True
+
+
+class EmployeeBase(BaseModel):
+    first_name: str
+    middle_name: Optional[str] = None
+    last_name: str
+    gender: Optional[str] = None
+    date_of_birth: Optional[date] = None
+    marital_status: Optional[str] = None
+    blood_group: Optional[str] = None
+    nationality: str = "Indian"
+    religion: Optional[str] = None
+    category: Optional[str] = None
+    personal_email: Optional[str] = None
+    phone_number: Optional[str] = None
+    alternate_phone: Optional[str] = None
+    emergency_contact_name: Optional[str] = None
+    emergency_contact_number: Optional[str] = None
+    emergency_contact_relation: Optional[str] = None
+    present_address: Optional[str] = None
+    permanent_address: Optional[str] = None
+    present_city: Optional[str] = None
+    present_state: Optional[str] = None
+    present_pincode: Optional[str] = None
+    permanent_city: Optional[str] = None
+    permanent_state: Optional[str] = None
+    permanent_pincode: Optional[str] = None
+    date_of_joining: date
+    date_of_confirmation: Optional[date] = None
+    branch_id: Optional[int] = None
+    department_id: Optional[int] = None
+    designation_id: Optional[int] = None
+    reporting_manager_id: Optional[int] = None
+    employment_type: str = "Full-time"
+    status: str = "Active"
+    work_location: str = "Office"
+    shift_id: Optional[int] = None
+    probation_period_months: int = 6
+    bank_name: Optional[str] = None
+    bank_branch: Optional[str] = None
+    account_number: Optional[str] = None
+    account_type: str = "Savings"
+    ifsc_code: Optional[str] = None
+    pan_number: Optional[str] = None
+    aadhaar_number: Optional[str] = None
+    uan_number: Optional[str] = None
+    pf_number: Optional[str] = None
+    esic_number: Optional[str] = None
+    bio: Optional[str] = None
+    interests: Optional[str] = None
+    research_work: Optional[str] = None
+    family_information: Optional[str] = None
+    health_information: Optional[str] = None
+
+
+class EmployeeCreate(EmployeeBase):
+    employee_id: Optional[str] = None  # auto-generated if not provided
+    create_user_account: bool = True
+    user_email: Optional[EmailStr] = None
+    user_password: Optional[str] = None
+
+
+class EmployeeUpdate(BaseModel):
+    first_name: Optional[str] = None
+    middle_name: Optional[str] = None
+    last_name: Optional[str] = None
+    gender: Optional[str] = None
+    date_of_birth: Optional[date] = None
+    marital_status: Optional[str] = None
+    blood_group: Optional[str] = None
+    nationality: Optional[str] = None
+    personal_email: Optional[str] = None
+    phone_number: Optional[str] = None
+    alternate_phone: Optional[str] = None
+    emergency_contact_name: Optional[str] = None
+    emergency_contact_number: Optional[str] = None
+    emergency_contact_relation: Optional[str] = None
+    present_address: Optional[str] = None
+    permanent_address: Optional[str] = None
+    present_city: Optional[str] = None
+    present_state: Optional[str] = None
+    present_pincode: Optional[str] = None
+    permanent_city: Optional[str] = None
+    permanent_state: Optional[str] = None
+    permanent_pincode: Optional[str] = None
+    branch_id: Optional[int] = None
+    department_id: Optional[int] = None
+    designation_id: Optional[int] = None
+    reporting_manager_id: Optional[int] = None
+    employment_type: Optional[str] = None
+    status: Optional[str] = None
+    work_location: Optional[str] = None
+    shift_id: Optional[int] = None
+    bank_name: Optional[str] = None
+    bank_branch: Optional[str] = None
+    account_number: Optional[str] = None
+    account_type: Optional[str] = None
+    ifsc_code: Optional[str] = None
+    pan_number: Optional[str] = None
+    aadhaar_number: Optional[str] = None
+    uan_number: Optional[str] = None
+    profile_photo_url: Optional[str] = None
+    bio: Optional[str] = None
+    interests: Optional[str] = None
+    research_work: Optional[str] = None
+    family_information: Optional[str] = None
+    health_information: Optional[str] = None
+
+
+class EmployeeListSchema(BaseModel):
+    id: int
+    employee_id: str
+    first_name: str
+    last_name: str
+    personal_email: Optional[str] = None
+    phone_number: Optional[str] = None
+    designation_id: Optional[int] = None
+    department_id: Optional[int] = None
+    branch_id: Optional[int] = None
+    employment_type: str
+    status: str
+    date_of_joining: date
+    profile_photo_url: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+
+class EmployeeSchema(EmployeeBase):
+    id: int
+    employee_id: str
+    profile_photo_url: Optional[str] = None
+    educations: List[EmployeeEducationSchema] = []
+    experiences: List[EmployeeExperienceSchema] = []
+    skills: List[EmployeeSkillSchema] = []
+    documents: List[EmployeeDocumentSchema] = []
+
+    class Config:
+        from_attributes = True
