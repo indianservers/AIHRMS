@@ -1,18 +1,66 @@
-from fastapi import APIRouter, Depends, status
+from datetime import date, datetime, timezone
+import os
+import shutil
+import uuid
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
 from sqlalchemy.orm import Session
-from app.core.deps import get_db, RequirePermission
-from app.models.document import CompanyPolicy, DocumentTemplate, GeneratedDocument
+from app.core.config import settings
+from app.core.deps import get_current_user, get_db, RequirePermission
+from app.models.document import (
+    CertificateImportExportBatch,
+    CompanyPolicy,
+    DocumentTemplate,
+    EmployeeCertificate,
+    GeneratedDocument,
+)
+from app.models.employee import Employee
 from app.models.user import User
 from app.schemas.document import (
+    CertificateImportExportBatchSchema,
+    CertificateVerificationUpdate,
     CompanyPolicyCreate,
     CompanyPolicySchema,
     DocumentTemplateCreate,
     DocumentTemplateSchema,
+    EmployeeCertificateSchema,
     GeneratedDocumentCreate,
     GeneratedDocumentSchema,
 )
 
 router = APIRouter(prefix="/documents", tags=["Documents & Policies"])
+
+
+def _validate_upload(file: UploadFile, extra_extensions: set[str] | None = None) -> str:
+    ext = file.filename.rsplit(".", 1)[-1].lower() if file.filename and "." in file.filename else ""
+    allowed = set(settings.allowed_extensions_list)
+    if extra_extensions:
+        allowed.update(extra_extensions)
+    if ext not in allowed:
+        raise HTTPException(status_code=400, detail=f"File type not allowed. Allowed: {', '.join(sorted(allowed))}")
+    return ext
+
+
+def _save_upload(
+    file: UploadFile,
+    folder: str,
+    prefix: str = "",
+    extra_extensions: set[str] | None = None,
+) -> tuple[str, str, int]:
+    ext = _validate_upload(file, extra_extensions=extra_extensions)
+    upload_path = os.path.join(settings.UPLOAD_DIR, folder)
+    os.makedirs(upload_path, exist_ok=True)
+    filename = f"{prefix}{uuid.uuid4().hex}.{ext}"
+    file_path = os.path.join(upload_path, filename)
+    with open(file_path, "wb") as f:
+        shutil.copyfileobj(file.file, f)
+    size = os.path.getsize(file_path)
+    return f"/uploads/{folder}/{filename}", file.content_type or "", size
+
+
+def _parse_date(value: str | None) -> date | None:
+    if not value:
+        return None
+    return date.fromisoformat(value)
 
 
 @router.get("/templates", response_model=list[DocumentTemplateSchema])
@@ -58,3 +106,158 @@ def create_generated(data: GeneratedDocumentCreate, db: Session = Depends(get_db
     db.commit()
     db.refresh(document)
     return document
+
+
+@router.get("/certificates", response_model=list[EmployeeCertificateSchema])
+def list_certificates(
+    employee_id: int | None = Query(None),
+    category: str | None = Query(None),
+    verification_status: str | None = Query(None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(RequirePermission("employee_view")),
+):
+    query = db.query(EmployeeCertificate)
+    if employee_id:
+        query = query.filter(EmployeeCertificate.employee_id == employee_id)
+    if category:
+        query = query.filter(EmployeeCertificate.category == category)
+    if verification_status:
+        query = query.filter(EmployeeCertificate.verification_status == verification_status)
+    return query.order_by(EmployeeCertificate.uploaded_at.desc()).limit(500).all()
+
+
+@router.post("/certificates", response_model=EmployeeCertificateSchema, status_code=status.HTTP_201_CREATED)
+async def upload_certificate(
+    employee_id: int = Form(...),
+    category: str = Form(...),
+    certificate_type: str = Form(...),
+    title: str = Form(...),
+    issuing_entity: str | None = Form(None),
+    issuing_entity_type: str | None = Form(None),
+    class_or_grade: str | None = Form(None),
+    course_or_program: str | None = Form(None),
+    certificate_number: str | None = Form(None),
+    issue_date: str | None = Form(None),
+    expiry_date: str | None = Form(None),
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(RequirePermission("employee_update")),
+):
+    employee = db.query(Employee).filter(Employee.id == employee_id).first()
+    if not employee:
+        raise HTTPException(status_code=404, detail="Employee not found")
+
+    file_url, content_type, size = _save_upload(file, f"certificates/{employee_id}", prefix="cert_")
+    certificate = EmployeeCertificate(
+        employee_id=employee_id,
+        category=category,
+        certificate_type=certificate_type,
+        title=title,
+        issuing_entity=issuing_entity,
+        issuing_entity_type=issuing_entity_type,
+        class_or_grade=class_or_grade,
+        course_or_program=course_or_program,
+        certificate_number=certificate_number,
+        issue_date=_parse_date(issue_date),
+        expiry_date=_parse_date(expiry_date),
+        file_url=file_url,
+        original_filename=file.filename,
+        content_type=content_type,
+        file_size_bytes=size,
+        verification_status="Pending",
+        uploaded_by=current_user.id,
+    )
+    db.add(certificate)
+    db.commit()
+    db.refresh(certificate)
+    return certificate
+
+
+@router.put("/certificates/{certificate_id}/verify", response_model=EmployeeCertificateSchema)
+def verify_certificate(
+    certificate_id: int,
+    data: CertificateVerificationUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(RequirePermission("employee_update")),
+):
+    if data.verification_status not in {"Pending", "Verified", "Rejected"}:
+        raise HTTPException(status_code=400, detail="verification_status must be Pending, Verified, or Rejected")
+    certificate = db.query(EmployeeCertificate).filter(EmployeeCertificate.id == certificate_id).first()
+    if not certificate:
+        raise HTTPException(status_code=404, detail="Certificate not found")
+    certificate.verification_status = data.verification_status
+    certificate.verifier_name = data.verifier_name
+    certificate.verifier_company = data.verifier_company
+    certificate.verifier_designation = data.verifier_designation
+    certificate.verifier_contact = data.verifier_contact
+    certificate.verification_notes = data.verification_notes
+    certificate.verified_by_user_id = current_user.id
+    certificate.verified_at = datetime.now(timezone.utc)
+    db.commit()
+    db.refresh(certificate)
+    return certificate
+
+
+@router.post("/certificates/imports", response_model=CertificateImportExportBatchSchema, status_code=status.HTTP_201_CREATED)
+async def upload_certificate_import(
+    employee_id: int | None = Form(None),
+    remarks: str | None = Form(None),
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(RequirePermission("employee_update")),
+):
+    file_url, _, _ = _save_upload(file, "certificate_imports", prefix="import_", extra_extensions={"csv", "xls", "xlsx"})
+    batch = CertificateImportExportBatch(
+        operation_type="Import",
+        employee_id=employee_id,
+        source_file_url=file_url,
+        original_filename=file.filename,
+        status="Uploaded",
+        requested_by=current_user.id,
+        remarks=remarks,
+    )
+    db.add(batch)
+    db.commit()
+    db.refresh(batch)
+    return batch
+
+
+@router.post("/certificates/exports", response_model=CertificateImportExportBatchSchema, status_code=status.HTTP_201_CREATED)
+def create_certificate_export_log(
+    employee_id: int | None = None,
+    output_file_url: str | None = None,
+    total_records: int = 0,
+    remarks: str | None = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(RequirePermission("reports_view")),
+):
+    batch = CertificateImportExportBatch(
+        operation_type="Export",
+        employee_id=employee_id,
+        output_file_url=output_file_url,
+        status="Completed",
+        total_records=total_records,
+        success_count=total_records,
+        requested_by=current_user.id,
+        completed_at=datetime.now(timezone.utc),
+        remarks=remarks,
+    )
+    db.add(batch)
+    db.commit()
+    db.refresh(batch)
+    return batch
+
+
+@router.get("/certificates/import-export", response_model=list[CertificateImportExportBatchSchema])
+def list_certificate_import_export_batches(
+    operation_type: str | None = Query(None),
+    employee_id: int | None = Query(None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(RequirePermission("employee_view")),
+):
+    query = db.query(CertificateImportExportBatch)
+    if operation_type:
+        query = query.filter(CertificateImportExportBatch.operation_type == operation_type)
+    if employee_id:
+        query = query.filter(CertificateImportExportBatch.employee_id == employee_id)
+    return query.order_by(CertificateImportExportBatch.requested_at.desc()).limit(200).all()

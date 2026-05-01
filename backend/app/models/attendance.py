@@ -19,6 +19,34 @@ class Shift(Base):
 
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     employees = relationship("Employee", back_populates="shift")
+    weekly_offs = relationship("ShiftWeeklyOff", back_populates="shift", cascade="all, delete-orphan")
+    roster_assignments = relationship("ShiftRosterAssignment", back_populates="shift", cascade="all, delete-orphan")
+
+
+class ShiftWeeklyOff(Base):
+    __tablename__ = "shift_weekly_offs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    shift_id = Column(Integer, ForeignKey("shifts.id", ondelete="CASCADE"), nullable=False, index=True)
+    weekday = Column(Integer, nullable=False)  # Monday=0, Sunday=6
+    week_pattern = Column(String(20), default="all")  # all, 1, 2, 3, 4, 5
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    shift = relationship("Shift", back_populates="weekly_offs")
+
+
+class ShiftRosterAssignment(Base):
+    __tablename__ = "shift_roster_assignments"
+
+    id = Column(Integer, primary_key=True, index=True)
+    employee_id = Column(Integer, ForeignKey("employees.id", ondelete="CASCADE"), nullable=False, index=True)
+    shift_id = Column(Integer, ForeignKey("shifts.id", ondelete="CASCADE"), nullable=False, index=True)
+    work_date = Column(Date, nullable=False, index=True)
+    status = Column(String(20), default="Published")
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    shift = relationship("Shift", back_populates="roster_assignments")
 
 
 class Holiday(Base):
@@ -47,11 +75,19 @@ class Attendance(Base):
     check_out_location = Column(String(200))
     check_in_ip = Column(String(50))
     check_out_ip = Column(String(50))
+    shift_id = Column(Integer, ForeignKey("shifts.id", ondelete="SET NULL"), nullable=True)
     total_hours = Column(Numeric(5, 2))
     overtime_hours = Column(Numeric(5, 2), default=0)
+    late_minutes = Column(Integer, default=0)
+    early_exit_minutes = Column(Integer, default=0)
+    short_minutes = Column(Integer, default=0)
+    is_late = Column(Boolean, default=False)
+    is_early_exit = Column(Boolean, default=False)
+    is_short_hours = Column(Boolean, default=False)
     status = Column(String(30), default="Present")  # Present, Absent, Half-day, WFH, Holiday, Weekend, On Leave
     source = Column(String(30), default="Web")  # Web, Mobile, Biometric, Manual
     is_regularized = Column(Boolean, default=False)
+    computed_at = Column(DateTime(timezone=True))
     remarks = Column(Text)
 
     created_at = Column(DateTime(timezone=True), server_default=func.now())

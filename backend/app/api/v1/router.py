@@ -15,7 +15,7 @@ from app.api.v1 import (
     performance,
     recruitment,
     reports,
-    targets,
+    timesheets,
 )
 
 api_router = APIRouter()
@@ -30,7 +30,7 @@ api_router.include_router(recruitment.router)
 api_router.include_router(performance.router)
 api_router.include_router(helpdesk.router)
 api_router.include_router(reports.router)
-api_router.include_router(targets.router)
+api_router.include_router(timesheets.router)
 api_router.include_router(ai.router)
 api_router.include_router(assets.router)
 api_router.include_router(documents.router)

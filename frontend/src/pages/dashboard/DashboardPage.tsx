@@ -270,7 +270,7 @@ export default function DashboardPage() {
         <div className="rounded-lg border bg-card p-5">
           <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{roleLabel}</p>
           <h1 className="mt-2 text-2xl font-semibold tracking-tight">Executive people dashboard</h1>
-          <p className="mt-1 text-sm text-muted-foreground">Workforce health, payroll exposure, hiring movement, and business targets.</p>
+          <p className="mt-1 text-sm text-muted-foreground">Workforce health, payroll exposure, hiring movement, and operating priorities.</p>
         </div>
 
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
@@ -313,7 +313,6 @@ export default function DashboardPage() {
             <CardContent className="space-y-3">
               {[
                 ["Reports & Analytics", "/reports", BarChart3],
-                ["Targets", "/targets", Target],
                 ["Company Setup", "/company", Building2],
                 ["AI Workforce Notes", "/ai-assistant", Sparkles],
               ].map(([label, href, Icon]) => (

@@ -29,7 +29,7 @@ async def lifespan(app: FastAPI):
     Base.metadata.create_all(bind=engine)
 
     # Create upload directories
-    for subdir in ["employee_docs", "photos", "resumes", "documents"]:
+    for subdir in ["employee_docs", "photos", "resumes", "documents", "certificates", "certificate_imports"]:
         os.makedirs(os.path.join(settings.UPLOAD_DIR, subdir), exist_ok=True)
 
     db = SessionLocal()

@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, status, Request
 from sqlalchemy.orm import Session
-from app.core.deps import get_db, get_current_user
+from app.core.deps import get_current_active_superuser, get_db, get_current_user
 from app.core.security import (
     verify_password, create_access_token, create_refresh_token,
     verify_refresh_token, get_password_hash
@@ -93,6 +93,40 @@ def logout(current_user: User = Depends(get_current_user)):
     # In a stateless JWT setup, logout is client-side token removal
     # For production, implement token blacklisting with Redis
     return {"message": "Logged out successfully"}
+
+
+@router.get("/users", response_model=list[UserSchema])
+def list_users(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_superuser),
+):
+    return db.query(User).order_by(User.email).all()
+
+
+@router.post("/users", response_model=UserSchema, status_code=status.HTTP_201_CREATED)
+def create_user(
+    data: UserCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_superuser),
+):
+    existing = db.query(User).filter(User.email == data.email).first()
+    if existing:
+        raise HTTPException(status_code=400, detail="User email already exists")
+    if data.role_id:
+        role = db.query(Role).filter(Role.id == data.role_id).first()
+        if not role:
+            raise HTTPException(status_code=404, detail="Role not found")
+    user = User(
+        email=data.email,
+        hashed_password=get_password_hash(data.password),
+        role_id=data.role_id,
+        is_superuser=data.is_superuser,
+        is_active=True,
+    )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    return user
 
 
 @router.get("/permissions", response_model=list[PermissionSchema])

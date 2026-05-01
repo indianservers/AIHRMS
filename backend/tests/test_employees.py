@@ -93,3 +93,90 @@ def test_get_employee_stats(client, superuser_headers):
 def test_employee_not_found(client, superuser_headers):
     response = client.get("/api/v1/employees/999999", headers=superuser_headers)
     assert response.status_code == 404
+
+
+def test_create_employee_lifecycle_event(client, superuser_headers, db):
+    from app.models.employee import Employee
+
+    emp = Employee(
+        employee_id="EMP77777",
+        first_name="Ravi",
+        last_name="Kumar",
+        date_of_joining=date.today(),
+        status="Probation",
+    )
+    db.add(emp)
+    db.commit()
+
+    response = client.post(
+        f"/api/v1/employees/{emp.id}/lifecycle",
+        json={
+            "event_type": "confirmation",
+            "event_date": str(date.today()),
+            "to_status": "Active",
+            "reason": "Probation completed",
+        },
+        headers=superuser_headers,
+    )
+
+    assert response.status_code == 201
+    data = response.json()
+    assert data["event_type"] == "confirmation"
+    assert data["from_status"] == "Probation"
+    assert data["to_status"] == "Active"
+    assert data["employee_id"] == emp.id
+
+
+def test_lifecycle_event_can_apply_employee_changes(client, superuser_headers, db):
+    from app.models.employee import Employee
+
+    emp = Employee(
+        employee_id="EMP66666",
+        first_name="Meera",
+        last_name="Shah",
+        date_of_joining=date.today(),
+        status="Probation",
+    )
+    db.add(emp)
+    db.commit()
+
+    response = client.post(
+        f"/api/v1/employees/{emp.id}/lifecycle",
+        json={
+            "event_type": "confirmation",
+            "event_date": str(date.today()),
+            "to_status": "Active",
+            "apply_to_employee": True,
+        },
+        headers=superuser_headers,
+    )
+
+    assert response.status_code == 201
+    db.refresh(emp)
+    assert emp.status == "Active"
+
+    history = client.get(f"/api/v1/employees/{emp.id}/lifecycle", headers=superuser_headers)
+    assert history.status_code == 200
+    assert len(history.json()) == 1
+    assert history.json()[0]["from_status"] == "Probation"
+
+
+def test_hr_cannot_create_employee_login_account(client, db):
+    from app.db.init_db import init_db
+
+    init_db(db)
+    login = client.post("/api/v1/auth/login", json={
+        "email": "hr@aihrms.com",
+        "password": "HR@123456",
+    })
+    headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
+    response = client.post("/api/v1/employees/", json={
+        "first_name": "Login",
+        "last_name": "Blocked",
+        "date_of_joining": str(date.today()),
+        "create_user_account": True,
+        "user_email": "blocked.employee@aihrms.com",
+        "user_password": "Employee@123456",
+    }, headers=headers)
+    assert response.status_code == 403
+    assert "only admin" in response.json()["detail"].lower()

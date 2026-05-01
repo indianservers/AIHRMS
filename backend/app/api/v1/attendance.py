@@ -5,9 +5,11 @@ from sqlalchemy.orm import Session
 from app.core.deps import get_db, get_current_user, RequirePermission
 from app.crud.crud_attendance import crud_attendance, crud_holiday
 from app.models.user import User
-from app.models.attendance import Shift, AttendanceRegularization, Holiday, OvertimeRequest
+from app.models.attendance import Shift, ShiftRosterAssignment, ShiftWeeklyOff, AttendanceRegularization, Holiday, OvertimeRequest
 from app.schemas.attendance import (
     ShiftCreate, ShiftSchema,
+    ShiftRosterAssignmentCreate, ShiftRosterAssignmentSchema,
+    ShiftWeeklyOffCreate, ShiftWeeklyOffSchema,
     HolidayCreate, HolidaySchema,
     CheckInRequest, CheckOutRequest,
     AttendanceSchema, RegularizationRequest,
@@ -68,6 +70,60 @@ def delete_shift(
     shift.is_active = False
     db.commit()
     return {"message": "Shift deactivated"}
+
+
+@router.get("/weekly-offs", response_model=List[ShiftWeeklyOffSchema])
+def list_weekly_offs(
+    shift_id: Optional[int] = Query(None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(RequirePermission("attendance_manage")),
+):
+    query = db.query(ShiftWeeklyOff).filter(ShiftWeeklyOff.is_active == True)
+    if shift_id:
+        query = query.filter(ShiftWeeklyOff.shift_id == shift_id)
+    return query.order_by(ShiftWeeklyOff.shift_id, ShiftWeeklyOff.weekday).all()
+
+
+@router.post("/weekly-offs", response_model=ShiftWeeklyOffSchema, status_code=201)
+def create_weekly_off(
+    data: ShiftWeeklyOffCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(RequirePermission("attendance_manage")),
+):
+    shift = db.query(Shift).filter(Shift.id == data.shift_id, Shift.is_active == True).first()
+    if not shift:
+        raise HTTPException(status_code=404, detail="Shift not found")
+    weekly_off = ShiftWeeklyOff(**data.model_dump())
+    db.add(weekly_off)
+    db.commit()
+    db.refresh(weekly_off)
+    return weekly_off
+
+
+@router.post("/roster", response_model=ShiftRosterAssignmentSchema, status_code=201)
+def assign_roster(
+    data: ShiftRosterAssignmentCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(RequirePermission("attendance_manage")),
+):
+    shift = db.query(Shift).filter(Shift.id == data.shift_id, Shift.is_active == True).first()
+    if not shift:
+        raise HTTPException(status_code=404, detail="Shift not found")
+    existing = db.query(ShiftRosterAssignment).filter(
+        ShiftRosterAssignment.employee_id == data.employee_id,
+        ShiftRosterAssignment.work_date == data.work_date,
+    ).first()
+    if existing:
+        existing.shift_id = data.shift_id
+        existing.status = data.status
+        db.commit()
+        db.refresh(existing)
+        return existing
+    assignment = ShiftRosterAssignment(**data.model_dump())
+    db.add(assignment)
+    db.commit()
+    db.refresh(assignment)
+    return assignment
 
 
 # ── Holidays ─────────────────────────────────────────────────────────────────
@@ -217,6 +273,16 @@ def monthly_summary(
             raise HTTPException(status_code=400, detail="No employee profile")
         emp_id = current_user.employee.id
     return crud_attendance.get_monthly_summary(db, emp_id, month, year)
+
+
+@router.post("/compute/{employee_id}/{work_date}", response_model=AttendanceSchema)
+def compute_attendance_day(
+    employee_id: int,
+    work_date: date,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(RequirePermission("attendance_manage")),
+):
+    return crud_attendance.compute_day(db, employee_id, work_date)
 
 
 # ── Regularization ───────────────────────────────────────────────────────────

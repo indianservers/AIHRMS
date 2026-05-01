@@ -55,6 +55,23 @@ class LeaveBalanceSchema(BaseModel):
         object.__setattr__(self, 'available', self.allocated + self.carried_forward - self.used - self.pending)
 
 
+class LeaveBalanceLedgerSchema(BaseModel):
+    id: int
+    employee_id: int
+    leave_type_id: int
+    leave_balance_id: Optional[int] = None
+    leave_request_id: Optional[int] = None
+    year: int
+    transaction_type: str
+    amount: Decimal
+    balance_after: Decimal
+    reason: Optional[str] = None
+    created_by: Optional[int] = None
+
+    class Config:
+        from_attributes = True
+
+
 class LeaveRequestCreate(BaseModel):
     leave_type_id: int
     from_date: date

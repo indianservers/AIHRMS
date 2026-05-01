@@ -19,6 +19,33 @@ const loginSchema = z.object({
 
 type LoginForm = z.infer<typeof loginSchema>;
 
+const demoLogins = [
+  {
+    label: "Admin",
+    email: "admin@aihrms.com",
+    password: "Admin@123456",
+    description: "Full configuration and system access",
+  },
+  {
+    label: "HR",
+    email: "hr@aihrms.com",
+    password: "HR@123456",
+    description: "Employee, leave, payroll, recruitment, and HR operations",
+  },
+  {
+    label: "Manager",
+    email: "manager@aihrms.com",
+    password: "Manager@123456",
+    description: "Team leave, attendance, performance, reports",
+  },
+  {
+    label: "Employee",
+    email: "employee@aihrms.com",
+    password: "Employee@123456",
+    description: "Self-service attendance, leave, payslip, helpdesk",
+  },
+];
+
 export default function LoginPage() {
   const navigate = useNavigate();
   const { setTokens, setUser } = useAuthStore();
@@ -27,6 +54,7 @@ export default function LoginPage() {
   const {
     register,
     handleSubmit,
+    setValue,
     formState: { errors, isSubmitting },
   } = useForm<LoginForm>({ resolver: zodResolver(loginSchema) });
 
@@ -126,11 +154,25 @@ export default function LoginPage() {
               </Button>
             </form>
 
-            {/* Demo credentials */}
-            <div className="mt-4 p-3 rounded-lg bg-blue-500/10 border border-blue-500/20">
-              <p className="text-xs text-blue-200/70 font-medium mb-1">Demo credentials:</p>
-              <p className="text-xs text-blue-200/50">Email: admin@aihrms.com</p>
-              <p className="text-xs text-blue-200/50">Password: Admin@123456</p>
+            <div className="mt-4 space-y-2 rounded-lg border border-blue-500/20 bg-blue-500/10 p-3">
+              <p className="text-xs font-medium text-blue-200/80">Role logins</p>
+              {demoLogins.map((login) => (
+                <button
+                  key={login.email}
+                  type="button"
+                  className="w-full rounded-md border border-white/10 bg-white/5 p-2 text-left transition hover:bg-white/10"
+                  onClick={() => {
+                    setValue("email", login.email, { shouldValidate: true });
+                    setValue("password", login.password, { shouldValidate: true });
+                  }}
+                >
+                  <span className="flex items-center justify-between gap-3">
+                    <span className="text-xs font-semibold text-white">{login.label}</span>
+                    <span className="text-[11px] text-blue-200/60">{login.email}</span>
+                  </span>
+                  <span className="mt-1 block text-[11px] text-blue-200/45">{login.description}</span>
+                </button>
+              ))}
             </div>
           </CardContent>
         </Card>

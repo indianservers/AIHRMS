@@ -26,6 +26,34 @@ class ShiftSchema(ShiftBase):
         from_attributes = True
 
 
+class ShiftWeeklyOffCreate(BaseModel):
+    shift_id: int
+    weekday: int
+    week_pattern: str = "all"
+
+
+class ShiftWeeklyOffSchema(ShiftWeeklyOffCreate):
+    id: int
+    is_active: bool
+
+    class Config:
+        from_attributes = True
+
+
+class ShiftRosterAssignmentCreate(BaseModel):
+    employee_id: int
+    shift_id: int
+    work_date: date
+    status: str = "Published"
+
+
+class ShiftRosterAssignmentSchema(ShiftRosterAssignmentCreate):
+    id: int
+
+    class Config:
+        from_attributes = True
+
+
 class HolidayBase(BaseModel):
     name: str
     holiday_date: date
@@ -63,11 +91,19 @@ class AttendanceSchema(BaseModel):
     attendance_date: date
     check_in: Optional[datetime] = None
     check_out: Optional[datetime] = None
+    shift_id: Optional[int] = None
     total_hours: Optional[Decimal] = None
     overtime_hours: Decimal = Decimal("0")
+    late_minutes: int = 0
+    early_exit_minutes: int = 0
+    short_minutes: int = 0
+    is_late: bool = False
+    is_early_exit: bool = False
+    is_short_hours: bool = False
     status: str
     source: str
     is_regularized: bool
+    computed_at: Optional[datetime] = None
     remarks: Optional[str] = None
 
     class Config:

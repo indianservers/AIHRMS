@@ -31,6 +31,28 @@ interface PayslipRecord {
   net_salary: number;
   total_deductions: number;
   status: string;
+  employer_contributions?: { component_name: string; amount: number }[];
+  reimbursements?: { component_name: string; amount: number }[];
+  ytd?: {
+    gross_salary: number;
+    total_deductions: number;
+    net_salary: number;
+    reimbursements: number;
+    employer_contributions: number;
+  };
+}
+
+interface PayrollVariance {
+  id: number;
+  employee_id: number;
+  current_gross: number;
+  previous_gross: number;
+  gross_delta_percent: number;
+  current_net: number;
+  previous_net: number;
+  net_delta_percent: number;
+  severity: string;
+  reason?: string;
 }
 
 const MONTHS = [
@@ -66,6 +88,12 @@ export default function PayrollPage() {
     enabled: !!selectedRun,
   });
 
+  const { data: runVariance, refetch: refetchVariance } = useQuery({
+    queryKey: ["run-variance", selectedRun?.id],
+    queryFn: () => payrollApi.runVariance(selectedRun!.id).then((r) => r.data),
+    enabled: !!selectedRun,
+  });
+
   const runMutation = useMutation({
     mutationFn: () => payrollApi.runPayroll({ month: runMonth, year: runYear }),
     onSuccess: () => {
@@ -84,6 +112,17 @@ export default function PayrollPage() {
       toast({ title: "Payroll run approved!" });
       refetchRuns();
       setSelectedRun(null);
+    },
+  });
+
+  const exportMutation = useMutation({
+    mutationFn: (exportType: string) => payrollApi.exportRun(selectedRun!.id, exportType),
+    onSuccess: (response) => {
+      toast({ title: "Payroll export generated", description: response.data.output_file_url });
+    },
+    onError: (e: unknown) => {
+      const msg = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail || "Export failed";
+      toast({ title: "Error", description: msg, variant: "destructive" });
     },
   });
 
@@ -214,11 +253,67 @@ export default function PayrollPage() {
                   </div>
                 </div>
 
+                {Array.isArray(payslip.employer_contributions) && payslip.employer_contributions.length > 0 && (
+                  <div>
+                    <h3 className="text-sm font-semibold mb-3 text-muted-foreground uppercase tracking-wide">Employer Contributions</h3>
+                    <div className="space-y-2">
+                      {(payslip.employer_contributions as { component_name: string; amount: number }[]).map((item, i) => (
+                        <div key={i} className="flex justify-between text-sm">
+                          <span>{item.component_name}</span>
+                          <span className="font-medium">{formatCurrency(item.amount)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {Array.isArray(payslip.reimbursements) && payslip.reimbursements.length > 0 && (
+                  <div>
+                    <h3 className="text-sm font-semibold mb-3 text-muted-foreground uppercase tracking-wide">Reimbursements</h3>
+                    <div className="space-y-2">
+                      {(payslip.reimbursements as { component_name: string; amount: number }[]).map((item, i) => (
+                        <div key={i} className="flex justify-between text-sm">
+                          <span>{item.component_name}</span>
+                          <span className="font-medium text-blue-600">{formatCurrency(item.amount)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
                 {/* Net */}
                 <div className="flex justify-between items-center p-4 bg-primary/10 rounded-lg">
                   <span className="font-semibold">Net Salary</span>
                   <span className="text-xl font-bold text-primary">{formatCurrency(payslip.net_salary)}</span>
                 </div>
+
+                {payslip.ytd && (
+                  <div>
+                    <h3 className="text-sm font-semibold mb-3 text-muted-foreground uppercase tracking-wide">Year to Date</h3>
+                    <div className="grid grid-cols-2 md:grid-cols-5 gap-3 text-sm">
+                      <div className="rounded-md border p-3">
+                        <p className="text-muted-foreground">Gross</p>
+                        <p className="font-semibold">{formatCurrency(payslip.ytd.gross_salary)}</p>
+                      </div>
+                      <div className="rounded-md border p-3">
+                        <p className="text-muted-foreground">Deductions</p>
+                        <p className="font-semibold">{formatCurrency(payslip.ytd.total_deductions)}</p>
+                      </div>
+                      <div className="rounded-md border p-3">
+                        <p className="text-muted-foreground">Net</p>
+                        <p className="font-semibold">{formatCurrency(payslip.ytd.net_salary)}</p>
+                      </div>
+                      <div className="rounded-md border p-3">
+                        <p className="text-muted-foreground">Reimbursements</p>
+                        <p className="font-semibold">{formatCurrency(payslip.ytd.reimbursements)}</p>
+                      </div>
+                      <div className="rounded-md border p-3">
+                        <p className="text-muted-foreground">Employer Cost</p>
+                        <p className="font-semibold">{formatCurrency(payslip.ytd.employer_contributions)}</p>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </CardContent>
             </Card>
           )}
@@ -344,6 +439,89 @@ export default function PayrollPage() {
               </div>
             </CardContent>
           </Card>
+
+          {selectedRun && (
+            <Card>
+              <CardHeader>
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <CardTitle className="text-base">
+                      {MONTHS[selectedRun.month - 1]} {selectedRun.year} Payroll Review
+                    </CardTitle>
+                    <CardDescription>Variance, audit-ready export batches, and statutory stubs</CardDescription>
+                  </div>
+                  <Button variant="outline" size="sm" onClick={() => refetchVariance()}>
+                    <RefreshCw className="h-4 w-4 mr-2" />
+                    Refresh Variance
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="flex flex-wrap gap-2">
+                  {[
+                    ["pf_ecr", "PF ECR"],
+                    ["esi", "ESI"],
+                    ["pt", "PT"],
+                    ["tds_24q", "TDS 24Q"],
+                    ["bank_advice", "Bank Advice"],
+                    ["pay_register", "Pay Register"],
+                  ].map(([type, label]) => (
+                    <Button
+                      key={type}
+                      variant="outline"
+                      size="sm"
+                      onClick={() => exportMutation.mutate(type)}
+                      disabled={exportMutation.isPending}
+                    >
+                      <Download className="h-4 w-4 mr-2" />
+                      {label}
+                    </Button>
+                  ))}
+                </div>
+
+                <div className="overflow-x-auto border rounded-md">
+                  <table className="w-full text-sm">
+                    <thead className="border-b bg-muted/50">
+                      <tr>
+                        {["Employee", "Gross Change", "Net Change", "Severity", "Reason"].map((h) => (
+                          <th key={h} className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                            {h}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {!runVariance || (runVariance as PayrollVariance[]).length === 0 ? (
+                        <tr>
+                          <td colSpan={5} className="px-4 py-8 text-center text-muted-foreground">
+                            No variance data available
+                          </td>
+                        </tr>
+                      ) : (
+                        (runVariance as PayrollVariance[]).map((item) => (
+                          <tr key={item.id} className="border-b hover:bg-muted/30">
+                            <td className="px-4 py-3">#{item.employee_id}</td>
+                            <td className="px-4 py-3">
+                              {formatCurrency(item.previous_gross)} to {formatCurrency(item.current_gross)}
+                              <p className="text-xs text-muted-foreground">{Number(item.gross_delta_percent).toFixed(1)}%</p>
+                            </td>
+                            <td className="px-4 py-3">
+                              {formatCurrency(item.previous_net)} to {formatCurrency(item.current_net)}
+                              <p className="text-xs text-muted-foreground">{Number(item.net_delta_percent).toFixed(1)}%</p>
+                            </td>
+                            <td className="px-4 py-3">
+                              <Badge variant="outline">{item.severity}</Badge>
+                            </td>
+                            <td className="px-4 py-3 text-muted-foreground">{item.reason}</td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </CardContent>
+            </Card>
+          )}
 
           {/* Run detail */}
           {selectedRun && runRecords && (

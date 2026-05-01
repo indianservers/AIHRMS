@@ -6,7 +6,7 @@ from app.crud import crud_leave
 from app.models.user import User
 from app.schemas.leave import (
     LeaveTypeCreate, LeaveTypeUpdate, LeaveTypeSchema,
-    LeaveBalanceSchema, LeaveRequestCreate, LeaveApprovalRequest, LeaveRequestSchema,
+    LeaveBalanceLedgerSchema, LeaveBalanceSchema, LeaveRequestCreate, LeaveApprovalRequest, LeaveRequestSchema,
 )
 
 router = APIRouter(prefix="/leave", tags=["Leave Management"])
@@ -110,6 +110,39 @@ def employee_leave_balance(
     return crud_leave.get_employee_leave_balances(db, employee_id, yr)
 
 
+@router.get("/ledger", response_model=List[LeaveBalanceLedgerSchema])
+def my_leave_ledger(
+    leave_type_id: Optional[int] = Query(None),
+    year: Optional[int] = Query(None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    if not current_user.employee:
+        raise HTTPException(status_code=400, detail="No employee profile")
+    return crud_leave.get_leave_ledger(
+        db,
+        employee_id=current_user.employee.id,
+        leave_type_id=leave_type_id,
+        year=year,
+    )
+
+
+@router.get("/ledger/{employee_id}", response_model=List[LeaveBalanceLedgerSchema])
+def employee_leave_ledger(
+    employee_id: int,
+    leave_type_id: Optional[int] = Query(None),
+    year: Optional[int] = Query(None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(RequirePermission("leave_manage")),
+):
+    return crud_leave.get_leave_ledger(
+        db,
+        employee_id=employee_id,
+        leave_type_id=leave_type_id,
+        year=year,
+    )
+
+
 @router.post("/balance/allocate")
 def allocate_leave(
     employee_id: int,
@@ -203,6 +236,7 @@ def cancel_leave(
             raise HTTPException(status_code=403, detail="Not authorized")
     if req.status not in ["Pending"]:
         raise HTTPException(status_code=400, detail="Can only cancel pending requests")
-    req.status = "Cancelled"
-    db.commit()
+    cancelled = crud_leave.cancel_leave_request(db, request_id, current_user.id)
+    if not cancelled:
+        raise HTTPException(status_code=400, detail="Can only cancel pending requests")
     return {"message": "Leave request cancelled"}

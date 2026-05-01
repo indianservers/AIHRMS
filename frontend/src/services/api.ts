@@ -1,7 +1,8 @@
 import axios, { AxiosError, AxiosResponse } from "axios";
 import { useAuthStore } from "@/store/authStore";
+import { getApiBaseUrl } from "@/config/runtime";
 
-const BASE_URL = import.meta.env.VITE_API_URL || "/api/v1";
+const BASE_URL = getApiBaseUrl();
 
 export const api = axios.create({
   baseURL: BASE_URL,
@@ -173,6 +174,10 @@ export const payrollApi = {
   getRun: (id: number) => api.get(`/payroll/runs/${id}`),
   approveRun: (id: number, data: unknown) => api.put(`/payroll/runs/${id}/approve`, data),
   runRecords: (runId: number) => api.get(`/payroll/runs/${runId}/records`),
+  runVariance: (runId: number) => api.get(`/payroll/runs/${runId}/variance`),
+  exportRun: (runId: number, exportType: string) =>
+    api.post(`/payroll/runs/${runId}/exports/${exportType}`),
+  runAudit: (runId: number) => api.get(`/payroll/runs/${runId}/audit`),
   payslip: (month: number, year: number, empId?: number) =>
     api.get("/payroll/payslip", { params: { month, year, employee_id: empId } }),
   reimbursements: (params?: Record<string, unknown>) =>
@@ -249,20 +254,20 @@ export const reportsApi = {
     api.get("/reports/recruitment-funnel", { params: { job_id: jobId } }),
 };
 
-export const targetsApi = {
-  industries: () => api.get("/targets/industries"),
-  createIndustry: (data: unknown) => api.post("/targets/industries", data),
-  updateIndustry: (id: number, data: unknown) => api.put(`/targets/industries/${id}`, data),
-  deleteIndustry: (id: number) => api.delete(`/targets/industries/${id}`),
-  plans: () => api.get("/targets/plans"),
-  createPlan: (data: unknown) => api.post("/targets/plans", data),
-  updatePlan: (id: number, data: unknown) => api.put(`/targets/plans/${id}`, data),
-  deletePlan: (id: number) => api.delete(`/targets/plans/${id}`),
-  features: (params?: Record<string, unknown>) => api.get("/targets/features", { params }),
-  createFeature: (data: unknown) => api.post("/targets/features", data),
-  updateFeature: (id: number, data: unknown) => api.put(`/targets/features/${id}`, data),
-  deleteFeature: (id: number) => api.delete(`/targets/features/${id}`),
+export const timesheetsApi = {
+  projects: (params?: Record<string, unknown>) =>
+    api.get("/timesheets/projects", { params }),
+  createProject: (data: unknown) => api.post("/timesheets/projects", data),
+  list: (params?: Record<string, unknown>) =>
+    api.get("/timesheets/", { params }),
+  create: (data: unknown) => api.post("/timesheets/", data),
+  addEntry: (timesheetId: number, data: unknown) =>
+    api.post(`/timesheets/${timesheetId}/entries`, data),
+  submit: (timesheetId: number) => api.put(`/timesheets/${timesheetId}/submit`),
+  review: (timesheetId: number, data: unknown) =>
+    api.put(`/timesheets/${timesheetId}/review`, data),
 };
+
 
 export const aiApi = {
   chat: (message: string, history?: unknown[]) =>

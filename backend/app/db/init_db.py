@@ -1,7 +1,11 @@
+from datetime import date
 from sqlalchemy.orm import Session
 from app.core.security import get_password_hash
 from app.models.user import User, Role, Permission
 from app.models.target import FeatureCatalog, FeaturePlan, IndustryTarget
+from app.models.company import Branch, Company, Department, Designation
+from app.models.employee import Employee
+from app.models.leave import LeaveType
 
 
 SYSTEM_PERMISSIONS = [
@@ -10,6 +14,7 @@ SYSTEM_PERMISSIONS = [
     ("company_manage", "Manage company settings", "company"),
     # Employees
     ("employee_view", "View employees", "employee"),
+    ("employee_sensitive_view", "View sensitive employee personal, bank, and statutory fields", "employee"),
     ("employee_create", "Create employees", "employee"),
     ("employee_update", "Update employees", "employee"),
     ("employee_delete", "Delete employees", "employee"),
@@ -36,6 +41,10 @@ SYSTEM_PERMISSIONS = [
     ("helpdesk_manage", "Manage helpdesk tickets", "helpdesk"),
     # Reports
     ("reports_view", "View reports", "reports"),
+    # Timesheets
+    ("timesheet_view", "View projects and timesheets", "timesheet"),
+    ("timesheet_manage", "Manage project master data", "timesheet"),
+    ("timesheet_approve", "Approve submitted timesheets", "timesheet"),
     # Targets
     ("targets_view", "View target markets and feature plans", "targets"),
     ("targets_manage", "Manage target markets and feature plans", "targets"),
@@ -60,10 +69,12 @@ SYSTEM_ROLES = [
         "description": "HR Manager with full HR access",
         "permissions": [
             "company_view", "employee_view", "employee_create", "employee_update",
+            "employee_sensitive_view",
             "attendance_view", "attendance_manage", "leave_view", "leave_approve", "leave_manage",
             "payroll_view", "payroll_run", "recruitment_view", "recruitment_manage",
             "performance_view", "performance_manage", "helpdesk_view", "helpdesk_manage",
             "reports_view", "asset_view", "asset_manage", "exit_view", "exit_manage", "ai_assistant",
+            "timesheet_view", "timesheet_manage", "timesheet_approve",
             "targets_view", "targets_manage",
         ],
     },
@@ -73,6 +84,7 @@ SYSTEM_ROLES = [
         "permissions": [
             "company_view", "employee_view", "attendance_view", "leave_view",
             "payroll_view", "recruitment_view", "performance_view", "reports_view",
+            "timesheet_view",
             "targets_view", "ai_assistant",
         ],
     },
@@ -83,6 +95,7 @@ SYSTEM_ROLES = [
             "employee_view", "attendance_view", "leave_view", "leave_approve",
             "payroll_view", "performance_view", "performance_manage", "helpdesk_view",
             "reports_view", "ai_assistant",
+            "timesheet_view", "timesheet_approve",
             "targets_view",
         ],
     },
@@ -92,8 +105,144 @@ SYSTEM_ROLES = [
         "permissions": [
             "attendance_view", "leave_view", "leave_apply", "payroll_view",
             "performance_view", "helpdesk_view", "ai_assistant",
+            "timesheet_view",
             "targets_view",
         ],
+    },
+]
+
+
+DEMO_USERS = [
+    {
+        "email": "admin@aihrms.com",
+        "password": "Admin@123456",
+        "role": "super_admin",
+        "is_superuser": True,
+    },
+    {
+        "email": "hr@aihrms.com",
+        "password": "HR@123456",
+        "role": "hr_manager",
+        "is_superuser": False,
+    },
+    {
+        "email": "manager@aihrms.com",
+        "password": "Manager@123456",
+        "role": "manager",
+        "is_superuser": False,
+    },
+    {
+        "email": "employee@aihrms.com",
+        "password": "Employee@123456",
+        "role": "employee",
+        "is_superuser": False,
+    },
+]
+
+DEFAULT_LEAVE_TYPES = [
+    {
+        "name": "Casual Leave",
+        "code": "CL",
+        "description": "Short planned or unplanned personal leave.",
+        "days_allowed": 12,
+        "carry_forward": False,
+        "carry_forward_limit": 0,
+        "encashable": False,
+        "applicable_gender": "All",
+        "applicable_from_months": 0,
+        "half_day_allowed": True,
+        "color": "#2563EB",
+    },
+    {
+        "name": "Sick Leave",
+        "code": "SL",
+        "description": "Medical leave for illness or recovery.",
+        "days_allowed": 12,
+        "carry_forward": False,
+        "carry_forward_limit": 0,
+        "encashable": False,
+        "applicable_gender": "All",
+        "applicable_from_months": 0,
+        "half_day_allowed": True,
+        "color": "#16A34A",
+    },
+    {
+        "name": "Earned Leave",
+        "code": "EL",
+        "description": "Privilege leave accrued for longer planned absence.",
+        "days_allowed": 15,
+        "carry_forward": True,
+        "carry_forward_limit": 30,
+        "encashable": True,
+        "applicable_gender": "All",
+        "applicable_from_months": 3,
+        "half_day_allowed": True,
+        "color": "#7C3AED",
+    },
+    {
+        "name": "Maternity Leave",
+        "code": "ML",
+        "description": "Statutory maternity leave for eligible employees.",
+        "days_allowed": 182,
+        "carry_forward": False,
+        "carry_forward_limit": 0,
+        "encashable": False,
+        "applicable_gender": "Female",
+        "applicable_from_months": 0,
+        "half_day_allowed": False,
+        "color": "#DB2777",
+    },
+    {
+        "name": "Paternity Leave",
+        "code": "PL",
+        "description": "Leave for new fathers around childbirth or adoption.",
+        "days_allowed": 5,
+        "carry_forward": False,
+        "carry_forward_limit": 0,
+        "encashable": False,
+        "applicable_gender": "Male",
+        "applicable_from_months": 0,
+        "half_day_allowed": False,
+        "color": "#0EA5E9",
+    },
+    {
+        "name": "Compensatory Off",
+        "code": "CO",
+        "description": "Time off granted against approved extra work.",
+        "days_allowed": 0,
+        "carry_forward": False,
+        "carry_forward_limit": 0,
+        "encashable": False,
+        "applicable_gender": "All",
+        "applicable_from_months": 0,
+        "half_day_allowed": True,
+        "color": "#F97316",
+    },
+    {
+        "name": "Loss of Pay",
+        "code": "LOP",
+        "description": "Unpaid leave when paid balance is unavailable or not applicable.",
+        "days_allowed": 0,
+        "carry_forward": False,
+        "carry_forward_limit": 0,
+        "encashable": False,
+        "applicable_gender": "All",
+        "applicable_from_months": 0,
+        "half_day_allowed": True,
+        "color": "#64748B",
+    },
+    {
+        "name": "Bereavement Leave",
+        "code": "BL",
+        "description": "Leave for loss in immediate family.",
+        "days_allowed": 3,
+        "carry_forward": False,
+        "carry_forward_limit": 0,
+        "encashable": False,
+        "applicable_gender": "All",
+        "applicable_from_months": 0,
+        "half_day_allowed": False,
+        "color": "#334155",
     },
 ]
 
@@ -381,6 +530,17 @@ def init_db(db: Session) -> None:
 
     db.commit()
 
+    # Seed common leave types for a realistic starting policy.
+    for item in DEFAULT_LEAVE_TYPES:
+        leave_type = db.query(LeaveType).filter(LeaveType.code == item["code"]).first()
+        if not leave_type:
+            db.add(LeaveType(**item))
+        else:
+            for key, value in item.items():
+                setattr(leave_type, key, value)
+
+    db.commit()
+
     # Seed target markets and feature plans
     for item in INDUSTRY_TARGETS:
         target = db.query(IndustryTarget).filter(IndustryTarget.slug == item["slug"]).first()
@@ -420,15 +580,83 @@ def init_db(db: Session) -> None:
 
     db.commit()
 
-    # Create superuser
-    superuser = db.query(User).filter(User.email == "admin@aihrms.com").first()
-    if not superuser:
-        superuser = User(
-            email="admin@aihrms.com",
-            hashed_password=get_password_hash("Admin@123456"),
-            is_active=True,
-            is_superuser=True,
-            role_id=role_map["super_admin"].id,
+    # Demo organization used by seeded role logins.
+    company = db.query(Company).filter(Company.name == "Demo Company").first()
+    if not company:
+        company = Company(name="Demo Company", legal_name="Demo Company Pvt Ltd")
+        db.add(company)
+        db.flush()
+
+    branch = db.query(Branch).filter(Branch.company_id == company.id, Branch.name == "Head Office").first()
+    if not branch:
+        branch = Branch(name="Head Office", code="HO", company_id=company.id, city="Bengaluru", state="Karnataka")
+        db.add(branch)
+        db.flush()
+
+    department = db.query(Department).filter(Department.branch_id == branch.id, Department.name == "People Operations").first()
+    if not department:
+        department = Department(name="People Operations", code="HR", branch_id=branch.id)
+        db.add(department)
+        db.flush()
+
+    designation = db.query(Designation).filter(Designation.department_id == department.id, Designation.name == "HRMS User").first()
+    if not designation:
+        designation = Designation(name="HRMS User", code="USER", department_id=department.id)
+        db.add(designation)
+        db.flush()
+
+    # Seed role-based demo users: Admin, HR, Manager, and Employee.
+    seeded_users = {}
+    for item in DEMO_USERS:
+        user = db.query(User).filter(User.email == item["email"]).first()
+        if not user:
+            user = User(
+                email=item["email"],
+                hashed_password=get_password_hash(item["password"]),
+                is_active=True,
+                is_superuser=item["is_superuser"],
+                role_id=role_map[item["role"]].id,
+            )
+            db.add(user)
+            db.flush()
+        else:
+            user.role_id = role_map[item["role"]].id
+            user.is_superuser = item["is_superuser"]
+            user.is_active = True
+        seeded_users[item["role"]] = user
+
+    manager_employee = db.query(Employee).filter(Employee.employee_id == "DEMO-MGR-001").first()
+    if not manager_employee:
+        manager_employee = Employee(
+            employee_id="DEMO-MGR-001",
+            first_name="Maya",
+            last_name="Manager",
+            personal_email="manager@aihrms.com",
+            date_of_joining=date(2024, 1, 1),
+            user_id=seeded_users["manager"].id,
+            branch_id=branch.id,
+            department_id=department.id,
+            designation_id=designation.id,
+            status="Active",
         )
-        db.add(superuser)
-        db.commit()
+        db.add(manager_employee)
+        db.flush()
+
+    employee = db.query(Employee).filter(Employee.employee_id == "DEMO-EMP-001").first()
+    if not employee:
+        employee = Employee(
+            employee_id="DEMO-EMP-001",
+            first_name="Esha",
+            last_name="Employee",
+            personal_email="employee@aihrms.com",
+            date_of_joining=date(2024, 2, 1),
+            user_id=seeded_users["employee"].id,
+            branch_id=branch.id,
+            department_id=department.id,
+            designation_id=designation.id,
+            reporting_manager_id=manager_employee.id,
+            status="Active",
+        )
+        db.add(employee)
+
+    db.commit()

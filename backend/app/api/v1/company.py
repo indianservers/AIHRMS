@@ -1,7 +1,8 @@
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy import func
 from sqlalchemy.orm import Session
-from app.core.deps import get_db, get_current_user, RequirePermission
+from app.core.deps import get_db, RequirePermission
 from app.models.company import Company, Branch, Department, Designation
 from app.models.user import User
 from app.schemas.company import (
@@ -12,6 +13,97 @@ from app.schemas.company import (
 )
 
 router = APIRouter(prefix="/company", tags=["Company Setup"])
+
+
+def _clean(value: Optional[str]) -> Optional[str]:
+    return value.strip() if isinstance(value, str) and value.strip() else None
+
+
+def _active_company(db: Session, company_id: int) -> Company:
+    company = db.query(Company).filter(Company.id == company_id, Company.is_active == True).first()
+    if not company:
+        raise HTTPException(status_code=404, detail="Active company not found")
+    return company
+
+
+def _active_branch(db: Session, branch_id: int) -> Branch:
+    branch = db.query(Branch).filter(Branch.id == branch_id, Branch.is_active == True).first()
+    if not branch:
+        raise HTTPException(status_code=404, detail="Active branch not found")
+    return branch
+
+
+def _active_department(db: Session, department_id: int) -> Department:
+    department = db.query(Department).filter(Department.id == department_id, Department.is_active == True).first()
+    if not department:
+        raise HTTPException(status_code=404, detail="Active department not found")
+    return department
+
+
+def _ensure_company_unique(db: Session, data: CompanyCreate | CompanyUpdate, exclude_id: Optional[int] = None) -> None:
+    checks = {
+        "name": _clean(data.name),
+        "registration_number": _clean(data.registration_number),
+        "pan_number": _clean(data.pan_number),
+        "tan_number": _clean(data.tan_number),
+        "gstin": _clean(data.gstin),
+    }
+    for field, value in checks.items():
+        if not value:
+            continue
+        query = db.query(Company).filter(Company.is_active == True, func.lower(getattr(Company, field)) == value.lower())
+        if exclude_id:
+            query = query.filter(Company.id != exclude_id)
+        if query.first():
+            raise HTTPException(status_code=409, detail=f"Company {field.replace('_', ' ')} already exists")
+
+
+def _ensure_branch_unique(db: Session, data: BranchCreate | BranchUpdate, company_id: int, exclude_id: Optional[int] = None) -> None:
+    for field in ("name", "code"):
+        value = _clean(getattr(data, field))
+        if not value:
+            continue
+        query = db.query(Branch).filter(
+            Branch.is_active == True,
+            Branch.company_id == company_id,
+            func.lower(getattr(Branch, field)) == value.lower(),
+        )
+        if exclude_id:
+            query = query.filter(Branch.id != exclude_id)
+        if query.first():
+            raise HTTPException(status_code=409, detail=f"Branch {field} already exists for this company")
+
+
+def _ensure_department_unique(db: Session, data: DepartmentCreate | DepartmentUpdate, branch_id: int, exclude_id: Optional[int] = None) -> None:
+    for field in ("name", "code"):
+        value = _clean(getattr(data, field))
+        if not value:
+            continue
+        query = db.query(Department).filter(
+            Department.is_active == True,
+            Department.branch_id == branch_id,
+            func.lower(getattr(Department, field)) == value.lower(),
+        )
+        if exclude_id:
+            query = query.filter(Department.id != exclude_id)
+        if query.first():
+            raise HTTPException(status_code=409, detail=f"Department {field} already exists for this branch")
+
+
+def _ensure_designation_unique(db: Session, data: DesignationCreate | DesignationUpdate, department_id: int, exclude_id: Optional[int] = None) -> None:
+    for field in ("name", "code"):
+        value = _clean(getattr(data, field))
+        if not value:
+            continue
+        query = db.query(Designation).filter(
+            Designation.is_active == True,
+            Designation.department_id == department_id,
+            func.lower(getattr(Designation, field)) == value.lower(),
+        )
+        if exclude_id:
+            query = query.filter(Designation.id != exclude_id)
+        if query.first():
+            raise HTTPException(status_code=409, detail=f"Designation {field} already exists for this department")
 
 
 # ── Company ──────────────────────────────────────────────────────────────────
@@ -30,54 +122,12 @@ def create_company(
     db: Session = Depends(get_db),
     current_user: User = Depends(RequirePermission("company_manage")),
 ):
+    _ensure_company_unique(db, data)
     company = Company(**data.model_dump())
     db.add(company)
     db.commit()
     db.refresh(company)
     return company
-
-
-@router.get("/{company_id}", response_model=CompanySchema)
-def get_company(
-    company_id: int,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(RequirePermission("company_view")),
-):
-    company = db.query(Company).filter(Company.id == company_id).first()
-    if not company:
-        raise HTTPException(status_code=404, detail="Company not found")
-    return company
-
-
-@router.put("/{company_id}", response_model=CompanySchema)
-def update_company(
-    company_id: int,
-    data: CompanyUpdate,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(RequirePermission("company_manage")),
-):
-    company = db.query(Company).filter(Company.id == company_id).first()
-    if not company:
-        raise HTTPException(status_code=404, detail="Company not found")
-    for k, v in data.model_dump(exclude_unset=True).items():
-        setattr(company, k, v)
-    db.commit()
-    db.refresh(company)
-    return company
-
-
-@router.delete("/{company_id}")
-def delete_company(
-    company_id: int,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(RequirePermission("company_manage")),
-):
-    company = db.query(Company).filter(Company.id == company_id).first()
-    if not company:
-        raise HTTPException(status_code=404, detail="Company not found")
-    company.is_active = False
-    db.commit()
-    return {"message": "Company deactivated"}
 
 
 # ── Branch ───────────────────────────────────────────────────────────────────
@@ -100,6 +150,8 @@ def create_branch(
     db: Session = Depends(get_db),
     current_user: User = Depends(RequirePermission("company_manage")),
 ):
+    _active_company(db, data.company_id)
+    _ensure_branch_unique(db, data, data.company_id)
     branch = Branch(**data.model_dump())
     db.add(branch)
     db.commit()
@@ -117,6 +169,9 @@ def update_branch(
     branch = db.query(Branch).filter(Branch.id == branch_id).first()
     if not branch:
         raise HTTPException(status_code=404, detail="Branch not found")
+    target_company_id = data.company_id if data.company_id is not None else branch.company_id
+    _active_company(db, target_company_id)
+    _ensure_branch_unique(db, data, target_company_id, exclude_id=branch_id)
     for k, v in data.model_dump(exclude_unset=True).items():
         setattr(branch, k, v)
     db.commit()
@@ -158,6 +213,8 @@ def create_department(
     db: Session = Depends(get_db),
     current_user: User = Depends(RequirePermission("company_manage")),
 ):
+    _active_branch(db, data.branch_id)
+    _ensure_department_unique(db, data, data.branch_id)
     dept = Department(**data.model_dump())
     db.add(dept)
     db.commit()
@@ -175,6 +232,9 @@ def update_department(
     dept = db.query(Department).filter(Department.id == dept_id).first()
     if not dept:
         raise HTTPException(status_code=404, detail="Department not found")
+    target_branch_id = data.branch_id if data.branch_id is not None else dept.branch_id
+    _active_branch(db, target_branch_id)
+    _ensure_department_unique(db, data, target_branch_id, exclude_id=dept_id)
     for k, v in data.model_dump(exclude_unset=True).items():
         setattr(dept, k, v)
     db.commit()
@@ -216,6 +276,8 @@ def create_designation(
     db: Session = Depends(get_db),
     current_user: User = Depends(RequirePermission("company_manage")),
 ):
+    _active_department(db, data.department_id)
+    _ensure_designation_unique(db, data, data.department_id)
     desig = Designation(**data.model_dump())
     db.add(desig)
     db.commit()
@@ -233,6 +295,9 @@ def update_designation(
     desig = db.query(Designation).filter(Designation.id == desig_id).first()
     if not desig:
         raise HTTPException(status_code=404, detail="Designation not found")
+    target_department_id = data.department_id if data.department_id is not None else desig.department_id
+    _active_department(db, target_department_id)
+    _ensure_designation_unique(db, data, target_department_id, exclude_id=desig_id)
     for k, v in data.model_dump(exclude_unset=True).items():
         setattr(desig, k, v)
     db.commit()
@@ -252,3 +317,48 @@ def delete_designation(
     desig.is_active = False
     db.commit()
     return {"message": "Designation deactivated"}
+
+
+# Dynamic company routes must stay after the static organization routes above.
+@router.get("/{company_id}", response_model=CompanySchema)
+def get_company(
+    company_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(RequirePermission("company_view")),
+):
+    company = db.query(Company).filter(Company.id == company_id).first()
+    if not company:
+        raise HTTPException(status_code=404, detail="Company not found")
+    return company
+
+
+@router.put("/{company_id}", response_model=CompanySchema)
+def update_company(
+    company_id: int,
+    data: CompanyUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(RequirePermission("company_manage")),
+):
+    company = db.query(Company).filter(Company.id == company_id).first()
+    if not company:
+        raise HTTPException(status_code=404, detail="Company not found")
+    _ensure_company_unique(db, data, exclude_id=company_id)
+    for k, v in data.model_dump(exclude_unset=True).items():
+        setattr(company, k, v)
+    db.commit()
+    db.refresh(company)
+    return company
+
+
+@router.delete("/{company_id}")
+def delete_company(
+    company_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(RequirePermission("company_manage")),
+):
+    company = db.query(Company).filter(Company.id == company_id).first()
+    if not company:
+        raise HTTPException(status_code=404, detail="Company not found")
+    company.is_active = False
+    db.commit()
+    return {"message": "Company deactivated"}

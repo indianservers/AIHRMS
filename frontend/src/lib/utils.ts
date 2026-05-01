@@ -1,5 +1,6 @@
 import { type ClassValue, clsx } from "clsx";
 import { twMerge } from "tailwind-merge";
+import { getUploadsBaseUrl } from "@/config/runtime";
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -8,9 +9,7 @@ export function cn(...inputs: ClassValue[]) {
 export function assetUrl(path?: string | null): string | undefined {
   if (!path) return undefined;
   if (path.startsWith("http")) return path;
-  const apiUrl = import.meta.env.VITE_API_URL || "/api/v1";
-  const origin = apiUrl.replace(/\/api\/v1\/?$/, "");
-  return `${origin}${path}`;
+  return `${getUploadsBaseUrl()}${path}`;
 }
 
 export function formatCurrency(amount: number, currency = "INR"): string {

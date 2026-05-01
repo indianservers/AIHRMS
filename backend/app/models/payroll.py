@@ -87,6 +87,9 @@ class PayrollRun(Base):
 
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     records = relationship("PayrollRecord", back_populates="payroll_run", cascade="all, delete-orphan")
+    variance_items = relationship("PayrollVarianceItem", back_populates="payroll_run", cascade="all, delete-orphan")
+    export_batches = relationship("PayrollExportBatch", back_populates="payroll_run", cascade="all, delete-orphan")
+    audit_logs = relationship("PayrollRunAuditLog", back_populates="payroll_run", cascade="all, delete-orphan")
 
 
 class PayrollRecord(Base):
@@ -139,6 +142,57 @@ class PayrollComponent(Base):
     amount = Column(Numeric(12, 2), default=0)
 
     record = relationship("PayrollRecord", back_populates="components")
+
+
+class PayrollVarianceItem(Base):
+    __tablename__ = "payroll_variance_items"
+
+    id = Column(Integer, primary_key=True, index=True)
+    payroll_run_id = Column(Integer, ForeignKey("payroll_runs.id", ondelete="CASCADE"), nullable=False, index=True)
+    employee_id = Column(Integer, ForeignKey("employees.id", ondelete="CASCADE"), nullable=False, index=True)
+    previous_payroll_record_id = Column(Integer, ForeignKey("payroll_records.id", ondelete="SET NULL"), nullable=True)
+    current_gross = Column(Numeric(12, 2), default=0)
+    previous_gross = Column(Numeric(12, 2), default=0)
+    gross_delta = Column(Numeric(12, 2), default=0)
+    gross_delta_percent = Column(Numeric(8, 2), default=0)
+    current_net = Column(Numeric(12, 2), default=0)
+    previous_net = Column(Numeric(12, 2), default=0)
+    net_delta = Column(Numeric(12, 2), default=0)
+    net_delta_percent = Column(Numeric(8, 2), default=0)
+    severity = Column(String(20), default="Info")
+    reason = Column(Text)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    payroll_run = relationship("PayrollRun", back_populates="variance_items")
+
+
+class PayrollExportBatch(Base):
+    __tablename__ = "payroll_export_batches"
+
+    id = Column(Integer, primary_key=True, index=True)
+    payroll_run_id = Column(Integer, ForeignKey("payroll_runs.id", ondelete="CASCADE"), nullable=False, index=True)
+    export_type = Column(String(50), nullable=False, index=True)
+    status = Column(String(30), default="Generated", index=True)
+    output_file_url = Column(String(500))
+    total_records = Column(Integer, default=0)
+    generated_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    generated_at = Column(DateTime(timezone=True), server_default=func.now())
+    remarks = Column(Text)
+
+    payroll_run = relationship("PayrollRun", back_populates="export_batches")
+
+
+class PayrollRunAuditLog(Base):
+    __tablename__ = "payroll_run_audit_logs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    payroll_run_id = Column(Integer, ForeignKey("payroll_runs.id", ondelete="CASCADE"), nullable=True, index=True)
+    action = Column(String(80), nullable=False, index=True)
+    actor_user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    details = Column(Text)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    payroll_run = relationship("PayrollRun", back_populates="audit_logs")
 
 
 class Reimbursement(Base):

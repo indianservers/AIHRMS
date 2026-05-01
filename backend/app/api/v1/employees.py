@@ -2,6 +2,7 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from sqlalchemy.orm import Session
 from app.core.deps import get_db, get_current_user, RequirePermission
+from app.core.masking import mask_employee_detail, mask_employee_list_item
 from app.crud.crud_employee import crud_employee
 from app.models.user import User
 from app.models.employee import EmployeeDocument
@@ -11,6 +12,7 @@ from app.schemas.employee import (
     EmployeeExperienceCreate, EmployeeExperienceSchema,
     EmployeeSkillCreate, EmployeeSkillSchema,
     EmployeeDocumentCreate, EmployeeDocumentSchema,
+    EmployeeLifecycleEventCreate, EmployeeLifecycleEventSchema,
 )
 from app.schemas.common import PaginatedResponse
 import os, shutil
@@ -46,7 +48,7 @@ def list_employees(
     )
     import math
     return PaginatedResponse(
-        items=items,
+        items=[mask_employee_list_item(item, current_user) for item in items],
         total=total,
         page=page,
         per_page=per_page,
@@ -62,6 +64,8 @@ def create_employee(
 ):
     if data.employee_id and crud_employee.get_by_employee_id(db, data.employee_id):
         raise HTTPException(status_code=400, detail="Employee ID already exists")
+    if data.create_user_account and not current_user.is_superuser:
+        raise HTTPException(status_code=403, detail="Only admin can create login users")
     return crud_employee.create_with_user(db, obj_in=data)
 
 
@@ -82,7 +86,7 @@ def get_employee(
     emp = crud_employee.get_with_details(db, employee_id)
     if not emp:
         raise HTTPException(status_code=404, detail="Employee not found")
-    return emp
+    return mask_employee_detail(emp, current_user)
 
 
 @router.put("/{employee_id}", response_model=EmployeeSchema)
@@ -96,6 +100,36 @@ def update_employee(
     if not emp:
         raise HTTPException(status_code=404, detail="Employee not found")
     return crud_employee.update(db, db_obj=emp, obj_in=data)
+
+
+@router.get("/{employee_id}/lifecycle", response_model=List[EmployeeLifecycleEventSchema])
+def list_lifecycle_events(
+    employee_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(RequirePermission("employee_view")),
+):
+    emp = crud_employee.get(db, employee_id)
+    if not emp:
+        raise HTTPException(status_code=404, detail="Employee not found")
+    return crud_employee.list_lifecycle_events(db, employee_id)
+
+
+@router.post("/{employee_id}/lifecycle", response_model=EmployeeLifecycleEventSchema, status_code=201)
+def add_lifecycle_event(
+    employee_id: int,
+    data: EmployeeLifecycleEventCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(RequirePermission("employee_update")),
+):
+    emp = crud_employee.get(db, employee_id)
+    if not emp:
+        raise HTTPException(status_code=404, detail="Employee not found")
+    return crud_employee.add_lifecycle_event(
+        db,
+        employee=emp,
+        data=data.model_dump(),
+        created_by=current_user.id,
+    )
 
 
 @router.delete("/{employee_id}")

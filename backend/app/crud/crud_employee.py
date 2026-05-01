@@ -2,7 +2,14 @@ from typing import List, Optional, Tuple
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import or_, func
 from app.crud.base import CRUDBase
-from app.models.employee import Employee, EmployeeEducation, EmployeeExperience, EmployeeSkill, EmployeeDocument
+from app.models.employee import (
+    Employee,
+    EmployeeDocument,
+    EmployeeEducation,
+    EmployeeExperience,
+    EmployeeLifecycleEvent,
+    EmployeeSkill,
+)
 from app.models.user import User
 from app.schemas.employee import EmployeeCreate, EmployeeUpdate
 from app.core.security import get_password_hash
@@ -26,6 +33,7 @@ class CRUDEmployee(CRUDBase[Employee, EmployeeCreate, EmployeeUpdate]):
                 joinedload(Employee.experiences),
                 joinedload(Employee.skills),
                 joinedload(Employee.documents),
+                joinedload(Employee.lifecycle_events),
             )
             .filter(Employee.id == id)
             .first()
@@ -121,6 +129,51 @@ class CRUDEmployee(CRUDBase[Employee, EmployeeCreate, EmployeeUpdate]):
         db.commit()
         db.refresh(doc)
         return doc
+
+    def list_lifecycle_events(self, db: Session, employee_id: int) -> List[EmployeeLifecycleEvent]:
+        return (
+            db.query(EmployeeLifecycleEvent)
+            .filter(EmployeeLifecycleEvent.employee_id == employee_id)
+            .order_by(EmployeeLifecycleEvent.event_date.desc(), EmployeeLifecycleEvent.id.desc())
+            .all()
+        )
+
+    def add_lifecycle_event(
+        self,
+        db: Session,
+        *,
+        employee: Employee,
+        data: dict,
+        created_by: Optional[int] = None,
+    ) -> EmployeeLifecycleEvent:
+        apply_to_employee = data.pop("apply_to_employee", False)
+        event = EmployeeLifecycleEvent(
+            employee_id=employee.id,
+            created_by=created_by,
+            from_status=employee.status,
+            from_branch_id=employee.branch_id,
+            from_department_id=employee.department_id,
+            from_designation_id=employee.designation_id,
+            from_manager_id=employee.reporting_manager_id,
+            **data,
+        )
+
+        if apply_to_employee:
+            if data.get("to_status") is not None:
+                employee.status = data["to_status"]
+            if data.get("to_branch_id") is not None:
+                employee.branch_id = data["to_branch_id"]
+            if data.get("to_department_id") is not None:
+                employee.department_id = data["to_department_id"]
+            if data.get("to_designation_id") is not None:
+                employee.designation_id = data["to_designation_id"]
+            if data.get("to_manager_id") is not None:
+                employee.reporting_manager_id = data["to_manager_id"]
+
+        db.add(event)
+        db.commit()
+        db.refresh(event)
+        return event
 
     def get_headcount_stats(self, db: Session) -> dict:
         total = db.query(func.count(Employee.id)).scalar()

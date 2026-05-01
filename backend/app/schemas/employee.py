@@ -87,6 +87,49 @@ class EmployeeDocumentSchema(EmployeeDocumentBase):
         from_attributes = True
 
 
+class EmployeeLifecycleEventBase(BaseModel):
+    event_type: str
+    event_date: date
+    effective_from: Optional[date] = None
+    effective_to: Optional[date] = None
+    from_status: Optional[str] = None
+    to_status: Optional[str] = None
+    from_branch_id: Optional[int] = None
+    to_branch_id: Optional[int] = None
+    from_department_id: Optional[int] = None
+    to_department_id: Optional[int] = None
+    from_designation_id: Optional[int] = None
+    to_designation_id: Optional[int] = None
+    from_manager_id: Optional[int] = None
+    to_manager_id: Optional[int] = None
+    reason: Optional[str] = None
+    remarks: Optional[str] = None
+
+
+class EmployeeLifecycleEventCreate(BaseModel):
+    event_type: str
+    event_date: date
+    effective_from: Optional[date] = None
+    effective_to: Optional[date] = None
+    to_status: Optional[str] = None
+    to_branch_id: Optional[int] = None
+    to_department_id: Optional[int] = None
+    to_designation_id: Optional[int] = None
+    to_manager_id: Optional[int] = None
+    reason: Optional[str] = None
+    remarks: Optional[str] = None
+    apply_to_employee: bool = False
+
+
+class EmployeeLifecycleEventSchema(EmployeeLifecycleEventBase):
+    id: int
+    employee_id: int
+    created_by: Optional[int] = None
+
+    class Config:
+        from_attributes = True
+
+
 class EmployeeBase(BaseModel):
     first_name: str
     middle_name: Optional[str] = None
@@ -221,6 +264,7 @@ class EmployeeSchema(EmployeeBase):
     experiences: List[EmployeeExperienceSchema] = []
     skills: List[EmployeeSkillSchema] = []
     documents: List[EmployeeDocumentSchema] = []
+    lifecycle_events: List[EmployeeLifecycleEventSchema] = []
 
     class Config:
         from_attributes = True

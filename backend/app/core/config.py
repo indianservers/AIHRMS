@@ -3,6 +3,7 @@ from pydantic import AnyHttpUrl, EmailStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 import json
 import secrets
+from urllib.parse import quote_plus
 
 
 class Settings(BaseSettings):
@@ -21,19 +22,35 @@ class Settings(BaseSettings):
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
 
     # Database
+    DATABASE_URL: Optional[str] = None
     MYSQL_USER: str = "root"
     MYSQL_PASSWORD: str = ""
     MYSQL_SERVER: str = "localhost"
     MYSQL_PORT: int = 3306
     MYSQL_DB: str = "ai_hrms"
+    MYSQL_SSL_CA: Optional[str] = None
+    DB_POOL_SIZE: int = 10
+    DB_MAX_OVERFLOW: int = 20
+    DB_POOL_RECYCLE_SECONDS: int = 3600
 
     @property
     def SQLALCHEMY_DATABASE_URI(self) -> str:
+        if self.DATABASE_URL:
+            return self.DATABASE_URL
+        user = quote_plus(self.MYSQL_USER)
+        password = quote_plus(self.MYSQL_PASSWORD)
+        database = quote_plus(self.MYSQL_DB)
         return (
-            f"mysql+pymysql://{self.MYSQL_USER}:{self.MYSQL_PASSWORD}"
-            f"@{self.MYSQL_SERVER}:{self.MYSQL_PORT}/{self.MYSQL_DB}"
+            f"mysql+pymysql://{user}:{password}"
+            f"@{self.MYSQL_SERVER}:{self.MYSQL_PORT}/{database}"
             f"?charset=utf8mb4"
         )
+
+    @property
+    def SQLALCHEMY_CONNECT_ARGS(self) -> dict[str, Any]:
+        if self.MYSQL_SSL_CA:
+            return {"ssl": {"ca": self.MYSQL_SSL_CA}}
+        return {}
 
     # Redis
     REDIS_URL: str = "redis://localhost:6379/0"
@@ -58,6 +75,8 @@ class Settings(BaseSettings):
 
     # CORS
     BACKEND_CORS_ORIGINS: Union[List[str], str] = ["http://localhost:5173", "http://localhost:3000"]
+    BACKEND_PUBLIC_URL: str = "http://localhost:8001"
+    FRONTEND_PUBLIC_URL: str = "http://localhost:5173"
 
     @field_validator("BACKEND_CORS_ORIGINS", mode="before")
     @classmethod

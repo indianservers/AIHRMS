@@ -92,6 +92,13 @@ class Employee(Base):
     experiences = relationship("EmployeeExperience", back_populates="employee", cascade="all, delete-orphan")
     skills = relationship("EmployeeSkill", back_populates="employee", cascade="all, delete-orphan")
     documents = relationship("EmployeeDocument", back_populates="employee", cascade="all, delete-orphan")
+    lifecycle_events = relationship(
+        "EmployeeLifecycleEvent",
+        foreign_keys="EmployeeLifecycleEvent.employee_id",
+        back_populates="employee",
+        cascade="all, delete-orphan",
+        order_by="EmployeeLifecycleEvent.event_date.desc()",
+    )
 
     attendances = relationship("Attendance", back_populates="employee")
     leaves = relationship("LeaveRequest", back_populates="employee", foreign_keys="LeaveRequest.employee_id")
@@ -164,3 +171,30 @@ class EmployeeDocument(Base):
 
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     employee = relationship("Employee", back_populates="documents")
+
+
+class EmployeeLifecycleEvent(Base):
+    __tablename__ = "employee_lifecycle_events"
+
+    id = Column(Integer, primary_key=True, index=True)
+    employee_id = Column(Integer, ForeignKey("employees.id", ondelete="CASCADE"), nullable=False, index=True)
+    event_type = Column(String(50), nullable=False, index=True)
+    event_date = Column(Date, nullable=False)
+    effective_from = Column(Date)
+    effective_to = Column(Date)
+    from_status = Column(String(30))
+    to_status = Column(String(30))
+    from_branch_id = Column(Integer, ForeignKey("branches.id", ondelete="SET NULL"), nullable=True)
+    to_branch_id = Column(Integer, ForeignKey("branches.id", ondelete="SET NULL"), nullable=True)
+    from_department_id = Column(Integer, ForeignKey("departments.id", ondelete="SET NULL"), nullable=True)
+    to_department_id = Column(Integer, ForeignKey("departments.id", ondelete="SET NULL"), nullable=True)
+    from_designation_id = Column(Integer, ForeignKey("designations.id", ondelete="SET NULL"), nullable=True)
+    to_designation_id = Column(Integer, ForeignKey("designations.id", ondelete="SET NULL"), nullable=True)
+    from_manager_id = Column(Integer, ForeignKey("employees.id", ondelete="SET NULL"), nullable=True)
+    to_manager_id = Column(Integer, ForeignKey("employees.id", ondelete="SET NULL"), nullable=True)
+    reason = Column(Text)
+    remarks = Column(Text)
+    created_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    employee = relationship("Employee", foreign_keys=[employee_id], back_populates="lifecycle_events")

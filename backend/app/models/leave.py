@@ -42,6 +42,7 @@ class LeaveBalance(Base):
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
     leave_type = relationship("LeaveType", back_populates="leave_balances")
+    ledger_entries = relationship("LeaveBalanceLedger", back_populates="balance", cascade="all, delete-orphan")
 
 
 class LeaveRequest(Base):
@@ -69,3 +70,24 @@ class LeaveRequest(Base):
 
     employee = relationship("Employee", back_populates="leaves", foreign_keys=[employee_id])
     leave_type = relationship("LeaveType", back_populates="leave_requests")
+    ledger_entries = relationship("LeaveBalanceLedger", back_populates="leave_request")
+
+
+class LeaveBalanceLedger(Base):
+    __tablename__ = "leave_balance_ledger"
+
+    id = Column(Integer, primary_key=True, index=True)
+    employee_id = Column(Integer, ForeignKey("employees.id", ondelete="CASCADE"), nullable=False, index=True)
+    leave_type_id = Column(Integer, ForeignKey("leave_types.id", ondelete="CASCADE"), nullable=False, index=True)
+    leave_balance_id = Column(Integer, ForeignKey("leave_balances.id", ondelete="CASCADE"), nullable=True)
+    leave_request_id = Column(Integer, ForeignKey("leave_requests.id", ondelete="SET NULL"), nullable=True)
+    year = Column(Integer, nullable=False, index=True)
+    transaction_type = Column(String(40), nullable=False)
+    amount = Column(Numeric(5, 1), nullable=False)
+    balance_after = Column(Numeric(5, 1), nullable=False)
+    reason = Column(Text)
+    created_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    balance = relationship("LeaveBalance", back_populates="ledger_entries")
+    leave_request = relationship("LeaveRequest", back_populates="ledger_entries")

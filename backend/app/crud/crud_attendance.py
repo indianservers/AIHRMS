@@ -1,15 +1,133 @@
-from datetime import date, datetime, timezone
+from datetime import date, datetime, time, timedelta, timezone
 from decimal import Decimal
 from typing import List, Optional, Tuple
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, func
 from app.crud.base import CRUDBase
-from app.models.attendance import Attendance, AttendanceRegularization, Holiday, Shift, OvertimeRequest
+from app.models.attendance import Attendance, AttendanceRegularization, Holiday, Shift, ShiftRosterAssignment, ShiftWeeklyOff, OvertimeRequest
 
 
 class CRUDAttendance(CRUDBase):
     def __init__(self):
         super().__init__(Attendance)
+
+    def get_shift_for_day(self, db: Session, employee_id: int, work_date: date) -> Optional[Shift]:
+        from app.models.employee import Employee
+
+        roster = (
+            db.query(ShiftRosterAssignment)
+            .filter(
+                ShiftRosterAssignment.employee_id == employee_id,
+                ShiftRosterAssignment.work_date == work_date,
+                ShiftRosterAssignment.status == "Published",
+            )
+            .first()
+        )
+        if roster:
+            return roster.shift
+        employee = db.query(Employee).filter(Employee.id == employee_id).first()
+        if employee and employee.shift_id:
+            return db.query(Shift).filter(Shift.id == employee.shift_id).first()
+        return None
+
+    def is_weekly_off(self, db: Session, shift_id: int, work_date: date) -> bool:
+        week_of_month = ((work_date.day - 1) // 7) + 1
+        return (
+            db.query(ShiftWeeklyOff)
+            .filter(
+                ShiftWeeklyOff.shift_id == shift_id,
+                ShiftWeeklyOff.weekday == work_date.weekday(),
+                ShiftWeeklyOff.is_active == True,
+                ShiftWeeklyOff.week_pattern.in_(["all", str(week_of_month)]),
+            )
+            .count()
+            > 0
+        )
+
+    def compute_day(self, db: Session, employee_id: int, work_date: date) -> Attendance:
+        record = (
+            db.query(Attendance)
+            .filter(Attendance.employee_id == employee_id, Attendance.attendance_date == work_date)
+            .first()
+        )
+        if not record:
+            record = Attendance(employee_id=employee_id, attendance_date=work_date, status="Absent")
+            db.add(record)
+            db.flush()
+
+        shift = self.get_shift_for_day(db, employee_id, work_date)
+        record.shift_id = shift.id if shift else None
+
+        if crud_holiday.is_holiday(db, work_date):
+            record.status = "Holiday"
+            record.computed_at = datetime.now(timezone.utc)
+            db.commit()
+            db.refresh(record)
+            return record
+
+        if shift and self.is_weekly_off(db, shift.id, work_date):
+            record.status = "Weekend"
+            record.computed_at = datetime.now(timezone.utc)
+            db.commit()
+            db.refresh(record)
+            return record
+
+        record.late_minutes = 0
+        record.early_exit_minutes = 0
+        record.short_minutes = 0
+        record.is_late = False
+        record.is_early_exit = False
+        record.is_short_hours = False
+        record.overtime_hours = Decimal("0")
+
+        if not record.check_in:
+            record.status = "Absent"
+            record.computed_at = datetime.now(timezone.utc)
+            db.commit()
+            db.refresh(record)
+            return record
+
+        check_in = record.check_in.replace(tzinfo=timezone.utc) if record.check_in and record.check_in.tzinfo is None else record.check_in
+        check_out = record.check_out.replace(tzinfo=timezone.utc) if record.check_out and record.check_out.tzinfo is None else record.check_out
+
+        if check_out:
+            total_hours = Decimal(str(round((check_out - check_in).total_seconds() / 3600, 2)))
+            record.total_hours = total_hours
+        else:
+            total_hours = record.total_hours or Decimal("0")
+
+        if shift:
+            start_dt = datetime.combine(work_date, shift.start_time, tzinfo=timezone.utc)
+            end_date = work_date + timedelta(days=1) if shift.is_night_shift or shift.end_time <= shift.start_time else work_date
+            end_dt = datetime.combine(end_date, shift.end_time, tzinfo=timezone.utc)
+            late_threshold = start_dt + timedelta(minutes=shift.grace_minutes or 0)
+            early_threshold = end_dt - timedelta(minutes=shift.grace_minutes or 0)
+
+            if check_in > late_threshold:
+                record.late_minutes = int((check_in - start_dt).total_seconds() // 60)
+                record.is_late = True
+            if check_out and check_out < early_threshold:
+                record.early_exit_minutes = int((end_dt - check_out).total_seconds() // 60)
+                record.is_early_exit = True
+            required_minutes = int(Decimal(shift.working_hours or 0) * 60)
+            worked_minutes = int((total_hours or Decimal("0")) * 60)
+            half_day_minutes = required_minutes // 2
+            if record.check_out and worked_minutes < required_minutes:
+                record.short_minutes = max(0, required_minutes - worked_minutes)
+                record.is_short_hours = True
+            if total_hours and total_hours > Decimal(shift.working_hours or 0):
+                record.overtime_hours = total_hours - Decimal(shift.working_hours or 0)
+            if record.check_out and worked_minutes < half_day_minutes:
+                record.status = "Half-day"
+            else:
+                record.status = "Present"
+        else:
+            record.status = "Present"
+
+        record.computed_at = datetime.now(timezone.utc)
+        db.commit()
+        db.refresh(record)
+        return record
 
     def get_today(self, db: Session, employee_id: int) -> Optional[Attendance]:
         today = date.today()
@@ -45,6 +163,7 @@ class CRUDAttendance(CRUDBase):
         )
         db.add(record)
         db.commit()
+        self.compute_day(db, employee_id, today)
         db.refresh(record)
         return record
 
@@ -58,16 +177,8 @@ class CRUDAttendance(CRUDBase):
         record.check_out_location = location
         record.check_out_ip = ip
 
-        # Calculate hours
-        diff = now - record.check_in
-        total_hours = Decimal(str(round(diff.total_seconds() / 3600, 2)))
-        record.total_hours = total_hours
-
-        standard_hours = Decimal("8.0")
-        if total_hours > standard_hours:
-            record.overtime_hours = total_hours - standard_hours
-
         db.commit()
+        record = self.compute_day(db, employee_id, record.attendance_date)
         db.refresh(record)
         return record
 
