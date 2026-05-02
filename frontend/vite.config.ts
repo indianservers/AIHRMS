@@ -26,5 +26,25 @@ export default defineConfig(({ mode }) => {
         },
       },
     },
+    build: {
+      sourcemap: false,
+      chunkSizeWarningLimit: 800,
+      rollupOptions: {
+        output: {
+          manualChunks: {
+            vendor: ["react", "react-dom", "react-router-dom"],
+            ui: [
+              "@radix-ui/react-dialog",
+              "@radix-ui/react-dropdown-menu",
+              "@radix-ui/react-select",
+              "@radix-ui/react-tabs",
+            ],
+            charts: ["recharts"],
+            query: ["@tanstack/react-query"],
+            form: ["react-hook-form", "zod"],
+          },
+        },
+      },
+    },
   };
 });

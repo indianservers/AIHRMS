@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import { useEffect } from "react";
 import {
   Users, Clock, CalendarDays, Briefcase, TrendingUp, TrendingDown,
   CheckCircle2, AlertCircle, Building2, DollarSign, ShieldCheck, Target,
@@ -6,7 +7,7 @@ import {
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { reportsApi } from "@/services/api";
+import { attendanceApi, documentsApi, employeeApi, engagementApi, leaveApi, payrollApi, reportsApi } from "@/services/api";
 import { formatCurrency } from "@/lib/utils";
 import { useAuthStore } from "@/store/authStore";
 import { getRoleKey, getRoleLabel } from "@/lib/roles";
@@ -88,22 +89,63 @@ function SkeletonCard() {
 }
 
 export default function DashboardPage() {
+  useEffect(() => { document.title = "Dashboard · AI HRMS"; }, []);
   const { user } = useAuthStore();
   const roleKey = getRoleKey(user?.role, user?.is_superuser);
   const roleLabel = getRoleLabel(user?.role, user?.is_superuser);
+  const currentMonth = new Date().getMonth() + 1;
+  const currentYear = new Date().getFullYear();
 
   const { data: dashboard, isLoading } = useQuery({
     queryKey: ["dashboard"],
     queryFn: () => reportsApi.dashboard().then((r) => r.data),
   });
 
+  const { data: headcount, isLoading: loadingHeadcount } = useQuery({
+    queryKey: ["dashboard-headcount"],
+    queryFn: () => employeeApi.count().then((r) => r.data),
+  });
+
+  const { data: pendingLeave } = useQuery({
+    queryKey: ["dashboard-pending-leave"],
+    queryFn: () => leaveApi.pendingCount().then((r) => r.data),
+    retry: false,
+  });
+
+  const { data: lastRun } = useQuery({
+    queryKey: ["dashboard-last-payroll-run"],
+    queryFn: () => payrollApi.lastRun().then((r) => r.data),
+    retry: false,
+  });
+
+  const { data: todaySummary } = useQuery({
+    queryKey: ["dashboard-attendance-today-summary"],
+    queryFn: () => attendanceApi.todaySummary().then((r) => r.data),
+    retry: false,
+  });
+
+  const { data: leaveBalances } = useQuery({
+    queryKey: ["dashboard-leave-balances"],
+    queryFn: () => leaveApi.balance(currentYear).then((r) => r.data),
+    retry: false,
+  });
+
+  const { data: certificates } = useQuery({
+    queryKey: ["dashboard-certificates"],
+    queryFn: () => documentsApi.certificates().then((r) => r.data),
+    retry: false,
+  });
+
+  const { data: recognitions } = useQuery({
+    queryKey: ["dashboard-recognitions"],
+    queryFn: () => engagementApi.recognitions().then((r) => r.data),
+    retry: false,
+  });
+
   const { data: deptData } = useQuery({
     queryKey: ["headcount-by-dept"],
     queryFn: () => reportsApi.headcountByDept().then((r) => r.data),
   });
-
-  const currentMonth = new Date().getMonth() + 1;
-  const currentYear = new Date().getFullYear();
 
   const { data: payrollData } = useQuery({
     queryKey: ["payroll-summary", currentYear],
@@ -118,18 +160,23 @@ export default function DashboardPage() {
   ];
 
   const managerActions = [
-    { label: "Leave Approvals", detail: `${dashboard?.leaves?.pending_approvals ?? 0} requests pending`, icon: CalendarDays, href: "/leave" },
+    { label: "Leave Approvals", detail: `${pendingLeave?.pending ?? dashboard?.leaves?.pending_approvals ?? 0} requests pending`, icon: CalendarDays, href: "/leave" },
     { label: "Team Performance", detail: "Goals, reviews, feedback", icon: Target, href: "/performance" },
     { label: "Team Attendance", detail: "Monthly presence trends", icon: Clock, href: "/attendance" },
     { label: "Open Helpdesk", detail: "Resolve employee issues", icon: HelpCircle, href: "/helpdesk" },
   ];
 
   const ceoMetrics = [
-    { label: "Active Workforce", value: dashboard?.headcount?.active ?? 0, icon: Users, tone: "text-blue-600" },
-    { label: "Monthly Payroll", value: formatCurrency(payrollData?.reduce?.((sum: number, row: { net?: number }) => sum + Number(row.net || 0), 0) || 0), icon: DollarSign, tone: "text-emerald-600" },
+    { label: "Active Workforce", value: headcount?.active ?? dashboard?.headcount?.active ?? 0, icon: Users, tone: "text-blue-600" },
+    { label: "Last Payroll", value: lastRun ? `${lastRun.month}/${lastRun.year}` : formatCurrency(payrollData?.reduce?.((sum: number, row: { net?: number }) => sum + Number(row.net || 0), 0) || 0), icon: DollarSign, tone: "text-emerald-600" },
     { label: "Open Roles", value: dashboard?.recruitment?.open_positions ?? 0, icon: Briefcase, tone: "text-violet-600" },
-    { label: "Pending Decisions", value: dashboard?.leaves?.pending_approvals ?? 0, icon: ShieldCheck, tone: "text-amber-600" },
+    { label: "Pending Decisions", value: pendingLeave?.pending ?? dashboard?.leaves?.pending_approvals ?? 0, icon: ShieldCheck, tone: "text-amber-600" },
   ];
+  const totalLeaveBalance = (leaveBalances || []).reduce(
+    (sum: number, row: { available?: number | string; balance?: number | string }) =>
+      sum + Number(row.available ?? row.balance ?? 0),
+    0
+  );
 
   if (roleKey === "employee") {
     return (
@@ -163,9 +210,9 @@ export default function DashboardPage() {
             </CardHeader>
             <CardContent className="grid gap-3 sm:grid-cols-3">
               {[
-                ["Present", dashboard?.attendance?.present_today ?? 0, UserCheck],
-                ["Leave Balance", "View", CalendarDays],
-                ["Documents", "Ready", FileText],
+                ["Present", todaySummary?.present ?? dashboard?.attendance?.present_today ?? 0, UserCheck],
+                ["Leave Balance", totalLeaveBalance, CalendarDays],
+                ["Certificates", certificates?.length ?? 0, FileText],
               ].map(([label, value, Icon]) => (
                 <div key={label as string} className="rounded-lg border p-4">
                   <Icon className="mb-3 h-5 w-5 text-primary" />
@@ -181,17 +228,18 @@ export default function DashboardPage() {
               <CardDescription>Praise and culture moments</CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
-              {["Problem Solver", "Relentless Cogwheel", "Customer First"].map((label, index) => (
-                <div key={label} className="flex items-center gap-3 rounded-lg border p-3">
+              {(recognitions || []).slice(0, 3).map((item: { id: number; badge?: string; title?: string; to_employee_name?: string; points?: number }) => (
+                <div key={item.id} className="flex items-center gap-3 rounded-lg border p-3">
                   <div className="flex h-9 w-9 items-center justify-center rounded-full bg-amber-100 text-amber-700">
                     <Award className="h-4 w-4" />
                   </div>
                   <div>
-                    <p className="text-sm font-medium">{label}</p>
-                    <p className="text-xs text-muted-foreground">{index + 1} praise received</p>
+                    <p className="text-sm font-medium">{item.badge || item.title || "Recognition"}</p>
+                    <p className="text-xs text-muted-foreground">{item.to_employee_name || "Employee"}{item.points ? ` - ${item.points} points` : ""}</p>
                   </div>
                 </div>
               ))}
+              {!recognitions?.length && <p className="rounded-lg border p-4 text-sm text-muted-foreground">No public recognition activity yet.</p>}
             </CardContent>
           </Card>
         </div>
@@ -208,7 +256,7 @@ export default function DashboardPage() {
             <h1 className="mt-2 text-2xl font-semibold tracking-tight">Team command center</h1>
             <p className="mt-1 text-sm text-muted-foreground">Approvals, team attendance, goals, and employee issues.</p>
           </div>
-          <Badge variant="outline">{dashboard?.leaves?.pending_approvals ?? 0} approvals pending</Badge>
+          <Badge variant="outline">{pendingLeave?.pending ?? dashboard?.leaves?.pending_approvals ?? 0} approvals pending</Badge>
         </div>
 
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
@@ -296,7 +344,7 @@ export default function DashboardPage() {
                 <BarChart data={payrollData || []} margin={{ top: 0, right: 0, left: -10, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
                   <XAxis dataKey="month" tickFormatter={(m) => new Date(currentYear, m - 1).toLocaleString("en", { month: "short" })} tick={{ fontSize: 11 }} tickLine={false} axisLine={false} />
-                  <YAxis tick={{ fontSize: 11 }} tickLine={false} axisLine={false} tickFormatter={(v) => `₹${(v / 1000).toFixed(0)}K`} />
+                  <YAxis tick={{ fontSize: 11 }} tickLine={false} axisLine={false} tickFormatter={(v) => `INR ${(v / 1000).toFixed(0)}K`} />
                   <Tooltip formatter={(v: number) => formatCurrency(v)} />
                   <Legend />
                   <Bar dataKey="gross" name="Gross" fill="#2563eb" radius={[4, 4, 0, 0]} />
@@ -343,37 +391,37 @@ export default function DashboardPage() {
 
       {/* Stat cards */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        {isLoading ? (
+        {isLoading || loadingHeadcount ? (
           Array.from({ length: 4 }).map((_, i) => <SkeletonCard key={i} />)
         ) : (
           <>
             <StatCard
               title="Total Employees"
-              value={dashboard?.headcount?.total ?? 0}
-              subtitle={`${dashboard?.headcount?.active ?? 0} active`}
+              value={headcount?.total ?? dashboard?.headcount?.total ?? 0}
+              subtitle={`${headcount?.active ?? dashboard?.headcount?.active ?? 0} active`}
               icon={Users}
               color="blue"
               trend={{ value: 5, label: "this month" }}
             />
             <StatCard
               title="Present Today"
-              value={dashboard?.attendance?.present_today ?? 0}
-              subtitle={`${dashboard?.attendance?.absent_today ?? 0} absent`}
+              value={todaySummary?.present ?? dashboard?.attendance?.present_today ?? 0}
+              subtitle={`${todaySummary?.absent ?? dashboard?.attendance?.absent_today ?? 0} absent`}
               icon={Clock}
               color="green"
             />
             <StatCard
               title="Pending Leaves"
-              value={dashboard?.leaves?.pending_approvals ?? 0}
+              value={pendingLeave?.pending ?? dashboard?.leaves?.pending_approvals ?? 0}
               subtitle="Awaiting approval"
               icon={CalendarDays}
               color="yellow"
             />
             <StatCard
-              title="Open Positions"
-              value={dashboard?.recruitment?.open_positions ?? 0}
-              subtitle={`${dashboard?.recruitment?.total_candidates ?? 0} candidates`}
-              icon={Briefcase}
+              title="Last Payroll"
+              value={lastRun ? `${lastRun.month}/${lastRun.year}` : "No run"}
+              subtitle={lastRun ? `${lastRun.status} payroll` : "Awaiting first run"}
+              icon={DollarSign}
               color="purple"
             />
           </>
@@ -439,7 +487,7 @@ export default function DashboardPage() {
                   tick={{ fontSize: 11 }}
                   tickLine={false}
                   axisLine={false}
-                  tickFormatter={(v) => `₹${(v / 1000).toFixed(0)}K`}
+                  tickFormatter={(v) => `INR ${(v / 1000).toFixed(0)}K`}
                 />
                 <Tooltip
                   formatter={(v: number) => formatCurrency(v)}

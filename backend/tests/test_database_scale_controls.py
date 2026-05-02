@@ -14,9 +14,9 @@ def test_database_scale_indexes_and_columns_exist(db_engine):
 
     expected_indexes = {
         "attendances": "idx_attendance_employee_date",
-        "leave_requests": "idx_leave_request_status",
-        "payroll_runs": "idx_payroll_run_period",
-        "notifications": "idx_notifications_user_unread",
+        "leave_requests": "idx_leave_request_company_active_status",
+        "payroll_runs": "idx_payroll_run_company_active_month",
+        "notifications": "idx_notifications_company_user_unread",
         "audit_logs": "idx_audit_log_entity",
     }
     for table_name, index_name in expected_indexes.items():
@@ -26,8 +26,14 @@ def test_database_scale_indexes_and_columns_exist(db_engine):
     employee_columns = {item["name"] for item in inspector.get_columns("employees")}
     assert {"salary_currency", "deleted_at", "deleted_by"}.issubset(employee_columns)
 
+    leave_request_columns = {item["name"] for item in inspector.get_columns("leave_requests")}
+    assert "company_id" in leave_request_columns
+
     payroll_run_columns = {item["name"] for item in inspector.get_columns("payroll_runs")}
     assert {"pay_period_start", "pay_period_end", "company_id", "deleted_at", "deleted_by"}.issubset(payroll_run_columns)
+
+    notification_columns = {item["name"] for item in inspector.get_columns("notifications")}
+    assert "company_id" in notification_columns
 
     audit_columns = {item["name"] for item in inspector.get_columns("audit_logs")}
     assert {"ip_address", "user_agent"}.issubset(audit_columns)

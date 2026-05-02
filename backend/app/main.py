@@ -8,10 +8,12 @@ from fastapi.staticfiles import StaticFiles
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
+from sqlalchemy import text
 
 from app.core.config import settings
 from app.api.v1.router import api_router
 from app.core.middleware.audit import AuditLogMiddleware
+from app.core.middleware.request_id import RequestIDMiddleware
 
 
 @asynccontextmanager
@@ -72,6 +74,7 @@ app.add_middleware(GZipMiddleware, minimum_size=1000)
 
 # Audit logging
 app.add_middleware(AuditLogMiddleware)
+app.add_middleware(RequestIDMiddleware)
 
 
 # Global exception handler
@@ -108,4 +111,17 @@ def root():
 
 @app.get("/health")
 def health_check():
-    return {"status": "healthy", "environment": settings.ENVIRONMENT}
+    from app.db.session import SessionLocal
+
+    db = None
+    try:
+        db = SessionLocal()
+        db.execute(text("SELECT 1"))
+        db_status = "ok"
+    except Exception:
+        db_status = "error"
+    finally:
+        if db:
+            db.close()
+    status_value = "healthy" if db_status == "ok" else "degraded"
+    return {"status": status_value, "db": db_status, "environment": settings.ENVIRONMENT}

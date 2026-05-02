@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 from app.core.deps import get_db, get_current_user, RequirePermission
 from app.models.user import User
@@ -172,6 +173,81 @@ def list_sla_breaches(
         HelpdeskTicket.resolution_due_at.isnot(None),
         HelpdeskTicket.resolution_due_at < now,
     ).order_by(HelpdeskTicket.resolution_due_at.asc()).limit(200).all()
+
+
+@router.get("/analytics")
+def helpdesk_analytics(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(RequirePermission("helpdesk_manage")),
+):
+    now = datetime.now(timezone.utc)
+    total = db.query(func.count(HelpdeskTicket.id)).scalar() or 0
+    open_count = db.query(func.count(HelpdeskTicket.id)).filter(
+        HelpdeskTicket.status.in_(["Open", "In Progress", "Pending"])
+    ).scalar() or 0
+    resolved_count = db.query(func.count(HelpdeskTicket.id)).filter(
+        HelpdeskTicket.status.in_(["Resolved", "Closed"])
+    ).scalar() or 0
+    breached_count = db.query(func.count(HelpdeskTicket.id)).filter(
+        HelpdeskTicket.status.notin_(["Resolved", "Closed"]),
+        HelpdeskTicket.resolution_due_at.isnot(None),
+        HelpdeskTicket.resolution_due_at < now,
+    ).scalar() or 0
+    due_soon_count = db.query(func.count(HelpdeskTicket.id)).filter(
+        HelpdeskTicket.status.notin_(["Resolved", "Closed"]),
+        HelpdeskTicket.resolution_due_at.isnot(None),
+        HelpdeskTicket.resolution_due_at >= now,
+        HelpdeskTicket.resolution_due_at <= now + timedelta(hours=8),
+    ).scalar() or 0
+    csat_row = db.query(
+        func.avg(HelpdeskTicket.satisfaction_rating),
+        func.count(HelpdeskTicket.satisfaction_rating),
+    ).filter(HelpdeskTicket.satisfaction_rating.isnot(None)).first()
+    priority_rows = db.query(
+        HelpdeskTicket.priority,
+        func.count(HelpdeskTicket.id),
+    ).group_by(HelpdeskTicket.priority).all()
+    status_rows = db.query(
+        HelpdeskTicket.status,
+        func.count(HelpdeskTicket.id),
+    ).group_by(HelpdeskTicket.status).all()
+    response_sla_breached = db.query(func.count(HelpdeskTicket.id)).filter(
+        HelpdeskTicket.status.notin_(["Resolved", "Closed"]),
+        HelpdeskTicket.first_response_due_at.isnot(None),
+        HelpdeskTicket.first_response_due_at < now,
+        ~HelpdeskTicket.replies.any(HelpdeskReply.is_internal == False),
+    ).scalar() or 0
+    return {
+        "total": total,
+        "open": open_count,
+        "resolved": resolved_count,
+        "sla_breached": breached_count,
+        "due_soon": due_soon_count,
+        "first_response_breached": response_sla_breached,
+        "csat_average": round(float(csat_row[0] or 0), 2),
+        "csat_responses": csat_row[1] or 0,
+        "by_priority": {priority or "Unspecified": count for priority, count in priority_rows},
+        "by_status": {status or "Unspecified": count for status, count in status_rows},
+    }
+
+
+@router.put("/tickets/{ticket_id}/csat")
+def submit_csat(
+    ticket_id: int,
+    rating: int = Query(..., ge=1, le=5),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    ticket = db.query(HelpdeskTicket).filter(HelpdeskTicket.id == ticket_id).first()
+    if not ticket:
+        raise HTTPException(status_code=404, detail="Ticket not found")
+    if not current_user.is_superuser and current_user.employee and ticket.employee_id != current_user.employee.id:
+        raise HTTPException(status_code=403, detail="Only the requester can rate this ticket")
+    if ticket.status not in ["Resolved", "Closed"]:
+        raise HTTPException(status_code=400, detail="CSAT can be submitted after resolution")
+    ticket.satisfaction_rating = rating
+    db.commit()
+    return {"message": "CSAT submitted", "rating": rating}
 
 
 @router.get("/escalation-rules", response_model=list[HelpdeskEscalationRuleSchema])

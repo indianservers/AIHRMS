@@ -1,4 +1,4 @@
-from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String, Text, JSON
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Index, Integer, String, Text, JSON
 from sqlalchemy.sql import func
 from app.db.base_class import Base
 
@@ -145,6 +145,9 @@ class WebhookSubscription(Base):
 
 class IntegrationEvent(Base):
     __tablename__ = "integration_events"
+    __table_args__ = (
+        Index("idx_integration_event_type_status_retry", "event_type", "status", "next_retry_at"),
+    )
 
     id = Column(Integer, primary_key=True, index=True)
     subscription_id = Column(Integer, ForeignKey("webhook_subscriptions.id", ondelete="SET NULL"), nullable=True, index=True)

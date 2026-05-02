@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { CheckCircle2, DoorOpen, Plus, RefreshCw } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -11,6 +11,7 @@ import { toast } from "@/hooks/use-toast";
 import { formatDate } from "@/lib/utils";
 
 export default function ExitPage() {
+  useEffect(() => { document.title = "Exit Management · AI HRMS"; }, []);
   const qc = useQueryClient();
   const [employeeId, setEmployeeId] = useState("");
   const [lastWorkingDate, setLastWorkingDate] = useState("");

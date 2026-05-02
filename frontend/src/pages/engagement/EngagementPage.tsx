@@ -1,4 +1,4 @@
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Bar, BarChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { Megaphone, Plus, RefreshCw, Send, Smile, Trophy } from "lucide-react";
@@ -14,6 +14,7 @@ import { useAuthStore } from "@/store/authStore";
 import { formatDate } from "@/lib/utils";
 
 export default function EngagementPage() {
+  useEffect(() => { document.title = "Engagement · AI HRMS"; }, []);
   const qc = useQueryClient();
   const { toast } = useToast();
   const user = useAuthStore((state) => state.user);

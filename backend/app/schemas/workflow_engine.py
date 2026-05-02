@@ -14,6 +14,12 @@ class WorkflowStepDefinitionCreate(BaseModel):
     is_required: bool = True
 
 
+class WorkflowStepDefinitionSchema(WorkflowStepDefinitionCreate):
+    id: int
+    workflow_id: int
+    model_config = ConfigDict(from_attributes=True)
+
+
 class WorkflowDefinitionCreate(BaseModel):
     name: str
     module: str
@@ -31,6 +37,7 @@ class WorkflowDefinitionSchema(BaseModel):
     is_active: bool
     created_by: Optional[int] = None
     created_at: Optional[datetime] = None
+    steps: list[WorkflowStepDefinitionSchema] = []
     model_config = ConfigDict(from_attributes=True)
 
 

@@ -1,7 +1,7 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
-  Target, Plus, Star, TrendingUp, CheckCircle2, RefreshCw
+  Target, Plus, Star, TrendingUp, CheckCircle2, RefreshCw, MessageSquareText
 } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { Button } from "@/components/ui/button";
@@ -51,9 +51,22 @@ interface ReviewForm {
   cycle_id?: number;
 }
 
+interface Feedback360Request {
+  id: number;
+  employee_id: number;
+  reviewer_id: number;
+  relationship_type: string;
+  due_date?: string;
+  status: string;
+  overall_rating?: number;
+  comments?: string;
+  created_at: string;
+}
+
 export default function PerformancePage() {
+  useEffect(() => { document.title = "Performance · AI HRMS"; }, []);
   const qc = useQueryClient();
-  const [activeTab, setActiveTab] = useState<"goals" | "reviews">("goals");
+  const [activeTab, setActiveTab] = useState<"goals" | "reviews" | "360">("goals");
   const [showGoalForm, setShowGoalForm] = useState(false);
   const [selectedCycle, setSelectedCycle] = useState<number | "">("");
 
@@ -66,6 +79,12 @@ export default function PerformancePage() {
     queryKey: ["goals", selectedCycle],
     queryFn: () =>
       performanceApi.goals(selectedCycle ? Number(selectedCycle) : undefined).then((r) => r.data),
+  });
+
+  const { data: feedback360, isLoading: loading360 } = useQuery({
+    queryKey: ["feedback-360-requests"],
+    queryFn: () => performanceApi.feedback360Requests().then((r) => r.data as Feedback360Request[]),
+    retry: false,
   });
 
   const { register: regGoal, handleSubmit: submitGoal, reset: resetGoal, formState: { errors: goalErrors } } = useForm<GoalForm>();
@@ -171,8 +190,8 @@ export default function PerformancePage() {
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-2 border-b">
-        {(["goals", "reviews"] as const).map((tab) => (
+      <div className="flex flex-wrap gap-2 border-b">
+        {(["goals", "reviews", "360"] as const).map((tab) => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
@@ -182,7 +201,7 @@ export default function PerformancePage() {
                 : "border-transparent text-muted-foreground hover:text-foreground"
             }`}
           >
-            {tab === "goals" ? "My Goals" : "Submit Review"}
+            {tab === "goals" ? "My Goals" : tab === "reviews" ? "Submit Review" : "360 Reviews"}
           </button>
         ))}
       </div>
@@ -377,6 +396,38 @@ export default function PerformancePage() {
                 {submitReviewMutation.isPending ? "Submitting..." : "Submit Review"}
               </Button>
             </form>
+          </CardContent>
+        </Card>
+      )}
+
+      {activeTab === "360" && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">360 Reviews</CardTitle>
+            <CardDescription>Pending and submitted feedback requests</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {loading360 ? (
+              Array.from({ length: 3 }).map((_, i) => <div key={i} className="h-16 skeleton rounded" />)
+            ) : !(feedback360 || []).length ? (
+              <div className="rounded-lg border p-8 text-center text-sm text-muted-foreground">
+                <MessageSquareText className="mx-auto mb-3 h-8 w-8 opacity-40" />
+                No 360 feedback requests assigned.
+              </div>
+            ) : (
+              (feedback360 || []).map((item) => (
+                <div key={item.id} className="flex flex-col gap-3 rounded-lg border p-4 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <p className="text-sm font-medium">Employee #{item.employee_id} feedback</p>
+                    <p className="text-xs text-muted-foreground">
+                      {item.relationship_type} review {item.due_date ? `due ${formatDate(item.due_date)}` : "with no due date"}
+                    </p>
+                    {item.comments && <p className="mt-2 text-xs text-muted-foreground">{item.comments}</p>}
+                  </div>
+                  <Badge variant={item.status === "Submitted" ? "default" : "secondary"}>{item.status}</Badge>
+                </div>
+              ))
+            )}
           </CardContent>
         </Card>
       )}

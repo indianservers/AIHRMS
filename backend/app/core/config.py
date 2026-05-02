@@ -1,5 +1,5 @@
 from typing import Any, List, Optional, Union
-from pydantic import AnyHttpUrl, EmailStr, field_validator
+from pydantic import AnyHttpUrl, EmailStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 import json
 import secrets
@@ -16,7 +16,9 @@ class Settings(BaseSettings):
 
     # Security
     SECRET_KEY: str = secrets.token_urlsafe(48)
+    SECRET_KEY_PREVIOUS: Optional[str] = None
     REFRESH_SECRET_KEY: str = secrets.token_urlsafe(48)
+    REFRESH_SECRET_KEY_PREVIOUS: Optional[str] = None
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
@@ -54,6 +56,9 @@ class Settings(BaseSettings):
 
     # Redis
     REDIS_URL: str = "redis://localhost:6379/0"
+    CELERY_BROKER_URL: Optional[str] = None
+    CELERY_RESULT_BACKEND: Optional[str] = None
+    CELERY_TIMEZONE: str = "Asia/Kolkata"
 
     # Email
     MAIL_USERNAME: str = ""
@@ -88,6 +93,12 @@ class Settings(BaseSettings):
             except Exception:
                 return [i.strip() for i in v.split(",")]
         return v
+
+    @model_validator(mode="after")
+    def validate_production_cors(self):
+        if self.ENVIRONMENT.lower() == "production" and "*" in self.BACKEND_CORS_ORIGINS:
+            raise ValueError("BACKEND_CORS_ORIGINS must list explicit origins when ENVIRONMENT=production")
+        return self
 
     # Rate limiting
     RATE_LIMIT_PER_MINUTE: int = 60

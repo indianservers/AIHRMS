@@ -1,7 +1,7 @@
 from datetime import date, datetime
 from decimal import Decimal
-from typing import List, Optional
-from pydantic import BaseModel
+from typing import List, Literal, Optional
+from pydantic import BaseModel, field_validator
 from app.schemas.employee import EmployeeListSchema
 
 
@@ -10,6 +10,7 @@ class LeaveTypeBase(BaseModel):
     code: str
     description: Optional[str] = None
     days_allowed: Decimal
+    accrual_frequency: Literal["daily", "weekly", "monthly", "quarterly", "annual"] = "annual"
     carry_forward: bool = False
     carry_forward_limit: Decimal = Decimal("0")
     encashable: bool = False
@@ -17,6 +18,14 @@ class LeaveTypeBase(BaseModel):
     applicable_from_months: int = 0
     half_day_allowed: bool = True
     color: str = "#3B82F6"
+
+    @field_validator("accrual_frequency")
+    @classmethod
+    def validate_accrual_frequency(cls, value: str) -> str:
+        normalized = value.strip().lower()
+        if normalized not in {"daily", "weekly", "monthly", "quarterly", "annual"}:
+            raise ValueError("accrual_frequency must be daily, weekly, monthly, quarterly, or annual")
+        return normalized
 
 
 class LeaveTypeCreate(LeaveTypeBase):
@@ -91,6 +100,7 @@ class LeaveApprovalRequest(BaseModel):
 
 class LeaveRequestSchema(BaseModel):
     id: int
+    company_id: Optional[int] = None
     employee_id: int
     employee: Optional[EmployeeListSchema] = None
     leave_type_id: int

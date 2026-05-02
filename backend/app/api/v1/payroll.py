@@ -150,11 +150,17 @@ def _can_view_other_payslips(user: User) -> bool:
     return user.is_superuser or (role_name != "employee" and _has_permission(user, "payroll_view"))
 
 
+def _current_company_id(user: User) -> Optional[int]:
+    if user.employee and user.employee.branch:
+        return user.employee.branch.company_id
+    return None
+
+
 def _locked_period(db: Session, month: int, year: int) -> Optional[PayrollRun]:
     return db.query(PayrollRun).filter(
         PayrollRun.month == month,
         PayrollRun.year == year,
-        PayrollRun.status == "Locked",
+        PayrollRun.status.in_([crud_payroll.PAYROLL_RUN_STATUS_LOCKED, crud_payroll.PAYROLL_RUN_STATUS_PAID, "Locked", "Paid"]),
         PayrollRun.deleted_at.is_(None),
     ).first()
 
@@ -182,7 +188,7 @@ def _ensure_not_locked_for_date(db: Session, value: Optional[date], action: str)
 
 def _ensure_no_locked_payroll_exists(db: Session, action: str) -> None:
     if db.query(PayrollRun).filter(
-        PayrollRun.status == "Locked",
+        PayrollRun.status.in_([crud_payroll.PAYROLL_RUN_STATUS_LOCKED, crud_payroll.PAYROLL_RUN_STATUS_PAID, "Locked", "Paid"]),
         PayrollRun.deleted_at.is_(None),
     ).first():
         raise HTTPException(
@@ -1858,9 +1864,25 @@ def list_payroll_runs(
     db: Session = Depends(get_db),
     current_user: User = Depends(RequirePermission("payroll_view")),
 ):
-    return db.query(PayrollRun).filter(
+    query = db.query(PayrollRun).filter(
         PayrollRun.deleted_at.is_(None)
-    ).order_by(PayrollRun.year.desc(), PayrollRun.month.desc()).all()
+    )
+    company_id = None if current_user.is_superuser else _current_company_id(current_user)
+    if company_id:
+        query = query.filter(PayrollRun.company_id == company_id)
+    return query.order_by(PayrollRun.year.desc(), PayrollRun.month.desc()).all()
+
+
+@router.get("/last-run", response_model=PayrollRunSchema | None)
+def get_last_payroll_run(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(RequirePermission("payroll_view")),
+):
+    query = db.query(PayrollRun).filter(PayrollRun.deleted_at.is_(None))
+    company_id = None if current_user.is_superuser else _current_company_id(current_user)
+    if company_id:
+        query = query.filter(PayrollRun.company_id == company_id)
+    return query.order_by(PayrollRun.year.desc(), PayrollRun.month.desc(), PayrollRun.id.desc()).first()
 
 
 @router.post("/run", response_model=PayrollRunSchema, status_code=201)
@@ -1872,8 +1894,7 @@ def run_payroll(
     _ensure_not_locked_period(db, data.month, data.year, "rerun payroll")
     try:
         run = crud_payroll.run_payroll(db, data.month, data.year, current_user.id)
-        if data.company_id is not None:
-            run.company_id = data.company_id
+        run.company_id = data.company_id if data.company_id is not None else _current_company_id(current_user)
         if data.pay_period_start is not None:
             run.pay_period_start = data.pay_period_start
         if data.pay_period_end is not None:
@@ -1902,30 +1923,43 @@ def approve_payroll(
     current_user: User = Depends(RequirePermission("payroll_approve")),
 ):
     run = _get_payroll_run_or_404(db, run_id)
-    if run.status == "Locked":
-        raise HTTPException(status_code=400, detail="Payroll run is already locked")
+    try:
+        crud_payroll.coerce_payroll_run_status(run)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
-    if data.action == "approve":
+    action = data.action.lower()
+    if action == "approve":
         blockers = _payroll_input_blockers(db, run)
         if blockers:
             raise HTTPException(status_code=400, detail={"message": "Payroll attendance inputs must be approved and locked before approval", "blockers": blockers})
-        run.status = "Approved"
+        try:
+            crud_payroll.transition_payroll_run_status(run, crud_payroll.PAYROLL_RUN_STATUS_APPROVED)
+        except ValueError as e:
+            raise HTTPException(status_code=422, detail=str(e))
         run.approved_by = current_user.id
         run.approved_at = datetime.now(timezone.utc)
         _audit(db, run.id, "approved", current_user.id, data.remarks)
-    elif data.action == "lock":
-        if run.status != "Approved":
-            raise HTTPException(status_code=400, detail="Payroll must be approved before locking")
-        run.status = "Locked"
+    elif action == "lock":
+        try:
+            crud_payroll.transition_payroll_run_status(run, crud_payroll.PAYROLL_RUN_STATUS_LOCKED)
+        except ValueError as e:
+            raise HTTPException(status_code=422, detail=str(e))
         run.locked_by = current_user.id
         run.locked_at = datetime.now(timezone.utc)
         _audit(db, run.id, "locked", current_user.id, data.remarks)
+    elif action in {"paid", "mark_paid"}:
+        try:
+            crud_payroll.transition_payroll_run_status(run, crud_payroll.PAYROLL_RUN_STATUS_PAID)
+        except ValueError as e:
+            raise HTTPException(status_code=422, detail=str(e))
+        _audit(db, run.id, "paid", current_user.id, data.remarks)
     else:
         raise HTTPException(status_code=400, detail="Invalid action")
 
     run.remarks = data.remarks
     db.commit()
-    return {"message": f"Payroll {data.action}d successfully"}
+    return {"message": f"Payroll {action} successfully", "status": run.status}
 
 
 @router.get("/runs/{run_id}/variance", response_model=List[PayrollVarianceItemSchema])
@@ -2046,7 +2080,11 @@ def process_payroll_worksheet(
     current_user: User = Depends(RequirePermission("payroll_run")),
 ):
     run = _get_payroll_run_or_404(db, run_id)
-    if run.status == "Locked":
+    try:
+        crud_payroll.coerce_payroll_run_status(run)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    if run.status in {crud_payroll.PAYROLL_RUN_STATUS_LOCKED, crud_payroll.PAYROLL_RUN_STATUS_PAID}:
         raise HTTPException(status_code=400, detail="Payroll run is locked")
     period = _payroll_period_for_run(db, run)
     blocked = _payroll_input_blockers(db, run)
@@ -2534,7 +2572,11 @@ def create_unlock_request(
     current_user: User = Depends(RequirePermission("payroll_run")),
 ):
     run = _get_payroll_run_or_404(db, run_id)
-    if run.status != "Locked":
+    try:
+        crud_payroll.coerce_payroll_run_status(run)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    if run.status != crud_payroll.PAYROLL_RUN_STATUS_LOCKED:
         raise HTTPException(status_code=400, detail="Only locked payroll can be requested for unlock")
     request = PayrollUnlockRequest(payroll_run_id=run_id, reason=data.reason, requested_by=current_user.id)
     db.add(request)
@@ -2560,10 +2602,14 @@ def review_unlock_request(
     request.review_remarks = data.remarks
     if action == "approve":
         request.status = "Approved"
-        request.payroll_run.status = "Completed"
-        request.payroll_run.locked_by = None
-        request.payroll_run.locked_at = None
-        _audit(db, request.payroll_run_id, "unlocked", current_user.id, data.remarks)
+        _audit(
+            db,
+            request.payroll_run_id,
+            "unlock_review_approved",
+            current_user.id,
+            "Payroll run remains locked; state machine does not allow backward transitions. "
+            f"Remarks: {data.remarks or ''}",
+        )
     elif action == "reject":
         request.status = "Rejected"
     else:

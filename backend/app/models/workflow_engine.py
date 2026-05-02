@@ -1,4 +1,5 @@
 from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String, Text, JSON
+from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from app.db.base_class import Base
 
@@ -15,6 +16,8 @@ class WorkflowDefinition(Base):
     created_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
+    steps = relationship("WorkflowStepDefinition", back_populates="workflow", cascade="all, delete-orphan", order_by="WorkflowStepDefinition.step_order")
+
 
 class WorkflowStepDefinition(Base):
     __tablename__ = "workflow_step_definitions"
@@ -29,6 +32,8 @@ class WorkflowStepDefinition(Base):
     timeout_hours = Column(Integer)
     escalation_user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     is_required = Column(Boolean, default=True)
+
+    workflow = relationship("WorkflowDefinition", back_populates="steps")
 
 
 class WorkflowInstance(Base):

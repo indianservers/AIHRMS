@@ -58,8 +58,15 @@ def queue_integration_event(data: IntegrationEventCreate, db: Session = Depends(
 
 
 @router.get("/integration-events", response_model=List[IntegrationEventSchema])
-def list_integration_events(status: Optional[str] = Query(None), db: Session = Depends(get_db), current_user: User = Depends(RequirePermission("settings_view"))):
+def list_integration_events(
+    status: Optional[str] = Query(None),
+    event_type: Optional[str] = Query(None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(RequirePermission("settings_view")),
+):
     query = db.query(IntegrationEvent)
+    if event_type:
+        query = query.filter(IntegrationEvent.event_type == event_type)
     if status:
         query = query.filter(IntegrationEvent.status == status)
     return query.order_by(IntegrationEvent.id.desc()).limit(300).all()

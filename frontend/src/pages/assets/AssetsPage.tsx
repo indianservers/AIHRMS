@@ -1,4 +1,4 @@
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Laptop, Plus, RefreshCw, Search } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -26,6 +26,7 @@ type Asset = {
 };
 
 export default function AssetsPage() {
+  useEffect(() => { document.title = "Assets · AI HRMS"; }, []);
   const qc = useQueryClient();
   const [search, setSearch] = useState("");
   const [assetTag, setAssetTag] = useState("");

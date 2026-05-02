@@ -5,6 +5,15 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
+# WARNING: Tests run against SQLite in-memory.
+# MySQL-specific behaviors NOT tested here:
+#   - JSON_EXTRACT / JSON column path queries
+#   - CHECK constraints (e.g. accrual_frequency, payroll status)
+#   - ENUM column enforcement
+#   - Full-text indexes
+# Run integration tests against a real MySQL instance before releasing
+# any migration or CRUD change that uses these features.
+
 os.environ.setdefault("ENVIRONMENT", "test")
 os.environ.setdefault("MYSQL_PASSWORD", "")
 

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   DollarSign, FileText, Play, CheckCircle2, RefreshCw,
@@ -13,6 +13,7 @@ import { Badge } from "@/components/ui/badge";
 import { payrollApi, statutoryComplianceApi } from "@/services/api";
 import { assetUrl, formatCurrency, formatDate, statusColor } from "@/lib/utils";
 import { toast } from "@/hooks/use-toast";
+import { useAuthStore } from "@/store/authStore";
 
 interface PayrollRun {
   id: number;
@@ -96,10 +97,15 @@ const MONTHS = [
   "July","August","September","October","November","December"
 ];
 
+type PayrollTab = "wizard" | "run" | "viewer" | "variance" | "inputs" | "setup" | "statutory" | "tax" | "casebook";
+
 export default function PayrollPage() {
+  useEffect(() => { document.title = "Payroll · AI HRMS"; }, []);
   const qc = useQueryClient();
+  const { user } = useAuthStore();
+  const isEmployee = user?.role === "employee" && !user?.is_superuser;
   const today = new Date();
-  const [activeTab, setActiveTab] = useState<"wizard" | "run" | "viewer" | "variance" | "inputs" | "setup" | "statutory" | "tax" | "casebook">("wizard");
+  const [activeTab, setActiveTab] = useState<PayrollTab>(isEmployee ? "viewer" : "wizard");
   const [wizardStep, setWizardStep] = useState(0);
   const [slipMonth, setSlipMonth] = useState(today.getMonth() + 1);
   const [slipYear, setSlipYear] = useState(today.getFullYear());
@@ -137,6 +143,13 @@ export default function PayrollPage() {
   const [structureName, setStructureName] = useState("India Monthly Structure");
   const [structureVersion, setStructureVersion] = useState("1.0");
   const [selectedRecordId, setSelectedRecordId] = useState<number | null>(null);
+  const visibleTabs: PayrollTab[] = isEmployee
+    ? ["viewer"]
+    : ["wizard", "run", "viewer", "variance", "inputs", "statutory", "tax", "casebook"];
+
+  useEffect(() => {
+    if (isEmployee && activeTab !== "viewer") setActiveTab("viewer");
+  }, [activeTab, isEmployee]);
 
   const { data: payslip, isLoading: loadingSlip } = useQuery({
     queryKey: ["payslip", slipMonth, slipYear],
@@ -663,7 +676,7 @@ export default function PayrollPage() {
 
       {/* Tabs */}
       <div className="flex flex-wrap gap-2 border-b">
-        {(["wizard", "run", "viewer", "variance", "inputs", "statutory", "tax", "casebook"] as const).map((tab) => (
+        {visibleTabs.map((tab) => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
@@ -946,7 +959,7 @@ export default function PayrollPage() {
         </div>
       )}
 
-      {activeTab === "run" && (
+      {!isEmployee && activeTab === "run" && (
         <div className="space-y-4">
           {/* Run payroll card */}
           <Card>
@@ -1373,7 +1386,7 @@ export default function PayrollPage() {
         </div>
       )}
 
-      {activeTab === "variance" && (
+      {!isEmployee && activeTab === "variance" && (
         <div className="space-y-4">
           <Card>
             <CardHeader>
@@ -1449,7 +1462,7 @@ export default function PayrollPage() {
         </div>
       )}
 
-      {activeTab === "inputs" && (
+      {!isEmployee && activeTab === "inputs" && (
         <div className="space-y-4">
           <Card>
             <CardHeader>
@@ -1572,7 +1585,7 @@ export default function PayrollPage() {
         </div>
       )}
 
-      {activeTab === "wizard" && (
+      {!isEmployee && activeTab === "wizard" && (
         <div className="space-y-4">
           <Card>
             <CardHeader>
@@ -1821,7 +1834,7 @@ export default function PayrollPage() {
         </div>
       )}
 
-      {activeTab === "statutory" && (
+      {!isEmployee && activeTab === "statutory" && (
         <div className="space-y-4">
           <Card>
             <CardHeader>
@@ -1960,7 +1973,7 @@ export default function PayrollPage() {
         </div>
       )}
 
-      {activeTab === "tax" && (
+      {!isEmployee && activeTab === "tax" && (
         <div className="grid gap-4 lg:grid-cols-[0.8fr_1.2fr]">
           <Card>
             <CardHeader>
@@ -2035,7 +2048,7 @@ export default function PayrollPage() {
         </div>
       )}
 
-      {activeTab === "casebook" && (
+      {!isEmployee && activeTab === "casebook" && (
         <div className="grid gap-4 lg:grid-cols-2">
           {[
             {

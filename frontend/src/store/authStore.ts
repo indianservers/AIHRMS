@@ -14,9 +14,11 @@ interface AuthState {
   refreshToken: string | null;
   user: AuthUser | null;
   isAuthenticated: boolean;
+  isHydrated: boolean;
   setTokens: (accessToken: string, refreshToken: string) => void;
   setUser: (user: AuthUser) => void;
   logout: () => void;
+  setHydrated: (isHydrated: boolean) => void;
 }
 
 export const useAuthStore = create<AuthState>()(
@@ -26,11 +28,13 @@ export const useAuthStore = create<AuthState>()(
       refreshToken: null,
       user: null,
       isAuthenticated: false,
+      isHydrated: false,
 
       setTokens: (accessToken, refreshToken) =>
         set({ accessToken, refreshToken, isAuthenticated: true }),
 
       setUser: (user) => set({ user }),
+      setHydrated: (isHydrated) => set({ isHydrated }),
 
       logout: () =>
         set({
@@ -39,9 +43,12 @@ export const useAuthStore = create<AuthState>()(
           user: null,
           isAuthenticated: false,
         }),
-    }),
+      }),
     {
       name: "hrms-auth",
+      onRehydrateStorage: () => (state) => {
+        state?.setHydrated(true);
+      },
       partialize: (state) => ({
         accessToken: state.accessToken,
         refreshToken: state.refreshToken,

@@ -4,6 +4,10 @@ from typing import List, Optional, Tuple
 from sqlalchemy.orm import Session
 from sqlalchemy import and_
 from app.models.leave import LeaveType, LeaveBalance, LeaveBalanceLedger, LeaveRequest
+from app.models.employee import Employee
+
+
+LEAVE_ACCRUAL_FREQUENCIES = {"daily", "weekly", "monthly", "quarterly", "annual"}
 
 
 def get_leave_type(db: Session, leave_type_id: int) -> Optional[LeaveType]:
@@ -32,6 +36,121 @@ def get_employee_leave_balances(db: Session, employee_id: int, year: int) -> Lis
 
 def get_available_balance(balance: LeaveBalance) -> Decimal:
     return balance.allocated + balance.carried_forward - balance.used - balance.pending
+
+
+def _money_days(value: Decimal) -> Decimal:
+    return (value or Decimal("0")).quantize(Decimal("0.1"))
+
+
+def _period_key(frequency: str, run_date: date) -> str:
+    if frequency == "monthly":
+        return f"{run_date.year}-{run_date.month:02d}"
+    if frequency == "weekly":
+        year, week, _ = run_date.isocalendar()
+        return f"{year}-W{week:02d}"
+    if frequency == "quarterly":
+        quarter = ((run_date.month - 1) // 3) + 1
+        return f"{run_date.year}-Q{quarter}"
+    if frequency == "daily":
+        return run_date.isoformat()
+    return str(run_date.year)
+
+
+def _is_accrual_due(frequency: str, run_date: date) -> bool:
+    if frequency == "daily":
+        return True
+    if frequency == "weekly":
+        return run_date.weekday() == 0
+    if frequency == "monthly":
+        return True
+    if frequency == "quarterly":
+        return run_date.month in {3, 6, 9, 12}
+    return run_date.month == 1
+
+
+def _accrual_amount(leave_type: LeaveType) -> Decimal:
+    frequency = (leave_type.accrual_frequency or "annual").lower()
+    if frequency == "daily":
+        return _money_days(Decimal(leave_type.days_allowed or 0) / Decimal("365"))
+    if frequency == "weekly":
+        return _money_days(Decimal(leave_type.days_allowed or 0) / Decimal("52"))
+    if frequency == "monthly":
+        return _money_days(Decimal(leave_type.days_allowed or 0) / Decimal("12"))
+    if frequency == "quarterly":
+        return _money_days(Decimal(leave_type.days_allowed or 0) / Decimal("4"))
+    return _money_days(Decimal(leave_type.days_allowed or 0))
+
+
+def _employee_eligible_for_leave_type(employee: Employee, leave_type: LeaveType, run_date: date) -> bool:
+    if employee.status not in {"Active", "Probation"}:
+        return False
+    if employee.deleted_at is not None:
+        return False
+    if leave_type.applicable_gender and leave_type.applicable_gender != "All" and employee.gender != leave_type.applicable_gender:
+        return False
+    if employee.date_of_joining and leave_type.applicable_from_months:
+        months_worked = (run_date.year - employee.date_of_joining.year) * 12 + (run_date.month - employee.date_of_joining.month)
+        if months_worked < int(leave_type.applicable_from_months or 0):
+            return False
+    return True
+
+
+def run_scheduled_leave_accruals(db: Session, run_date: date | None = None, created_by: int | None = None) -> dict:
+    run_date = run_date or date.today()
+    year = run_date.year
+    credited = 0
+    skipped = 0
+
+    leave_types = db.query(LeaveType).filter(LeaveType.is_active == True).all()
+    employees = db.query(Employee).filter(Employee.status.in_(["Active", "Probation"]), Employee.deleted_at.is_(None)).all()
+
+    for leave_type in leave_types:
+        frequency = (leave_type.accrual_frequency or "annual").lower()
+        if frequency not in LEAVE_ACCRUAL_FREQUENCIES or not _is_accrual_due(frequency, run_date):
+            continue
+        amount = _accrual_amount(leave_type)
+        if amount <= Decimal("0"):
+            continue
+        period_key = _period_key(frequency, run_date)
+        reason = f"Scheduled {frequency} accrual {period_key}"
+        for employee in employees:
+            if not _employee_eligible_for_leave_type(employee, leave_type, run_date):
+                skipped += 1
+                continue
+            balance = get_leave_balance(db, employee.id, leave_type.id, year)
+            if not balance:
+                balance = LeaveBalance(
+                    employee_id=employee.id,
+                    leave_type_id=leave_type.id,
+                    year=year,
+                    allocated=Decimal("0"),
+                )
+                db.add(balance)
+                db.flush()
+
+            already_credited = db.query(LeaveBalanceLedger).filter(
+                LeaveBalanceLedger.leave_balance_id == balance.id,
+                LeaveBalanceLedger.transaction_type == "scheduled_accrual",
+                LeaveBalanceLedger.reason == reason,
+            ).first()
+            if already_credited:
+                skipped += 1
+                continue
+
+            balance.allocated = _money_days(Decimal(balance.allocated or 0) + amount)
+            add_ledger_entry(
+                db,
+                balance=balance,
+                transaction_type="scheduled_accrual",
+                amount=amount,
+                balance_after=get_available_balance(balance),
+                reason=reason,
+                created_by=created_by,
+            )
+            credited += 1
+
+    db.commit()
+    return {"credited": credited, "skipped": skipped, "run_date": run_date.isoformat()}
 
 
 def add_ledger_entry(
@@ -137,7 +256,11 @@ def create_leave_request(db: Session, employee_id: int, data: dict) -> LeaveRequ
     if available < days:
         raise ValueError(f"Insufficient leave balance. Available: {available}, Requested: {days}")
 
+    employee = db.query(Employee).filter(Employee.id == employee_id, Employee.deleted_at.is_(None)).first()
+    company_id = employee.branch.company_id if employee and employee.branch else None
+
     request = LeaveRequest(
+        company_id=company_id,
         employee_id=employee_id,
         days_count=days,
         **{k: v for k, v in data.items() if k != "days_count"},
@@ -255,10 +378,17 @@ def get_leave_requests(
     db: Session,
     employee_id: Optional[int] = None,
     status: Optional[str] = None,
+    company_id: Optional[int] = None,
     skip: int = 0,
     limit: int = 50,
 ) -> Tuple[List[LeaveRequest], int]:
-    query = db.query(LeaveRequest).filter(LeaveRequest.deleted_at.is_(None))
+    query = (
+        db.query(LeaveRequest)
+        .join(Employee, LeaveRequest.employee_id == Employee.id)
+        .filter(LeaveRequest.deleted_at.is_(None), Employee.deleted_at.is_(None))
+    )
+    if company_id:
+        query = query.filter(LeaveRequest.company_id == company_id)
     if employee_id:
         query = query.filter(LeaveRequest.employee_id == employee_id)
     if status:

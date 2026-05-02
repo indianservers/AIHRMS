@@ -1,4 +1,4 @@
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { CheckCircle2, ClipboardCheck, Plus, RefreshCw } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -11,6 +11,7 @@ import { toast } from "@/hooks/use-toast";
 import { formatDate } from "@/lib/utils";
 
 export default function OnboardingPage() {
+  useEffect(() => { document.title = "Onboarding · AI HRMS"; }, []);
   const qc = useQueryClient();
   const [templateName, setTemplateName] = useState("");
   const [employeeId, setEmployeeId] = useState("");

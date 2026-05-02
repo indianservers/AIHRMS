@@ -443,7 +443,7 @@ class PayrollRunCreate(BaseModel):
 
 
 class PayrollRunApproval(BaseModel):
-    action: str  # approve, lock
+    action: str  # approve, lock, paid/mark_paid
     remarks: Optional[str] = None
 
 

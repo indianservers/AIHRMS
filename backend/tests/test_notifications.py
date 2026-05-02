@@ -10,10 +10,12 @@ def test_notification_inbox_and_delivery_hooks(client, superuser_headers):
         "module": "leave",
         "event_type": "leave_approved",
         "action_url": "/leave",
-        "channels": ["in_app", "email", "sms"],
+        "channels": ["in_app", "email", "whatsapp", "push", "sms"],
     }, headers=superuser_headers)
     assert create.status_code == 201
-    assert {log["channel"] for log in create.json()["delivery_logs"]} == {"in_app", "email", "sms"}
+    assert create.json()["channels"] == ["in_app", "email", "whatsapp", "push", "sms"]
+    assert {log["channel"] for log in create.json()["delivery_logs"]} == {"in_app", "email", "whatsapp", "push", "sms"}
+    assert any(log["recipient"] == f"user:{user_id}" for log in create.json()["delivery_logs"] if log["channel"] == "push")
 
     count = client.get("/api/v1/notifications/unread-count", headers=superuser_headers)
     assert count.status_code == 200
@@ -29,3 +31,17 @@ def test_notification_inbox_and_delivery_hooks(client, superuser_headers):
 
     count_after = client.get("/api/v1/notifications/unread-count", headers=superuser_headers)
     assert count_after.json()["unread"] == 0
+
+
+def test_notification_rejects_unknown_channel(client, superuser_headers):
+    me = client.get("/api/v1/auth/me", headers=superuser_headers)
+    user_id = me.json()["id"]
+
+    create = client.post("/api/v1/notifications/", json={
+        "user_id": user_id,
+        "title": "Invalid channel",
+        "message": "This should fail.",
+        "channels": ["pager"],
+    }, headers=superuser_headers)
+
+    assert create.status_code == 422

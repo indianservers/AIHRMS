@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import {
@@ -37,6 +37,7 @@ interface Employee {
 const columnHelper = createColumnHelper<Employee>();
 
 export default function EmployeesPage() {
+  useEffect(() => { document.title = "Employees · AI HRMS"; }, []);
   const qc = useQueryClient();
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);

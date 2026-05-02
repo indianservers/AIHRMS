@@ -95,6 +95,7 @@ export const employeeApi = {
   update: (id: number, data: unknown) => api.put(`/employees/${id}`, data),
   delete: (id: number) => api.delete(`/employees/${id}`),
   stats: () => api.get("/employees/stats"),
+  count: () => api.get("/employees/count"),
   addEducation: (id: number, data: unknown) => api.post(`/employees/${id}/education`, data),
   addExperience: (id: number, data: unknown) => api.post(`/employees/${id}/experience`, data),
   addSkill: (id: number, data: unknown) => api.post(`/employees/${id}/skills`, data),
@@ -224,6 +225,7 @@ export const attendanceApi = {
   geoPolicies: () => api.get("/attendance/geo/policies"),
   createGeoPolicy: (data: unknown) => api.post("/attendance/geo/policies", data),
   geoPunch: (data: unknown) => api.post("/attendance/geo/punch", data),
+  todaySummary: () => api.get("/attendance/today-summary"),
 };
 
 export const customFieldsApi = {
@@ -264,6 +266,7 @@ export const leaveApi = {
   approve: (id: number, data: unknown) =>
     api.put(`/leave/requests/${id}/approve`, data),
   cancel: (id: number) => api.put(`/leave/requests/${id}/cancel`),
+  pendingCount: () => api.get("/leave/pending-count"),
 };
 
 export const payrollApi = {
@@ -290,6 +293,7 @@ export const payrollApi = {
   salaryAudit: (params?: Record<string, unknown>) =>
     api.get("/payroll/salary-audit", { params }),
   runs: () => api.get("/payroll/runs"),
+  lastRun: () => api.get("/payroll/last-run"),
   runPayroll: (data: unknown) => api.post("/payroll/run", data),
   getRun: (id: number) => api.get(`/payroll/runs/${id}`),
   approveRun: (id: number, data: unknown) => api.put(`/payroll/runs/${id}/approve`, data),
@@ -420,6 +424,17 @@ export const statutoryComplianceApi = {
   portalSubmissions: (params?: Record<string, unknown>) =>
     api.get("/statutory-compliance/portal-submissions", { params }),
   createPortalSubmission: (data: unknown) => api.post("/statutory-compliance/portal-submissions", data),
+  updateCalendarEvent: (id: number, data: unknown) => api.put(`/statutory-compliance/calendar/${id}`, data),
+};
+
+export const lmsApi = {
+  courses: () => api.get("/lms/courses"),
+  createCourse: (data: unknown) => api.post("/lms/courses", data),
+  assignments: (params?: Record<string, unknown>) => api.get("/lms/assignments", { params }),
+  createAssignment: (data: unknown) => api.post("/lms/assignments", data),
+  updateAssignment: (id: number, data: unknown) => api.put(`/lms/assignments/${id}`, data),
+  certifications: (params?: Record<string, unknown>) => api.get("/lms/certifications", { params }),
+  createCertification: (data: unknown) => api.post("/lms/certifications", data),
 };
 
 export const recruitmentApi = {
@@ -480,10 +495,10 @@ export const performanceApi = {
     api.get("/performance/review-templates", { params }),
   createReviewTemplate: (data: unknown) => api.post("/performance/review-templates", data),
   feedback360Requests: (params?: Record<string, unknown>) =>
-    api.get("/performance/360/requests", { params }),
-  createFeedback360Request: (data: unknown) => api.post("/performance/360/requests", data),
+    api.get("/performance/360-feedback-requests", { params }),
+  createFeedback360Request: (data: unknown) => api.post("/performance/360-feedback-requests", data),
   submitFeedback360: (id: number, data: unknown) =>
-    api.put(`/performance/360/requests/${id}/submit`, data),
+    api.put(`/performance/360-feedback-requests/${id}/submit`, data),
   competencies: (params?: Record<string, unknown>) =>
     api.get("/performance/competencies", { params }),
   createCompetency: (data: unknown) => api.post("/performance/competencies", data),
@@ -530,7 +545,10 @@ export const helpdeskApi = {
   updateStatus: (id: number, status: string) =>
     api.put(`/helpdesk/tickets/${id}/status`, null, { params: { status } }),
   escalate: (id: number, data: unknown) => api.put(`/helpdesk/tickets/${id}/escalate`, data),
+  analytics: () => api.get("/helpdesk/analytics"),
   slaBreaches: () => api.get("/helpdesk/sla/breaches"),
+  submitCsat: (id: number, rating: number) =>
+    api.put(`/helpdesk/tickets/${id}/csat`, null, { params: { rating } }),
   escalationRules: () => api.get("/helpdesk/escalation-rules"),
   createEscalationRule: (data: unknown) => api.post("/helpdesk/escalation-rules", data),
   knowledge: (params?: Record<string, unknown>) => api.get("/helpdesk/knowledge", { params }),
@@ -606,6 +624,24 @@ export const workflowApi = {
     api.put(`/workflow-engine/tasks/${id}/decision`, data),
   sendReminders: () => api.post("/workflow-engine/tasks/send-reminders"),
   processEscalations: () => api.post("/workflow-engine/tasks/process-escalations"),
+};
+
+export const workflowDefinitionsApi = {
+  list: (params?: Record<string, unknown>) =>
+    api.get("/workflow/definitions", { params }),
+  get: (id: number) => api.get(`/workflow/definitions/${id}`),
+  create: (data: unknown) => api.post("/workflow/definitions", data),
+  update: (id: number, data: unknown) => api.put(`/workflow/definitions/${id}`, data),
+  delete: (id: number) => api.delete(`/workflow/definitions/${id}`),
+  getSteps: (id: number) => api.get(`/workflow/definitions/${id}/steps`),
+  addStep: (id: number, data: unknown) =>
+    api.post(`/workflow/definitions/${id}/steps`, data),
+  updateStep: (id: number, stepId: number, data: unknown) =>
+    api.put(`/workflow/definitions/${id}/steps/${stepId}`, data),
+  deleteStep: (id: number, stepId: number) =>
+    api.delete(`/workflow/definitions/${id}/steps/${stepId}`),
+  activate: (id: number) => api.post(`/workflow/definitions/${id}/activate`),
+  deactivate: (id: number) => api.post(`/workflow/definitions/${id}/deactivate`),
 };
 
 export const notificationsApi = {

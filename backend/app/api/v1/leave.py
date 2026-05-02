@@ -1,6 +1,7 @@
 from typing import List, Optional
 from datetime import date, timedelta
 from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 from sqlalchemy.orm import joinedload
 from app.core.deps import get_db, get_current_user, RequirePermission
@@ -22,6 +23,12 @@ def _role_name(user: User) -> str:
     if user.is_superuser:
         return "super_admin"
     return (user.role.name if user.role else "").lower()
+
+
+def _current_company_id(user: User) -> Optional[int]:
+    if user.employee and user.employee.branch:
+        return user.employee.branch.company_id
+    return None
 
 
 # ── Leave Types ───────────────────────────────────────────────────────────────
@@ -76,6 +83,21 @@ def delete_leave_type(
     lt.is_active = False
     db.commit()
     return {"message": "Leave type deactivated"}
+
+
+@router.get("/pending-count")
+def pending_leave_count(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(RequirePermission("leave_manage")),
+):
+    query = db.query(func.count(LeaveRequest.id)).filter(
+        LeaveRequest.deleted_at.is_(None),
+        LeaveRequest.status == "Pending",
+    )
+    company_id = _current_company_id(current_user)
+    if company_id:
+        query = query.filter(LeaveRequest.company_id == company_id)
+    return {"pending": query.scalar() or 0}
 
 
 # ── Leave Balance ─────────────────────────────────────────────────────────────
@@ -213,6 +235,7 @@ def all_leave_requests(
 ):
     items, _ = crud_leave.get_leave_requests(
         db, employee_id=employee_id, status=status,
+        company_id=None if current_user.is_superuser else _current_company_id(current_user),
         skip=(page-1)*per_page, limit=per_page
     )
     return items
@@ -251,6 +274,9 @@ def leave_calendar(
             LeaveRequest.to_date >= from_date,
         )
     )
+    company_id = None if current_user.is_superuser else _current_company_id(current_user)
+    if company_id:
+        query = query.filter(LeaveRequest.company_id == company_id)
 
     if department_id:
         query = query.join(Employee, LeaveRequest.employee_id == Employee.id).filter(Employee.department_id == department_id)

@@ -1,4 +1,4 @@
-import { ChangeEvent, FormEvent, useMemo, useState } from "react";
+import { ChangeEvent, FormEvent, useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Banknote,
@@ -62,6 +62,7 @@ const emptyChangeDraft: ChangeDraft = {
 };
 
 export default function ProfilePage() {
+  useEffect(() => { document.title = "Profile · AI HRMS"; }, []);
   const qc = useQueryClient();
   const user = useAuthStore((state) => state.user);
   const roleKey = getRoleKey(user?.role, user?.is_superuser);

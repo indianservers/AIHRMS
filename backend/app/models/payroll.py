@@ -749,6 +749,8 @@ class PayrollRun(Base):
     __table_args__ = (
         Index("idx_payroll_run_period", "pay_period_start", "pay_period_end", "company_id"),
         Index("idx_payroll_run_active_month", "deleted_at", "year", "month"),
+        Index("idx_payroll_run_company_active_month", "company_id", "deleted_at", "year", "month"),
+        Index("idx_payroll_run_company_status_month", "company_id", "status", "year", "month"),
     )
 
     id = Column(Integer, primary_key=True, index=True)
@@ -758,7 +760,7 @@ class PayrollRun(Base):
     pay_period_start = Column(Date)
     pay_period_end = Column(Date)
     run_date = Column(Date)
-    status = Column(String(20), default="Draft")  # Draft, Processing, Completed, Approved, Locked
+    status = Column(String(20), default="draft")  # draft -> inputs_pending -> calculated -> approved -> locked -> paid
     approved_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     approved_at = Column(DateTime(timezone=True))
     locked_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)

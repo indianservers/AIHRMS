@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Clock, CheckCircle2, XCircle, CalendarDays, MapPin,
@@ -33,6 +33,7 @@ const statusDotColor: Record<string, string> = {
 };
 
 export default function AttendancePage() {
+  useEffect(() => { document.title = "Attendance · AI HRMS"; }, []);
   const qc = useQueryClient();
   const today = new Date();
   const [viewMonth, setViewMonth] = useState(today.getMonth() + 1);
@@ -108,7 +109,7 @@ export default function AttendancePage() {
   const isCheckedOut = todayRecord && todayRecord.check_out;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6">
       <div>
         <h1 className="page-title">Attendance</h1>
         <p className="page-description">Track your daily attendance and monthly summary.</p>
@@ -117,7 +118,7 @@ export default function AttendancePage() {
       {/* Today's action card */}
       <Card>
         <CardContent className="p-6">
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div className="space-y-1">
               <p className="text-sm text-muted-foreground">Today — {today.toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}</p>
               {loadingToday ? (
@@ -139,12 +140,12 @@ export default function AttendancePage() {
                 </div>
               )}
             </div>
-            <div className="flex gap-3">
+            <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:gap-3">
               {!isCheckedIn && !isCheckedOut && (
                 <Button
                   onClick={() => checkInMutation.mutate()}
                   disabled={checkInMutation.isPending}
-                  className="bg-green-600 hover:bg-green-700"
+                  className="w-full bg-green-600 hover:bg-green-700 sm:w-auto"
                 >
                   <Clock className="h-4 w-4 mr-2" />
                   Check In
@@ -155,6 +156,7 @@ export default function AttendancePage() {
                   onClick={() => checkOutMutation.mutate()}
                   disabled={checkOutMutation.isPending}
                   variant="outline"
+                  className="w-full sm:w-auto"
                 >
                   <XCircle className="h-4 w-4 mr-2" />
                   Check Out
@@ -187,11 +189,11 @@ export default function AttendancePage() {
       {/* Calendar */}
       <Card>
         <CardHeader>
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <CardTitle className="text-base">
               {new Date(viewYear, viewMonth - 1).toLocaleString("en", { month: "long", year: "numeric" })}
             </CardTitle>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 self-end sm:self-auto">
               <Button variant="outline" size="icon" className="h-8 w-8" onClick={prevMonth}>
                 <ChevronLeft className="h-4 w-4" />
               </Button>
@@ -207,7 +209,7 @@ export default function AttendancePage() {
               <div key={d} className="text-xs font-medium text-muted-foreground py-1">{d}</div>
             ))}
           </div>
-          <div className="grid grid-cols-7 gap-1">
+          <div className="grid grid-cols-7 gap-1 text-xs sm:text-sm">
             {Array.from({ length: firstDow }).map((_, i) => (
               <div key={`pad-${i}`} />
             ))}
@@ -221,7 +223,7 @@ export default function AttendancePage() {
               return (
                 <div
                   key={key}
-                  className={`relative flex flex-col items-center justify-center h-10 w-full rounded-lg text-sm
+                  className={`relative flex h-9 w-full flex-col items-center justify-center rounded-lg text-xs sm:h-10 sm:text-sm
                     ${isToday ? "bg-primary text-primary-foreground font-bold" : ""}
                     ${!isToday && rec ? "bg-muted/50" : ""}
                     ${isFuture ? "opacity-40" : ""}

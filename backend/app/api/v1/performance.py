@@ -201,6 +201,7 @@ def list_review_templates(template_type: Optional[str] = Query(None), db: Sessio
 
 
 @router.post("/360/requests", response_model=Feedback360RequestSchema, status_code=201)
+@router.post("/360-feedback-requests", response_model=Feedback360RequestSchema, status_code=201)
 def create_360_request(data: Feedback360RequestCreate, db: Session = Depends(get_db), current_user: User = Depends(RequirePermission("performance_manage"))):
     item = Feedback360Request(**data.model_dump())
     db.add(item)
@@ -210,6 +211,7 @@ def create_360_request(data: Feedback360RequestCreate, db: Session = Depends(get
 
 
 @router.put("/360/requests/{request_id}/submit", response_model=Feedback360RequestSchema)
+@router.put("/360-feedback-requests/{request_id}/submit", response_model=Feedback360RequestSchema)
 def submit_360_feedback(request_id: int, data: Feedback360Submit, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     item = db.query(Feedback360Request).filter(Feedback360Request.id == request_id).first()
     if not item:
@@ -227,6 +229,7 @@ def submit_360_feedback(request_id: int, data: Feedback360Submit, db: Session = 
 
 
 @router.get("/360/requests", response_model=List[Feedback360RequestSchema])
+@router.get("/360-feedback-requests", response_model=List[Feedback360RequestSchema])
 def list_360_requests(employee_id: Optional[int] = Query(None), db: Session = Depends(get_db), current_user: User = Depends(RequirePermission("performance_view"))):
     query = db.query(Feedback360Request)
     if employee_id:

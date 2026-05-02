@@ -1,4 +1,5 @@
-import { NavLink, useLocation } from "react-router-dom";
+import { Fragment } from "react";
+import { NavLink } from "react-router-dom";
 import { cn } from "@/lib/utils";
 import { ChevronLeft, ChevronRight, Sparkles, UserCircle, X, LogOut } from "lucide-react";
 import { useAuthStore } from "@/store/authStore";
@@ -13,7 +14,6 @@ interface SidebarProps {
 }
 
 export default function Sidebar({ open, collapsed, onClose, onToggleCollapse }: SidebarProps) {
-  const location = useLocation();
   const { user, logout } = useAuthStore();
   const navItems = getRoleNav(user?.role, user?.is_superuser);
   const roleLabel = getRoleLabel(user?.role, user?.is_superuser);
@@ -86,31 +86,44 @@ export default function Sidebar({ open, collapsed, onClose, onToggleCollapse }: 
         {/* Navigation */}
         <nav className="flex-1 overflow-y-auto py-4">
           <ul className="space-y-1 px-2">
-            {navItems.map((item) => {
-              const isActive = location.pathname.startsWith(item.to);
+            {navItems.map((item, index) => {
+              const showGroup = !collapsed && item.group && item.group !== navItems[index - 1]?.group;
               return (
-                <li key={item.to}>
-                  <NavLink
-                    to={item.to}
-                    className={cn(
-                      "nav-link",
-                      isActive ? "nav-link-active" : "nav-link-inactive",
-                      collapsed && "justify-center px-2"
-                    )}
-                    title={collapsed ? item.label : undefined}
-                    onClick={onClose}
-                  >
-                    <item.icon className="h-4 w-4 shrink-0" />
-                    {!collapsed && (
-                      <span className="flex-1">{item.label}</span>
-                    )}
-                    {!collapsed && item.badge && (
-                      <span className="rounded-full bg-sidebar-primary px-1.5 py-0.5 text-[10px] font-bold text-white">
-                        {item.badge}
-                      </span>
-                    )}
-                  </NavLink>
-                </li>
+                <Fragment key={item.to}>
+                  {showGroup && (
+                    <li className={cn(index > 0 && "pt-3")}>
+                      {index > 0 && <hr className="mb-3 border-sidebar-border" />}
+                      <p className="px-3 pb-1 text-[10px] font-semibold uppercase tracking-wide text-sidebar-foreground/45">
+                        {item.group}
+                      </p>
+                    </li>
+                  )}
+                  <li>
+                    <NavLink
+                      to={item.to}
+                      end={item.exact}
+                      className={({ isActive }) =>
+                        cn(
+                          "nav-link",
+                          isActive ? "nav-link-active" : "nav-link-inactive",
+                          collapsed && "justify-center px-2"
+                        )
+                      }
+                      title={collapsed ? item.label : undefined}
+                      onClick={onClose}
+                    >
+                      <item.icon className="h-4 w-4 shrink-0" />
+                      {!collapsed && (
+                        <span className="flex-1">{item.label}</span>
+                      )}
+                      {!collapsed && item.badge && (
+                        <span className="rounded-full bg-sidebar-primary px-1.5 py-0.5 text-[10px] font-bold text-white">
+                          {item.badge}
+                        </span>
+                      )}
+                    </NavLink>
+                  </li>
+                </Fragment>
               );
             })}
           </ul>
@@ -120,10 +133,14 @@ export default function Sidebar({ open, collapsed, onClose, onToggleCollapse }: 
         <div className="border-t border-sidebar-border p-4">
           <NavLink
             to="/profile"
-            className={cn(
-              "nav-link nav-link-inactive",
-              collapsed && "justify-center px-2"
-            )}
+            end
+            className={({ isActive }) =>
+              cn(
+                "nav-link",
+                isActive ? "nav-link-active" : "nav-link-inactive",
+                collapsed && "justify-center px-2"
+              )
+            }
             onClick={onClose}
           >
             <UserCircle className="h-4 w-4 shrink-0" />

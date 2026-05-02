@@ -30,13 +30,22 @@ def verify_token(token: str, secret_key: str) -> Optional[dict]:
 
 
 def verify_access_token(token: str) -> Optional[dict]:
-    return verify_token(token, settings.SECRET_KEY)
+    for secret_key in [settings.SECRET_KEY, settings.SECRET_KEY_PREVIOUS]:
+        if not secret_key:
+            continue
+        payload = verify_token(token, secret_key)
+        if payload and payload.get("type") == "access":
+            return payload
+    return None
 
 
 def verify_refresh_token(token: str) -> Optional[dict]:
-    payload = verify_token(token, settings.REFRESH_SECRET_KEY)
-    if payload and payload.get("type") == "refresh":
-        return payload
+    for secret_key in [settings.REFRESH_SECRET_KEY, settings.REFRESH_SECRET_KEY_PREVIOUS]:
+        if not secret_key:
+            continue
+        payload = verify_token(token, secret_key)
+        if payload and payload.get("type") == "refresh":
+            return payload
     return None
 
 

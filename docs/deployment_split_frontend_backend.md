@@ -47,6 +47,22 @@ Uploads are served from:
 https://api.yourdomain.com/uploads
 ```
 
+## Background Workers
+
+Start the task worker:
+
+```bash
+celery -A app.worker worker -l info
+```
+
+Start the beat scheduler, which is required for scheduled leave accruals:
+
+```bash
+celery -A app.worker beat -l info
+```
+
+Keep Celery Beat running in production for `accrual_frequency` values such as monthly, quarterly, and annual to credit leave balances on schedule.
+
 ## Frontend
 
 Build once:

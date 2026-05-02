@@ -2,7 +2,7 @@ from typing import Optional
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import func
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session, joinedload
 
 from app.core.deps import RequirePermission, get_current_user, get_db
@@ -10,13 +10,36 @@ from app.models.notification import Notification, NotificationDeliveryLog
 from app.models.user import User
 from app.models.employee import Employee
 from app.schemas.common import PaginatedResponse
-from app.schemas.notification import NotificationCreate, NotificationSchema
+from app.schemas.notification import NotificationCreate, NotificationSchema, normalize_notification_channels
 
 router = APIRouter(prefix="/notifications", tags=["Notifications"])
 
 
+def _delivery_recipient(user: Optional[User], channel: str) -> Optional[str]:
+    if not user:
+        return None
+    if channel == "email":
+        return user.email or (user.employee.personal_email if user.employee else None)
+    if channel in {"whatsapp", "sms"}:
+        return (user.employee.phone_number if user.employee else None) or getattr(user, "phone_number", None)
+    if channel == "push":
+        return f"user:{user.id}"
+    return None
+
+
 def create_notification(db: Session, data: NotificationCreate) -> Notification:
+    company_id = data.company_id
+    channels = normalize_notification_channels(data.channels)
+    recipient = (
+        db.query(User)
+        .options(joinedload(User.employee).joinedload(Employee.branch))
+        .filter(User.id == data.user_id)
+        .first()
+    )
+    if company_id is None and recipient and recipient.employee and recipient.employee.branch:
+        company_id = recipient.employee.branch.company_id
     notification = Notification(
+        company_id=company_id,
         user_id=data.user_id,
         title=data.title,
         message=data.message,
@@ -26,16 +49,17 @@ def create_notification(db: Session, data: NotificationCreate) -> Notification:
         related_entity_id=data.related_entity_id,
         action_url=data.action_url,
         priority=data.priority,
+        channels=channels,
     )
     db.add(notification)
     db.flush()
 
-    for channel in data.channels or ["in_app"]:
+    for channel in channels:
         db.add(
             NotificationDeliveryLog(
                 notification_id=notification.id,
                 channel=channel,
-                recipient=None,
+                recipient=_delivery_recipient(recipient, channel),
                 status="delivered" if channel == "in_app" else "queued",
             )
         )
@@ -59,6 +83,9 @@ def list_notifications(
         .options(joinedload(Notification.delivery_logs))
         .filter(Notification.user_id == current_user.id)
     )
+    current_company_id = current_user.employee.branch.company_id if current_user.employee and current_user.employee.branch else None
+    if current_company_id:
+        query = query.filter(or_(Notification.company_id == current_company_id, Notification.company_id.is_(None)))
     if unread_only:
         query = query.filter(Notification.is_read == False)
     if module:
@@ -88,11 +115,14 @@ def unread_count(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    count = (
-        db.query(func.count(Notification.id))
-        .filter(Notification.user_id == current_user.id, Notification.is_read == False)
-        .scalar()
+    query = db.query(func.count(Notification.id)).filter(
+        Notification.user_id == current_user.id,
+        Notification.is_read == False,
     )
+    current_company_id = current_user.employee.branch.company_id if current_user.employee and current_user.employee.branch else None
+    if current_company_id:
+        query = query.filter(or_(Notification.company_id == current_company_id, Notification.company_id.is_(None)))
+    count = query.scalar()
     return {"unread": count or 0}
 
 
@@ -135,10 +165,14 @@ def mark_all_notifications_read(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    db.query(Notification).filter(
+    query = db.query(Notification).filter(
         Notification.user_id == current_user.id,
         Notification.is_read == False,
-    ).update({"is_read": True, "read_at": datetime.now(timezone.utc)}, synchronize_session=False)
+    )
+    current_company_id = current_user.employee.branch.company_id if current_user.employee and current_user.employee.branch else None
+    if current_company_id:
+        query = query.filter(or_(Notification.company_id == current_company_id, Notification.company_id.is_(None)))
+    query.update({"is_read": True, "read_at": datetime.now(timezone.utc)}, synchronize_session=False)
     db.commit()
     return {"message": "Notifications marked as read"}
 

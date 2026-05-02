@@ -22,7 +22,7 @@ export function formatCurrency(amount: number, currency = "INR"): string {
 }
 
 export function formatDate(date: string | Date | null): string {
-  if (!date) return "—";
+  if (!date) return "-";
   return new Intl.DateTimeFormat("en-IN", {
     day: "2-digit",
     month: "short",
@@ -31,7 +31,7 @@ export function formatDate(date: string | Date | null): string {
 }
 
 export function formatDateTime(date: string | Date | null): string {
-  if (!date) return "—";
+  if (!date) return "-";
   return new Intl.DateTimeFormat("en-IN", {
     day: "2-digit",
     month: "short",

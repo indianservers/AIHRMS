@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import { useEffect } from "react";
 import { CalendarDays, Clock, Download, FileText, HelpCircle, Laptop, Target, Ticket, UserRound } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -7,6 +8,7 @@ import { employeeApi, leaveApi, reportsApi } from "@/services/api";
 import { assetUrl, formatCurrency, formatDate } from "@/lib/utils";
 
 export default function ESSPortalPage() {
+  useEffect(() => { document.title = "ESS Portal · AI HRMS"; }, []);
   const completeness = useQuery({ queryKey: ["profile-completeness"], queryFn: () => employeeApi.profileCompleteness().then((r) => r.data), retry: false });
   const summary = useQuery({ queryKey: ["ess-summary"], queryFn: () => reportsApi.essSummary().then((r) => r.data), retry: false });
   const leaveBalance = useQuery({ queryKey: ["ess-leave-balance"], queryFn: () => leaveApi.balance(new Date().getFullYear()).then((r) => r.data), retry: false });
@@ -19,23 +21,23 @@ export default function ESSPortalPage() {
   ];
 
   return (
-    <div className="space-y-5">
-      <div className="rounded-lg border bg-card p-5">
+    <div className="space-y-4 sm:space-y-5">
+      <div className="rounded-lg border bg-card p-4 sm:p-5">
         <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Employee Self Service</p>
-        <h1 className="mt-2 text-2xl font-semibold tracking-tight">ESS Portal</h1>
+        <h1 className="mt-2 text-xl font-semibold tracking-tight sm:text-2xl">ESS Portal</h1>
         <p className="mt-1 text-sm text-muted-foreground">Payslips, leave, attendance, documents, goals, tickets, and assigned assets.</p>
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
+      <div className="grid gap-3 sm:gap-4 lg:grid-cols-[1.1fr_0.9fr]">
         <Card>
-          <CardContent className="p-5">
+          <CardContent className="p-4 sm:p-5">
             <div className="mb-2 flex justify-between text-sm"><span>Profile completeness</span><span className="font-semibold">{completeness.data?.percent ?? 0}%</span></div>
             <div className="h-2 rounded-full bg-muted"><div className="h-2 rounded-full bg-primary" style={{ width: `${completeness.data?.percent ?? 0}%` }} /></div>
             {!!completeness.data?.missing?.length && <p className="mt-3 text-xs text-muted-foreground">Missing: {completeness.data.missing.slice(0, 5).join(", ")}</p>}
           </CardContent>
         </Card>
         <Card>
-          <CardContent className="grid grid-cols-2 gap-3 p-5">
+          <CardContent className="grid grid-cols-1 gap-3 p-4 sm:grid-cols-2 sm:p-5">
             {(leaveBalance.data || []).slice(0, 4).map((item: any) => (
               <div key={item.id} className="rounded-lg border p-3">
                 <p className="text-xs text-muted-foreground">{item.leave_type?.code || item.leave_type_id}</p>
@@ -47,9 +49,9 @@ export default function ESSPortalPage() {
         </Card>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         {actions.map(([label, detail, Icon, href]) => (
-          <a key={label as string} href={href as string} className="rounded-lg border bg-card p-5 shadow-sm transition hover:border-primary/50 hover:shadow-md">
+          <a key={label as string} href={href as string} className="rounded-lg border bg-card p-4 shadow-sm transition hover:border-primary/50 hover:shadow-md sm:p-5">
             <Icon className="mb-4 h-5 w-5 text-primary" />
             <p className="font-medium">{label as string}</p>
             <p className="mt-1 text-sm text-muted-foreground">{detail as string}</p>
@@ -62,7 +64,7 @@ export default function ESSPortalPage() {
           <CardHeader><CardTitle className="text-base">My Payslips</CardTitle></CardHeader>
           <CardContent className="space-y-3">
             {(summary.data?.payslips || []).map((item: any) => (
-              <div key={item.record_id} className="flex items-center justify-between rounded-lg border p-3">
+              <div key={item.record_id} className="flex flex-col gap-3 rounded-lg border p-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <p className="text-sm font-medium">{item.month}/{item.year}</p>
                   <p className="text-xs text-muted-foreground">Net {formatCurrency(Number(item.net_salary || 0))}</p>
@@ -78,7 +80,7 @@ export default function ESSPortalPage() {
           <CardHeader><CardTitle className="text-base">My Documents</CardTitle></CardHeader>
           <CardContent className="space-y-3">
             {(summary.data?.documents || []).map((item: any) => (
-              <div key={item.id} className="flex items-center justify-between rounded-lg border p-3">
+              <div key={item.id} className="flex flex-col gap-3 rounded-lg border p-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <p className="text-sm font-medium">{item.document_name || item.document_type}</p>
                   <p className="text-xs text-muted-foreground">{item.document_type}</p>

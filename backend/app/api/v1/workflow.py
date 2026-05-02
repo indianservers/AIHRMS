@@ -3,10 +3,12 @@ from datetime import datetime, time, timezone
 from decimal import Decimal
 from typing import Any
 
-from fastapi import APIRouter, Depends, Query
-from sqlalchemy.orm import Session
+from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel, ConfigDict
+from sqlalchemy import func
+from sqlalchemy.orm import Session, joinedload
 
-from app.core.deps import get_current_user, get_db
+from app.core.deps import RequirePermission, get_current_user, get_db
 from app.core.masking import user_has_permission
 from app.models.attendance import AttendanceRegularization
 from app.models.employee import Employee
@@ -14,9 +16,251 @@ from app.models.leave import LeaveRequest
 from app.models.payroll import PayrollRun, Reimbursement
 from app.models.timesheet import Timesheet
 from app.models.user import User
+from app.models.workflow_engine import WorkflowDefinition, WorkflowStepDefinition
 from app.schemas.workflow import WorkflowInboxItem, WorkflowInboxSummary
 
 router = APIRouter(prefix="/workflow", tags=["Workflow Inbox"])
+
+
+class WorkflowDefinitionPayload(BaseModel):
+    name: str
+    module: str
+    trigger_event: str
+    description: str | None = None
+
+
+class WorkflowStepPayload(BaseModel):
+    step_order: int | None = None
+    step_type: str = "Approval"
+    approver_type: str = "role"
+    approver_value: str | None = None
+    condition_expression: str | None = None
+    timeout_hours: int | None = None
+    escalation_user_id: int | None = None
+    is_required: bool = True
+
+
+class WorkflowStepOut(BaseModel):
+    id: int
+    workflow_id: int
+    step_order: int
+    step_type: str
+    approver_type: str
+    approver_value: str | None = None
+    condition_expression: str | None = None
+    timeout_hours: int | None = None
+    escalation_user_id: int | None = None
+    is_required: bool
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class WorkflowDefinitionOut(BaseModel):
+    id: int
+    name: str
+    module: str
+    trigger_event: str
+    description: str | None = None
+    is_active: bool
+    created_by: int | None = None
+    created_at: datetime | None = None
+    steps: list[WorkflowStepOut] = []
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+def _definition_or_404(db: Session, definition_id: int) -> WorkflowDefinition:
+    definition = (
+        db.query(WorkflowDefinition)
+        .options(joinedload(WorkflowDefinition.steps))
+        .filter(WorkflowDefinition.id == definition_id)
+        .first()
+    )
+    if not definition:
+        raise HTTPException(status_code=404, detail="Workflow definition not found")
+    return definition
+
+
+def _step_or_404(db: Session, definition_id: int, step_id: int) -> WorkflowStepDefinition:
+    step = (
+        db.query(WorkflowStepDefinition)
+        .filter(
+            WorkflowStepDefinition.workflow_id == definition_id,
+            WorkflowStepDefinition.id == step_id,
+        )
+        .first()
+    )
+    if not step:
+        raise HTTPException(status_code=404, detail="Workflow step not found")
+    return step
+
+
+def _renumber_steps(db: Session, definition_id: int) -> None:
+    steps = (
+        db.query(WorkflowStepDefinition)
+        .filter(WorkflowStepDefinition.workflow_id == definition_id)
+        .order_by(WorkflowStepDefinition.step_order, WorkflowStepDefinition.id)
+        .all()
+    )
+    for index, step in enumerate(steps, start=1):
+        step.step_order = index
+
+
+@router.get("/definitions", response_model=list[WorkflowDefinitionOut])
+def list_workflow_definitions(
+    module: str | None = Query(None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(RequirePermission("company_manage")),
+):
+    query = db.query(WorkflowDefinition).options(joinedload(WorkflowDefinition.steps))
+    if module:
+        query = query.filter(WorkflowDefinition.module == module)
+    return query.order_by(WorkflowDefinition.module, WorkflowDefinition.name).all()
+
+
+@router.post("/definitions", response_model=WorkflowDefinitionOut, status_code=201)
+def create_workflow_definition(
+    data: WorkflowDefinitionPayload,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(RequirePermission("company_manage")),
+):
+    definition = WorkflowDefinition(**data.model_dump(), created_by=current_user.id)
+    db.add(definition)
+    db.commit()
+    db.refresh(definition)
+    return definition
+
+
+@router.get("/definitions/{definition_id}", response_model=WorkflowDefinitionOut)
+def get_workflow_definition(
+    definition_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(RequirePermission("company_manage")),
+):
+    return _definition_or_404(db, definition_id)
+
+
+@router.put("/definitions/{definition_id}", response_model=WorkflowDefinitionOut)
+def update_workflow_definition(
+    definition_id: int,
+    data: WorkflowDefinitionPayload,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(RequirePermission("company_manage")),
+):
+    definition = _definition_or_404(db, definition_id)
+    for field, value in data.model_dump().items():
+        setattr(definition, field, value)
+    db.commit()
+    db.refresh(definition)
+    return definition
+
+
+@router.delete("/definitions/{definition_id}", response_model=WorkflowDefinitionOut)
+def delete_workflow_definition(
+    definition_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(RequirePermission("company_manage")),
+):
+    definition = _definition_or_404(db, definition_id)
+    definition.is_active = False
+    db.commit()
+    db.refresh(definition)
+    return definition
+
+
+@router.get("/definitions/{definition_id}/steps", response_model=list[WorkflowStepOut])
+def list_workflow_steps(
+    definition_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(RequirePermission("company_manage")),
+):
+    _definition_or_404(db, definition_id)
+    return (
+        db.query(WorkflowStepDefinition)
+        .filter(WorkflowStepDefinition.workflow_id == definition_id)
+        .order_by(WorkflowStepDefinition.step_order, WorkflowStepDefinition.id)
+        .all()
+    )
+
+
+@router.post("/definitions/{definition_id}/steps", response_model=WorkflowStepOut, status_code=201)
+def add_workflow_step(
+    definition_id: int,
+    data: WorkflowStepPayload,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(RequirePermission("company_manage")),
+):
+    _definition_or_404(db, definition_id)
+    step_data = data.model_dump()
+    if step_data["step_order"] is None:
+        step_data["step_order"] = (
+            db.query(func.coalesce(func.max(WorkflowStepDefinition.step_order), 0))
+            .filter(WorkflowStepDefinition.workflow_id == definition_id)
+            .scalar()
+            + 1
+        )
+    step = WorkflowStepDefinition(workflow_id=definition_id, **step_data)
+    db.add(step)
+    db.commit()
+    db.refresh(step)
+    return step
+
+
+@router.put("/definitions/{definition_id}/steps/{step_id}", response_model=WorkflowStepOut)
+def update_workflow_step(
+    definition_id: int,
+    step_id: int,
+    data: WorkflowStepPayload,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(RequirePermission("company_manage")),
+):
+    step = _step_or_404(db, definition_id, step_id)
+    for field, value in data.model_dump().items():
+        setattr(step, field, value)
+    db.commit()
+    db.refresh(step)
+    return step
+
+
+@router.delete("/definitions/{definition_id}/steps/{step_id}", response_model=list[WorkflowStepOut])
+def delete_workflow_step(
+    definition_id: int,
+    step_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(RequirePermission("company_manage")),
+):
+    step = _step_or_404(db, definition_id, step_id)
+    db.delete(step)
+    db.flush()
+    _renumber_steps(db, definition_id)
+    db.commit()
+    return list_workflow_steps(definition_id, db, current_user)
+
+
+@router.post("/definitions/{definition_id}/activate", response_model=WorkflowDefinitionOut)
+def activate_workflow_definition(
+    definition_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(RequirePermission("company_manage")),
+):
+    definition = _definition_or_404(db, definition_id)
+    definition.is_active = True
+    db.commit()
+    db.refresh(definition)
+    return definition
+
+
+@router.post("/definitions/{definition_id}/deactivate", response_model=WorkflowDefinitionOut)
+def deactivate_workflow_definition(
+    definition_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(RequirePermission("company_manage")),
+):
+    definition = _definition_or_404(db, definition_id)
+    definition.is_active = False
+    db.commit()
+    db.refresh(definition)
+    return definition
 
 
 def _role_name(user: User) -> str:
@@ -238,7 +482,9 @@ def workflow_inbox(
                 )
 
         if can_approve_payroll:
-            payroll_rows = db.query(PayrollRun).filter(PayrollRun.status == "Completed").order_by(PayrollRun.created_at.asc()).limit(50).all()
+            payroll_rows = db.query(PayrollRun).filter(
+                PayrollRun.status.in_(["calculated", "Completed"])
+            ).order_by(PayrollRun.created_at.asc()).limit(50).all()
             for row in payroll_rows:
                 _add_item(
                     items,

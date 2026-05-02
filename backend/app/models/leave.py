@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Boolean, ForeignKey, DateTime, Date, Numeric, Text, Index
+from sqlalchemy import CheckConstraint, Column, Integer, String, Boolean, ForeignKey, DateTime, Date, Numeric, Text, Index
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from app.db.base_class import Base
@@ -6,12 +6,19 @@ from app.db.base_class import Base
 
 class LeaveType(Base):
     __tablename__ = "leave_types"
+    __table_args__ = (
+        CheckConstraint(
+            "accrual_frequency IN ('daily','weekly','monthly','quarterly','annual')",
+            name="ck_leave_type_accrual_frequency",
+        ),
+    )
 
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String(100), nullable=False)
     code = Column(String(20), unique=True, nullable=False)
     description = Column(Text)
     days_allowed = Column(Numeric(5, 1), nullable=False)
+    accrual_frequency = Column(String(20), default="annual", nullable=False)  # daily, weekly, monthly, quarterly, annual
     carry_forward = Column(Boolean, default=False)
     carry_forward_limit = Column(Numeric(5, 1), default=0)
     encashable = Column(Boolean, default=False)
@@ -50,9 +57,12 @@ class LeaveRequest(Base):
     __table_args__ = (
         Index("idx_leave_request_status", "status", "employee_id"),
         Index("idx_leave_request_active_status", "deleted_at", "status", "employee_id"),
+        Index("idx_leave_request_company_status", "company_id", "status", "employee_id"),
+        Index("idx_leave_request_company_active_status", "company_id", "deleted_at", "status", "employee_id"),
     )
 
     id = Column(Integer, primary_key=True, index=True)
+    company_id = Column(Integer, ForeignKey("companies.id", ondelete="SET NULL"), nullable=True, index=True)
     employee_id = Column(Integer, ForeignKey("employees.id", ondelete="CASCADE"), nullable=False)
     leave_type_id = Column(Integer, ForeignKey("leave_types.id", ondelete="CASCADE"), nullable=False)
     from_date = Column(Date, nullable=False)

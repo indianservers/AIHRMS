@@ -4,6 +4,7 @@ from typing import List, Optional
 import csv
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
 from fastapi.responses import StreamingResponse
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 from app.core.deps import get_db, get_current_user, RequirePermission
 from app.core.masking import mask_employee_detail, mask_employee_list_item
@@ -91,6 +92,19 @@ def employee_stats(
     current_user: User = Depends(RequirePermission("employee_view")),
 ):
     return crud_employee.get_headcount_stats(db)
+
+
+@router.get("/count")
+def employee_count(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(RequirePermission("employee_view")),
+):
+    total = db.query(func.count(Employee.id)).filter(Employee.deleted_at.is_(None)).scalar() or 0
+    active = db.query(func.count(Employee.id)).filter(
+        Employee.deleted_at.is_(None),
+        Employee.status.in_(["Active", "Probation"]),
+    ).scalar() or 0
+    return {"total": total, "active": active}
 
 
 @router.get("/documents/expiring", response_model=List[EmployeeDocumentSchema])

@@ -67,12 +67,56 @@ def test_create_leave_type(client, superuser_headers):
         "name": "Sick Leave",
         "code": "SL001",
         "days_allowed": 10,
+        "accrual_frequency": "monthly",
         "carry_forward": False,
     }, headers=superuser_headers)
     assert response.status_code == 201
     data = response.json()
     assert data["name"] == "Sick Leave"
     assert data["code"] == "SL001"
+    assert data["accrual_frequency"] == "monthly"
+
+
+def test_scheduled_leave_accruals_are_idempotent(db):
+    from app.crud.crud_leave import run_scheduled_leave_accruals
+    from app.models.employee import Employee
+    from app.models.leave import LeaveBalance, LeaveBalanceLedger, LeaveType
+
+    employee = Employee(
+        employee_id=f"ACCRUAL{id(db)}",
+        first_name="Accrual",
+        last_name="Tester",
+        date_of_joining=date(2025, 1, 1),
+        status="Active",
+    )
+    leave_type = LeaveType(
+        name="Monthly Earned",
+        code=f"ME{id(db)}",
+        days_allowed=Decimal("12"),
+        accrual_frequency="monthly",
+        carry_forward=True,
+    )
+    db.add_all([employee, leave_type])
+    db.commit()
+
+    result = run_scheduled_leave_accruals(db, date(2026, 5, 1))
+    assert result["credited"] == 1
+
+    balance = db.query(LeaveBalance).filter_by(employee_id=employee.id, leave_type_id=leave_type.id, year=2026).first()
+    assert balance.allocated == Decimal("1.0")
+    assert db.query(LeaveBalanceLedger).filter_by(leave_balance_id=balance.id, transaction_type="scheduled_accrual").count() == 1
+
+    rerun = run_scheduled_leave_accruals(db, date(2026, 5, 1))
+    db.refresh(balance)
+    assert rerun["credited"] == 0
+    assert balance.allocated == Decimal("1.0")
+
+
+def test_leave_accrual_celery_beat_is_registered():
+    from app.worker import celery_app
+
+    schedule = celery_app.conf.beat_schedule["credit-scheduled-leave-accruals-daily"]
+    assert schedule["task"] == "app.worker.credit_scheduled_leave_accruals"
 
 
 def test_leave_balance_check(client, db):

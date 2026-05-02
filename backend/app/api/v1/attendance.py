@@ -4,15 +4,17 @@ import json
 import math
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 from app.core.deps import get_db, get_current_user, RequirePermission
 from app.crud.crud_attendance import crud_attendance, crud_holiday
 from app.models.user import User
 from app.models.attendance import (
     Shift, ShiftRosterAssignment, ShiftWeeklyOff, AttendanceRegularization, Holiday,
-    OvertimeRequest, AttendancePunch, AttendanceMonthLock, BiometricDevice,
+    Attendance, OvertimeRequest, AttendancePunch, AttendanceMonthLock, BiometricDevice,
     BiometricImportBatch, GeoAttendancePolicy, AttendancePunchProof,
 )
+from app.models.employee import Employee
 from app.schemas.attendance import (
     ShiftCreate, ShiftSchema,
     ShiftRosterAssignmentCreate, ShiftRosterAssignmentSchema,
@@ -47,6 +49,33 @@ def _distance_meters(lat1: Decimal, lon1: Decimal, lat2: Decimal, lon2: Decimal)
     delta_lambda = math.radians(float(lon2 - lon1))
     a = math.sin(delta_phi / 2) ** 2 + math.cos(phi1) * math.cos(phi2) * math.sin(delta_lambda / 2) ** 2
     return radius * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+
+
+@router.get("/today-summary")
+def today_attendance_summary(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(RequirePermission("attendance_view")),
+):
+    today = date.today()
+    total_employees = db.query(func.count(Employee.id)).filter(
+        Employee.deleted_at.is_(None),
+        Employee.status.in_(["Active", "Probation"]),
+    ).scalar() or 0
+    present = db.query(func.count(Attendance.id)).filter(
+        Attendance.attendance_date == today,
+        Attendance.status.in_(["Present", "WFH", "Half-day"]),
+    ).scalar() or 0
+    on_leave = db.query(func.count(Attendance.id)).filter(
+        Attendance.attendance_date == today,
+        Attendance.status == "On Leave",
+    ).scalar() or 0
+    return {
+        "date": today.isoformat(),
+        "present": present,
+        "on_leave": on_leave,
+        "absent": max(total_employees - present - on_leave, 0),
+        "total_employees": total_employees,
+    }
 
 
 # ── Shifts ───────────────────────────────────────────────────────────────────

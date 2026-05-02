@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { CalendarDays, Plus, CheckCircle2, XCircle, RefreshCw, ChevronLeft, ChevronRight } from "lucide-react";
 import { useForm } from "react-hook-form";
@@ -64,6 +64,7 @@ interface ApplyForm {
 }
 
 export default function LeavePage() {
+  useEffect(() => { document.title = "Leave · AI HRMS"; }, []);
   const qc = useQueryClient();
   const { user } = useAuthStore();
   const roleKey = getRoleKey(user?.role, user?.is_superuser);
@@ -176,19 +177,19 @@ export default function LeavePage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="page-title">Leave Management</h1>
           <p className="page-description">Employees apply for leave, HR or managers approve or reject with a reason.</p>
         </div>
-        <Button size="sm" onClick={() => setShowApplyForm((v) => !v)}>
+        <Button size="sm" className="w-full sm:w-auto" onClick={() => setShowApplyForm((v) => !v)}>
           <Plus className="mr-2 h-4 w-4" />
           Apply Leave
         </Button>
       </div>
 
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 sm:gap-4 lg:grid-cols-4">
         {loadingBalance
           ? Array.from({ length: 4 }).map((_, i) => (
               <Card key={i}><CardContent className="p-4"><div className="h-12 skeleton rounded" /></CardContent></Card>
@@ -280,7 +281,7 @@ export default function LeavePage() {
         </Card>
       )}
 
-      <div className="flex gap-2 border-b">
+      <div className="flex gap-2 overflow-x-auto border-b">
         {tabs.map((tab) => (
           <button
             key={tab}

@@ -25,7 +25,7 @@ class CRUDAttendance(CRUDBase):
         )
         if roster:
             return roster.shift
-        employee = db.query(Employee).filter(Employee.id == employee_id).first()
+        employee = db.query(Employee).filter(Employee.id == employee_id, Employee.deleted_at.is_(None)).first()
         if employee and employee.shift_id:
             return db.query(Shift).filter(Shift.id == employee.shift_id).first()
         return None
@@ -257,7 +257,10 @@ class CRUDAttendance(CRUDBase):
 
     def get_team_attendance(self, db: Session, manager_employee_id: int, attendance_date: date) -> List[dict]:
         from app.models.employee import Employee
-        team = db.query(Employee).filter(Employee.reporting_manager_id == manager_employee_id).all()
+        team = db.query(Employee).filter(
+            Employee.reporting_manager_id == manager_employee_id,
+            Employee.deleted_at.is_(None),
+        ).all()
         result = []
         for emp in team:
             att = (

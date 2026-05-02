@@ -11,6 +11,74 @@ from app.models.payroll import (
 )
 
 
+PAYROLL_RUN_STATUS_DRAFT = "draft"
+PAYROLL_RUN_STATUS_INPUTS_PENDING = "inputs_pending"
+PAYROLL_RUN_STATUS_CALCULATED = "calculated"
+PAYROLL_RUN_STATUS_APPROVED = "approved"
+PAYROLL_RUN_STATUS_LOCKED = "locked"
+PAYROLL_RUN_STATUS_PAID = "paid"
+
+PAYROLL_RUN_STATUSES = (
+    PAYROLL_RUN_STATUS_DRAFT,
+    PAYROLL_RUN_STATUS_INPUTS_PENDING,
+    PAYROLL_RUN_STATUS_CALCULATED,
+    PAYROLL_RUN_STATUS_APPROVED,
+    PAYROLL_RUN_STATUS_LOCKED,
+    PAYROLL_RUN_STATUS_PAID,
+)
+
+PAYROLL_RUN_TRANSITIONS = {
+    PAYROLL_RUN_STATUS_DRAFT: {PAYROLL_RUN_STATUS_INPUTS_PENDING},
+    PAYROLL_RUN_STATUS_INPUTS_PENDING: {PAYROLL_RUN_STATUS_CALCULATED, PAYROLL_RUN_STATUS_DRAFT},
+    PAYROLL_RUN_STATUS_CALCULATED: {PAYROLL_RUN_STATUS_APPROVED, PAYROLL_RUN_STATUS_INPUTS_PENDING},
+    PAYROLL_RUN_STATUS_APPROVED: {PAYROLL_RUN_STATUS_LOCKED, PAYROLL_RUN_STATUS_CALCULATED},
+    PAYROLL_RUN_STATUS_LOCKED: {PAYROLL_RUN_STATUS_PAID},
+    PAYROLL_RUN_STATUS_PAID: set(),
+}
+
+LEGACY_PAYROLL_RUN_STATUS_MAP = {
+    "draft": PAYROLL_RUN_STATUS_DRAFT,
+    "processing": PAYROLL_RUN_STATUS_INPUTS_PENDING,
+    "inputs pending": PAYROLL_RUN_STATUS_INPUTS_PENDING,
+    "inputs_pending": PAYROLL_RUN_STATUS_INPUTS_PENDING,
+    "completed": PAYROLL_RUN_STATUS_CALCULATED,
+    "calculated": PAYROLL_RUN_STATUS_CALCULATED,
+    "approved": PAYROLL_RUN_STATUS_APPROVED,
+    "locked": PAYROLL_RUN_STATUS_LOCKED,
+    "paid": PAYROLL_RUN_STATUS_PAID,
+}
+
+
+def normalize_payroll_run_status(status: str | None) -> str:
+    normalized = (status or PAYROLL_RUN_STATUS_DRAFT).strip().lower()
+    normalized = LEGACY_PAYROLL_RUN_STATUS_MAP.get(normalized, normalized)
+    if normalized not in PAYROLL_RUN_STATUSES:
+        raise ValueError(f"Invalid payroll run status '{status}'")
+    return normalized
+
+
+def validate_payroll_run_transition(current_status: str | None, next_status: str) -> tuple[str, str]:
+    current = normalize_payroll_run_status(current_status)
+    target = normalize_payroll_run_status(next_status)
+    if current == target:
+        return current, target
+    if target not in PAYROLL_RUN_TRANSITIONS[current]:
+        allowed = ", ".join(sorted(PAYROLL_RUN_TRANSITIONS[current])) or "no further status"
+        raise ValueError(f"Invalid payroll run status transition: {current} -> {target}. Allowed next: {allowed}")
+    return current, target
+
+
+def transition_payroll_run_status(payroll_run: PayrollRun, next_status: str) -> PayrollRun:
+    _, target = validate_payroll_run_transition(payroll_run.status, next_status)
+    payroll_run.status = target
+    return payroll_run
+
+
+def coerce_payroll_run_status(payroll_run: PayrollRun) -> PayrollRun:
+    payroll_run.status = normalize_payroll_run_status(payroll_run.status)
+    return payroll_run
+
+
 def _money(value: Decimal) -> Decimal:
     return (value or Decimal("0")).quantize(Decimal("0.01"))
 
@@ -80,8 +148,10 @@ def run_payroll(db: Session, month: int, year: int, run_by_user_id: int) -> Payr
         and_(PayrollRun.month == month, PayrollRun.year == year, PayrollRun.deleted_at.is_(None))
     ).first()
 
-    if payroll_run and payroll_run.status == "Locked":
-        raise ValueError("Payroll is already locked for this period")
+    if payroll_run:
+        coerce_payroll_run_status(payroll_run)
+        if payroll_run.status in {PAYROLL_RUN_STATUS_APPROVED, PAYROLL_RUN_STATUS_LOCKED, PAYROLL_RUN_STATUS_PAID}:
+            raise ValueError(f"Payroll run cannot be recalculated from status '{payroll_run.status}'")
 
     if payroll_run:
         payroll_run.pay_period_start = payroll_run.pay_period_start or period_start
@@ -94,10 +164,13 @@ def run_payroll(db: Session, month: int, year: int, run_by_user_id: int) -> Payr
             pay_period_start=period_start,
             pay_period_end=period_end,
             run_date=date.today(),
-            status="Processing",
+            status=PAYROLL_RUN_STATUS_DRAFT,
         )
         db.add(payroll_run)
         db.flush()
+
+    if payroll_run.status == PAYROLL_RUN_STATUS_DRAFT:
+        transition_payroll_run_status(payroll_run, PAYROLL_RUN_STATUS_INPUTS_PENDING)
 
     # Get all active employees
     employees = db.query(Employee).filter(
@@ -308,7 +381,7 @@ def run_payroll(db: Session, month: int, year: int, run_by_user_id: int) -> Payr
     payroll_run.total_gross = total_gross
     payroll_run.total_deductions = total_deductions
     payroll_run.total_net = total_net
-    payroll_run.status = "Completed"
+    transition_payroll_run_status(payroll_run, PAYROLL_RUN_STATUS_CALCULATED)
     db.commit()
     db.refresh(payroll_run)
     return payroll_run

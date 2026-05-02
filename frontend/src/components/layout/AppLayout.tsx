@@ -4,6 +4,7 @@ import Sidebar from "./Sidebar";
 import Topbar from "./Topbar";
 import BackToTop from "@/components/app/BackToTop";
 import Breadcrumbs from "@/components/app/Breadcrumbs";
+import ErrorBoundary from "@/components/app/ErrorBoundary";
 import SessionTimeoutWarning from "@/components/app/SessionTimeoutWarning";
 
 export default function AppLayout() {
@@ -29,7 +30,9 @@ export default function AppLayout() {
         <Topbar onMenuClick={() => setSidebarOpen(true)} />
         <main className="flex-1 overflow-y-auto p-4 md:p-6 lg:p-8 animate-fade-in">
           <Breadcrumbs />
-          <Outlet />
+          <ErrorBoundary>
+            <Outlet />
+          </ErrorBoundary>
         </main>
         <BackToTop />
         <SessionTimeoutWarning />

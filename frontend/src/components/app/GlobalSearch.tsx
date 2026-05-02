@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, KeyboardEvent as ReactKeyboardEvent, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { Search } from "lucide-react";
@@ -11,6 +11,7 @@ export default function GlobalSearch() {
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
+  const [focusedIndex, setFocusedIndex] = useState(-1);
   const enabled = open && query.trim().length >= 2;
   const { data } = useQuery({
     queryKey: ["global-search", query],
@@ -25,6 +26,10 @@ export default function GlobalSearch() {
     { type: "Page", title: "Org Chart", subtitle: "Company hierarchy", url: "/company" },
   ], []);
   const results: Result[] = enabled ? (data?.results || []) : staticResults;
+
+  useEffect(() => {
+    setFocusedIndex(-1);
+  }, [query]);
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -42,9 +47,21 @@ export default function GlobalSearch() {
 
   function submit(event: FormEvent) {
     event.preventDefault();
-    if (results[0]) {
-      navigate(results[0].url);
+    const selected = (focusedIndex >= 0 ? results[focusedIndex] : undefined) || results[0];
+    if (selected) {
+      navigate(selected.url);
       setOpen(false);
+    }
+  }
+
+  function handleSearchKeyDown(event: ReactKeyboardEvent<HTMLInputElement>) {
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      setFocusedIndex((current) => (results.length ? (current + 1) % results.length : -1));
+    }
+    if (event.key === "ArrowUp") {
+      event.preventDefault();
+      setFocusedIndex((current) => (results.length ? (current <= 0 ? results.length - 1 : current - 1) : -1));
     }
   }
 
@@ -64,14 +81,14 @@ export default function GlobalSearch() {
             <form onSubmit={submit} className="border-b p-3">
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                <Input autoFocus value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search anything..." className="border-0 pl-9 text-base focus-visible:ring-0" />
+                <Input autoFocus value={query} onChange={(e) => setQuery(e.target.value)} onKeyDown={handleSearchKeyDown} placeholder="Search anything..." className="border-0 pl-9 text-base focus-visible:ring-0" />
               </div>
             </form>
             <div className="max-h-[420px] overflow-y-auto p-2">
               {results.length ? results.map((item, index) => (
                 <button
                   key={`${item.type}-${item.title}-${index}`}
-                  className="flex w-full items-center justify-between rounded-md p-3 text-left hover:bg-muted"
+                  className={`flex w-full items-center justify-between rounded-md p-3 text-left hover:bg-muted ${focusedIndex === index ? "bg-accent" : ""}`}
                   onClick={() => {
                     navigate(item.url);
                     setOpen(false);
