@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Boolean, ForeignKey, DateTime, Text
+from sqlalchemy import Column, Integer, String, Boolean, ForeignKey, DateTime, Date, Numeric, Text, JSON
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from app.db.base_class import Base
@@ -55,6 +55,157 @@ class Branch(Base):
     employees = relationship("Employee", back_populates="branch")
 
 
+class BusinessUnit(Base):
+    __tablename__ = "business_units"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(150), nullable=False, index=True)
+    code = Column(String(40), nullable=False, unique=True, index=True)
+    company_id = Column(Integer, ForeignKey("companies.id", ondelete="CASCADE"), nullable=False, index=True)
+    parent_id = Column(Integer, ForeignKey("business_units.id", ondelete="SET NULL"), nullable=True)
+    head_employee_id = Column(Integer, ForeignKey("employees.id", ondelete="SET NULL", use_alter=True), nullable=True)
+    description = Column(Text)
+    is_active = Column(Boolean, default=True, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    company = relationship("Company")
+    parent = relationship("BusinessUnit", remote_side=[id])
+
+
+class CostCenter(Base):
+    __tablename__ = "cost_centers"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(150), nullable=False, index=True)
+    code = Column(String(40), nullable=False, unique=True, index=True)
+    company_id = Column(Integer, ForeignKey("companies.id", ondelete="CASCADE"), nullable=False, index=True)
+    business_unit_id = Column(Integer, ForeignKey("business_units.id", ondelete="SET NULL"), nullable=True, index=True)
+    owner_employee_id = Column(Integer, ForeignKey("employees.id", ondelete="SET NULL", use_alter=True), nullable=True)
+    budget_amount = Column(Numeric(14, 2), default=0)
+    is_active = Column(Boolean, default=True, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    company = relationship("Company")
+    business_unit = relationship("BusinessUnit")
+
+
+class WorkLocation(Base):
+    __tablename__ = "work_locations"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(150), nullable=False, index=True)
+    code = Column(String(40), nullable=False, unique=True, index=True)
+    company_id = Column(Integer, ForeignKey("companies.id", ondelete="CASCADE"), nullable=False, index=True)
+    branch_id = Column(Integer, ForeignKey("branches.id", ondelete="SET NULL"), nullable=True, index=True)
+    location_type = Column(String(50), default="Office")
+    address = Column(Text)
+    city = Column(String(100))
+    state = Column(String(100))
+    country = Column(String(100), default="India")
+    latitude = Column(Numeric(10, 7))
+    longitude = Column(Numeric(10, 7))
+    radius_meters = Column(Integer, default=200)
+    is_active = Column(Boolean, default=True, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    company = relationship("Company")
+    branch = relationship("Branch")
+
+
+class GradeBand(Base):
+    __tablename__ = "grade_bands"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(120), nullable=False, index=True)
+    code = Column(String(40), nullable=False, unique=True, index=True)
+    level = Column(Integer, default=1)
+    min_ctc = Column(Numeric(14, 2))
+    max_ctc = Column(Numeric(14, 2))
+    currency = Column(String(10), default="INR")
+    is_active = Column(Boolean, default=True, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class JobFamily(Base):
+    __tablename__ = "job_families"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(150), nullable=False, index=True)
+    code = Column(String(40), nullable=False, unique=True, index=True)
+    description = Column(Text)
+    is_active = Column(Boolean, default=True, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class JobProfile(Base):
+    __tablename__ = "job_profiles"
+
+    id = Column(Integer, primary_key=True, index=True)
+    title = Column(String(150), nullable=False, index=True)
+    code = Column(String(40), nullable=False, unique=True, index=True)
+    job_family_id = Column(Integer, ForeignKey("job_families.id", ondelete="SET NULL"), nullable=True, index=True)
+    grade_band_id = Column(Integer, ForeignKey("grade_bands.id", ondelete="SET NULL"), nullable=True, index=True)
+    description = Column(Text)
+    responsibilities = Column(Text)
+    required_skills_json = Column(JSON)
+    is_active = Column(Boolean, default=True, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    job_family = relationship("JobFamily")
+    grade_band = relationship("GradeBand")
+
+
+class Position(Base):
+    __tablename__ = "positions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    position_code = Column(String(50), nullable=False, unique=True, index=True)
+    title = Column(String(150), nullable=False)
+    company_id = Column(Integer, ForeignKey("companies.id", ondelete="CASCADE"), nullable=False, index=True)
+    business_unit_id = Column(Integer, ForeignKey("business_units.id", ondelete="SET NULL"), nullable=True, index=True)
+    cost_center_id = Column(Integer, ForeignKey("cost_centers.id", ondelete="SET NULL"), nullable=True, index=True)
+    location_id = Column(Integer, ForeignKey("work_locations.id", ondelete="SET NULL"), nullable=True, index=True)
+    department_id = Column(Integer, ForeignKey("departments.id", ondelete="SET NULL"), nullable=True, index=True)
+    designation_id = Column(Integer, ForeignKey("designations.id", ondelete="SET NULL"), nullable=True, index=True)
+    job_profile_id = Column(Integer, ForeignKey("job_profiles.id", ondelete="SET NULL"), nullable=True, index=True)
+    grade_band_id = Column(Integer, ForeignKey("grade_bands.id", ondelete="SET NULL"), nullable=True, index=True)
+    manager_position_id = Column(Integer, ForeignKey("positions.id", ondelete="SET NULL"), nullable=True)
+    incumbent_employee_id = Column(Integer, ForeignKey("employees.id", ondelete="SET NULL", use_alter=True), nullable=True, index=True)
+    status = Column(String(30), default="Vacant", index=True)
+    budgeted_ctc = Column(Numeric(14, 2))
+    effective_from = Column(Date)
+    effective_to = Column(Date)
+    is_active = Column(Boolean, default=True, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    company = relationship("Company")
+    business_unit = relationship("BusinessUnit")
+    cost_center = relationship("CostCenter")
+    location = relationship("WorkLocation")
+    manager_position = relationship("Position", remote_side=[id])
+
+
+class HeadcountPlan(Base):
+    __tablename__ = "headcount_plans"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(150), nullable=False)
+    financial_year = Column(String(20), nullable=False, index=True)
+    company_id = Column(Integer, ForeignKey("companies.id", ondelete="CASCADE"), nullable=False, index=True)
+    business_unit_id = Column(Integer, ForeignKey("business_units.id", ondelete="SET NULL"), nullable=True, index=True)
+    department_id = Column(Integer, ForeignKey("departments.id", ondelete="SET NULL"), nullable=True, index=True)
+    planned_headcount = Column(Integer, default=0)
+    approved_headcount = Column(Integer, default=0)
+    planned_budget = Column(Numeric(14, 2), default=0)
+    status = Column(String(30), default="Draft", index=True)
+    approved_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    approved_at = Column(DateTime(timezone=True))
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    company = relationship("Company")
+    business_unit = relationship("BusinessUnit")
+
+
 class Department(Base):
     __tablename__ = "departments"
 
@@ -62,7 +213,7 @@ class Department(Base):
     name = Column(String(150), nullable=False, index=True)
     code = Column(String(20))
     branch_id = Column(Integer, ForeignKey("branches.id", ondelete="CASCADE"), nullable=False)
-    head_employee_id = Column(Integer, ForeignKey("employees.id", ondelete="SET NULL"), nullable=True)
+    head_employee_id = Column(Integer, ForeignKey("employees.id", ondelete="SET NULL", use_alter=True), nullable=True)
     description = Column(Text)
     is_active = Column(Boolean, default=True)
 

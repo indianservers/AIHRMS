@@ -1,15 +1,28 @@
+from datetime import datetime, timezone
 from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+import os
+import shutil
+import uuid
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 from app.core.deps import get_db, RequirePermission
-from app.models.company import Company, Branch, Department, Designation
+from app.core.config import settings
+from app.models.company import (
+    Company, Branch, Department, Designation, BusinessUnit, CostCenter, WorkLocation,
+    GradeBand, JobFamily, JobProfile, Position, HeadcountPlan,
+)
+from app.models.employee import Employee
 from app.models.user import User
 from app.schemas.company import (
     CompanyCreate, CompanyUpdate, CompanySchema,
     BranchCreate, BranchUpdate, BranchSchema,
     DepartmentCreate, DepartmentUpdate, DepartmentSchema,
     DesignationCreate, DesignationUpdate, DesignationSchema,
+    BusinessUnitCreate, BusinessUnitSchema, CostCenterCreate, CostCenterSchema,
+    WorkLocationCreate, WorkLocationSchema, GradeBandCreate, GradeBandSchema,
+    JobFamilyCreate, JobFamilySchema, JobProfileCreate, JobProfileSchema,
+    PositionCreate, PositionSchema, HeadcountPlanCreate, HeadcountPlanSchema,
 )
 
 router = APIRouter(prefix="/company", tags=["Company Setup"])
@@ -319,6 +332,192 @@ def delete_designation(
     return {"message": "Designation deactivated"}
 
 
+def _create_org_master(db: Session, model, data):
+    item = model(**data.model_dump())
+    db.add(item)
+    db.commit()
+    db.refresh(item)
+    return item
+
+
+def _list_active(db: Session, model):
+    return db.query(model).filter(model.is_active == True).order_by(model.id.desc()).all()
+
+
+@router.post("/business-units", response_model=BusinessUnitSchema, status_code=201)
+def create_business_unit(data: BusinessUnitCreate, db: Session = Depends(get_db), current_user: User = Depends(RequirePermission("company_manage"))):
+    _active_company(db, data.company_id)
+    return _create_org_master(db, BusinessUnit, data)
+
+
+@router.get("/business-units", response_model=List[BusinessUnitSchema])
+def list_business_units(db: Session = Depends(get_db), current_user: User = Depends(RequirePermission("company_view"))):
+    return _list_active(db, BusinessUnit)
+
+
+@router.post("/cost-centers", response_model=CostCenterSchema, status_code=201)
+def create_cost_center(data: CostCenterCreate, db: Session = Depends(get_db), current_user: User = Depends(RequirePermission("company_manage"))):
+    _active_company(db, data.company_id)
+    return _create_org_master(db, CostCenter, data)
+
+
+@router.get("/cost-centers", response_model=List[CostCenterSchema])
+def list_cost_centers(db: Session = Depends(get_db), current_user: User = Depends(RequirePermission("company_view"))):
+    return _list_active(db, CostCenter)
+
+
+@router.post("/locations", response_model=WorkLocationSchema, status_code=201)
+def create_work_location(data: WorkLocationCreate, db: Session = Depends(get_db), current_user: User = Depends(RequirePermission("company_manage"))):
+    _active_company(db, data.company_id)
+    return _create_org_master(db, WorkLocation, data)
+
+
+@router.get("/locations", response_model=List[WorkLocationSchema])
+def list_work_locations(db: Session = Depends(get_db), current_user: User = Depends(RequirePermission("company_view"))):
+    return _list_active(db, WorkLocation)
+
+
+@router.post("/grade-bands", response_model=GradeBandSchema, status_code=201)
+def create_grade_band(data: GradeBandCreate, db: Session = Depends(get_db), current_user: User = Depends(RequirePermission("company_manage"))):
+    return _create_org_master(db, GradeBand, data)
+
+
+@router.get("/grade-bands", response_model=List[GradeBandSchema])
+def list_grade_bands(db: Session = Depends(get_db), current_user: User = Depends(RequirePermission("company_view"))):
+    return _list_active(db, GradeBand)
+
+
+@router.post("/job-families", response_model=JobFamilySchema, status_code=201)
+def create_job_family(data: JobFamilyCreate, db: Session = Depends(get_db), current_user: User = Depends(RequirePermission("company_manage"))):
+    return _create_org_master(db, JobFamily, data)
+
+
+@router.get("/job-families", response_model=List[JobFamilySchema])
+def list_job_families(db: Session = Depends(get_db), current_user: User = Depends(RequirePermission("company_view"))):
+    return _list_active(db, JobFamily)
+
+
+@router.post("/job-profiles", response_model=JobProfileSchema, status_code=201)
+def create_job_profile(data: JobProfileCreate, db: Session = Depends(get_db), current_user: User = Depends(RequirePermission("company_manage"))):
+    return _create_org_master(db, JobProfile, data)
+
+
+@router.get("/job-profiles", response_model=List[JobProfileSchema])
+def list_job_profiles(db: Session = Depends(get_db), current_user: User = Depends(RequirePermission("company_view"))):
+    return _list_active(db, JobProfile)
+
+
+@router.post("/positions", response_model=PositionSchema, status_code=201)
+def create_position(data: PositionCreate, db: Session = Depends(get_db), current_user: User = Depends(RequirePermission("company_manage"))):
+    _active_company(db, data.company_id)
+    position = _create_org_master(db, Position, data)
+    return position
+
+
+@router.get("/positions", response_model=List[PositionSchema])
+def list_positions(status_filter: Optional[str] = Query(None, alias="status"), db: Session = Depends(get_db), current_user: User = Depends(RequirePermission("company_view"))):
+    query = db.query(Position).filter(Position.is_active == True)
+    if status_filter:
+        query = query.filter(Position.status == status_filter)
+    return query.order_by(Position.position_code).all()
+
+
+@router.get("/org-chart")
+def org_chart(
+    department_id: Optional[int] = Query(None),
+    location_id: Optional[int] = Query(None),
+    grade_band_id: Optional[int] = Query(None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(RequirePermission("company_view")),
+):
+    query = db.query(Position).filter(Position.is_active == True)
+    if department_id:
+        query = query.filter(Position.department_id == department_id)
+    if location_id:
+        query = query.filter(Position.location_id == location_id)
+    if grade_band_id:
+        query = query.filter(Position.grade_band_id == grade_band_id)
+    positions = query.order_by(Position.manager_position_id.nullsfirst(), Position.position_code).all()
+
+    employee_ids = [item.incumbent_employee_id for item in positions if item.incumbent_employee_id]
+    employees = {
+        item.id: item for item in db.query(Employee).filter(
+            Employee.id.in_(employee_ids or [0]),
+            Employee.deleted_at.is_(None),
+        ).all()
+    }
+    departments = {item.id: item.name for item in db.query(Department).all()}
+    locations = {item.id: item.name for item in db.query(WorkLocation).all()}
+    grade_bands = {item.id: item.name for item in db.query(GradeBand).all()}
+    designations = {item.id: item.name for item in db.query(Designation).all()}
+
+    return [
+        {
+            "position_id": item.id,
+            "position_code": item.position_code,
+            "title": item.title,
+            "manager_position_id": item.manager_position_id,
+            "incumbent_employee_id": item.incumbent_employee_id,
+            "employee_name": f"{employees[item.incumbent_employee_id].first_name} {employees[item.incumbent_employee_id].last_name}" if item.incumbent_employee_id in employees else None,
+            "employee_code": employees[item.incumbent_employee_id].employee_id if item.incumbent_employee_id in employees else None,
+            "profile_photo_url": employees[item.incumbent_employee_id].profile_photo_url if item.incumbent_employee_id in employees else None,
+            "department_id": item.department_id,
+            "department_name": departments.get(item.department_id),
+            "location_id": item.location_id,
+            "location_name": locations.get(item.location_id),
+            "grade_band_id": item.grade_band_id,
+            "grade_band_name": grade_bands.get(item.grade_band_id),
+            "designation_name": designations.get(item.designation_id),
+            "status": item.status,
+            "is_vacant": not item.incumbent_employee_id or item.status.lower() == "vacant",
+        }
+        for item in positions
+    ]
+
+
+@router.get("/manager-hierarchy/validate")
+def validate_manager_hierarchy(db: Session = Depends(get_db), current_user: User = Depends(RequirePermission("company_view"))):
+    errors = []
+    positions = {item.id: item.manager_position_id for item in db.query(Position).filter(Position.is_active == True).all()}
+    for position_id in positions:
+        seen = set()
+        current = position_id
+        while current:
+            if current in seen:
+                errors.append({"position_id": position_id, "error": "Manager position cycle detected"})
+                break
+            seen.add(current)
+            current = positions.get(current)
+    return {"valid": not errors, "errors": errors}
+
+
+@router.post("/headcount-plans", response_model=HeadcountPlanSchema, status_code=201)
+def create_headcount_plan(data: HeadcountPlanCreate, db: Session = Depends(get_db), current_user: User = Depends(RequirePermission("company_manage"))):
+    _active_company(db, data.company_id)
+    return _create_org_master(db, HeadcountPlan, data)
+
+
+@router.get("/headcount-plans", response_model=List[HeadcountPlanSchema])
+def list_headcount_plans(financial_year: Optional[str] = Query(None), db: Session = Depends(get_db), current_user: User = Depends(RequirePermission("company_view"))):
+    query = db.query(HeadcountPlan)
+    if financial_year:
+        query = query.filter(HeadcountPlan.financial_year == financial_year)
+    return query.order_by(HeadcountPlan.id.desc()).all()
+
+
+@router.put("/headcount-plans/{plan_id}/approve", response_model=HeadcountPlanSchema)
+def approve_headcount_plan(plan_id: int, db: Session = Depends(get_db), current_user: User = Depends(RequirePermission("company_manage"))):
+    plan = db.query(HeadcountPlan).filter(HeadcountPlan.id == plan_id).first()
+    if not plan:
+        raise HTTPException(status_code=404, detail="Headcount plan not found")
+    plan.status = "Approved"
+    plan.approved_by = current_user.id
+    plan.approved_at = datetime.now(timezone.utc)
+    db.commit()
+    db.refresh(plan)
+    return plan
+
+
 # Dynamic company routes must stay after the static organization routes above.
 @router.get("/{company_id}", response_model=CompanySchema)
 def get_company(
@@ -348,6 +547,30 @@ def update_company(
     db.commit()
     db.refresh(company)
     return company
+
+
+@router.post("/{company_id}/logo")
+async def upload_company_logo(
+    company_id: int,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(RequirePermission("company_manage")),
+):
+    company = db.query(Company).filter(Company.id == company_id, Company.is_active == True).first()
+    if not company:
+        raise HTTPException(status_code=404, detail="Company not found")
+    ext = file.filename.rsplit(".", 1)[-1].lower() if file.filename and "." in file.filename else ""
+    if ext not in {"jpg", "jpeg", "png", "webp"}:
+        raise HTTPException(status_code=400, detail="Only JPG, PNG, or WebP logos are allowed")
+    upload_path = os.path.join(settings.UPLOAD_DIR, "company_logos")
+    os.makedirs(upload_path, exist_ok=True)
+    filename = f"{company_id}_{uuid.uuid4().hex}.{ext}"
+    file_path = os.path.join(upload_path, filename)
+    with open(file_path, "wb") as target:
+        shutil.copyfileobj(file.file, target)
+    company.logo_url = f"/uploads/company_logos/{filename}"
+    db.commit()
+    return {"url": company.logo_url}
 
 
 @router.delete("/{company_id}")

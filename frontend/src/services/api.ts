@@ -70,6 +70,15 @@ export const authApi = {
   createRole: (data: unknown) => api.post("/auth/roles", data),
   updateRole: (id: number, data: unknown) => api.put(`/auth/roles/${id}`, data),
   deleteRole: (id: number) => api.delete(`/auth/roles/${id}`),
+  sessions: (params?: Record<string, unknown>) => api.get("/auth/sessions", { params }),
+  createSession: (data: unknown) => api.post("/auth/sessions", data),
+  revokeSession: (id: number) => api.put(`/auth/sessions/${id}/revoke`),
+  mfaMethods: (params?: Record<string, unknown>) => api.get("/auth/mfa-methods", { params }),
+  createMfaMethod: (data: unknown) => api.post("/auth/mfa-methods", data),
+  verifyMfaMethod: (id: number) => api.put(`/auth/mfa-methods/${id}/verify`),
+  passwordPolicies: () => api.get("/auth/password-policies"),
+  createPasswordPolicy: (data: unknown) => api.post("/auth/password-policies", data),
+  loginAttempts: (params?: Record<string, unknown>) => api.get("/auth/login-attempts", { params }),
 };
 
 export const employeeApi = {
@@ -101,12 +110,22 @@ export const employeeApi = {
     api.post(`/employees/${id}/photo`, formData, {
       headers: { "Content-Type": "multipart/form-data" },
     }),
+  profileCompleteness: () => api.get("/employees/me/completeness"),
+  changeRequests: (params?: Record<string, unknown>) =>
+    api.get("/employees/change-requests", { params }),
+  createChangeRequest: (data: unknown) => api.post("/employees/change-requests", data),
+  reviewChangeRequest: (id: number, data: unknown) =>
+    api.put(`/employees/change-requests/${id}/review`, data),
 };
 
 export const companyApi = {
   listCompanies: () => api.get("/company/"),
   createCompany: (data: unknown) => api.post("/company/", data),
   updateCompany: (id: number, data: unknown) => api.put(`/company/${id}`, data),
+  uploadLogo: (id: number, formData: FormData) =>
+    api.post(`/company/${id}/logo`, formData, {
+      headers: { "Content-Type": "multipart/form-data" },
+    }),
   deleteCompany: (id: number) => api.delete(`/company/${id}`),
   listBranches: (companyId?: number) =>
     api.get("/company/branches/", { params: { company_id: companyId } }),
@@ -124,6 +143,52 @@ export const companyApi = {
   updateDesignation: (id: number, data: unknown) =>
     api.put(`/company/designations/${id}`, data),
   deleteDesignation: (id: number) => api.delete(`/company/designations/${id}`),
+  businessUnits: () => api.get("/company/business-units"),
+  createBusinessUnit: (data: unknown) => api.post("/company/business-units", data),
+  costCenters: () => api.get("/company/cost-centers"),
+  createCostCenter: (data: unknown) => api.post("/company/cost-centers", data),
+  workLocations: () => api.get("/company/locations"),
+  createWorkLocation: (data: unknown) => api.post("/company/locations", data),
+  gradeBands: () => api.get("/company/grade-bands"),
+  createGradeBand: (data: unknown) => api.post("/company/grade-bands", data),
+  jobFamilies: () => api.get("/company/job-families"),
+  createJobFamily: (data: unknown) => api.post("/company/job-families", data),
+  jobProfiles: () => api.get("/company/job-profiles"),
+  createJobProfile: (data: unknown) => api.post("/company/job-profiles", data),
+  positions: (params?: Record<string, unknown>) => api.get("/company/positions", { params }),
+  createPosition: (data: unknown) => api.post("/company/positions", data),
+  orgChart: (params?: Record<string, unknown>) => api.get("/company/org-chart", { params }),
+  validateManagerHierarchy: () => api.get("/company/manager-hierarchy/validate"),
+  headcountPlans: (params?: Record<string, unknown>) =>
+    api.get("/company/headcount-plans", { params }),
+  createHeadcountPlan: (data: unknown) => api.post("/company/headcount-plans", data),
+  approveHeadcountPlan: (id: number) => api.put(`/company/headcount-plans/${id}/approve`),
+};
+
+export const enterpriseApi = {
+  integrationCredentials: () => api.get("/enterprise/integration-credentials"),
+  createIntegrationCredential: (data: unknown) =>
+    api.post("/enterprise/integration-credentials", data),
+  webhooks: () => api.get("/enterprise/webhooks"),
+  createWebhook: (data: unknown) => api.post("/enterprise/webhooks", data),
+  integrationEvents: (params?: Record<string, unknown>) =>
+    api.get("/enterprise/integration-events", { params }),
+  queueIntegrationEvent: (data: unknown) => api.post("/enterprise/integration-events", data),
+  consents: (params?: Record<string, unknown>) => api.get("/enterprise/consents", { params }),
+  createConsent: (data: unknown) => api.post("/enterprise/consents", data),
+  revokeConsent: (id: number) => api.put(`/enterprise/consents/${id}/revoke`),
+  privacyRequests: (params?: Record<string, unknown>) =>
+    api.get("/enterprise/privacy-requests", { params }),
+  createPrivacyRequest: (data: unknown) => api.post("/enterprise/privacy-requests", data),
+  reviewPrivacyRequest: (id: number, data: unknown) =>
+    api.put(`/enterprise/privacy-requests/${id}`, data),
+  retentionPolicies: () => api.get("/enterprise/retention-policies"),
+  createRetentionPolicy: (data: unknown) => api.post("/enterprise/retention-policies", data),
+  legalHolds: () => api.get("/enterprise/legal-holds"),
+  createLegalHold: (data: unknown) => api.post("/enterprise/legal-holds", data),
+  releaseLegalHold: (id: number) => api.put(`/enterprise/legal-holds/${id}/release`),
+  metrics: (params?: Record<string, unknown>) => api.get("/enterprise/metrics", { params }),
+  createMetric: (data: unknown) => api.post("/enterprise/metrics", data),
 };
 
 export const attendanceApi = {
@@ -166,6 +231,15 @@ export const customFieldsApi = {
   createDefinition: (data: unknown) => api.post("/custom-fields/definitions", data),
   values: (params: Record<string, unknown>) => api.get("/custom-fields/values", { params }),
   upsertValue: (data: unknown) => api.put("/custom-fields/values", data),
+  forms: (params?: Record<string, unknown>) => api.get("/custom-fields/forms", { params }),
+  createForm: (data: unknown) => api.post("/custom-fields/forms", data),
+  getForm: (id: number) => api.get(`/custom-fields/forms/${id}`),
+  submitForm: (id: number, data: unknown) =>
+    api.post(`/custom-fields/forms/${id}/submissions`, data),
+  formSubmissions: (id: number, params?: Record<string, unknown>) =>
+    api.get(`/custom-fields/forms/${id}/submissions`, { params }),
+  reviewSubmission: (id: number, data: unknown) =>
+    api.put(`/custom-fields/forms/submissions/${id}/review`, data),
 };
 
 export const logsApi = {
@@ -240,6 +314,9 @@ export const payrollApi = {
     api.post(`/payroll/runs/${runId}/payslip-publish`, data),
   payslip: (month: number, year: number, empId?: number) =>
     api.get("/payroll/payslip", { params: { month, year, employee_id: empId } }),
+  generatePayslipPdf: (recordId: number) => api.post(`/payroll/payslip/${recordId}/pdf`),
+  downloadPayslipPdf: (recordId: number) =>
+    api.get(`/payroll/payslip/${recordId}/pdf`, { responseType: "blob" }),
   payGroups: () => api.get("/payroll/setup/pay-groups"),
   createPayGroup: (data: unknown) => api.post("/payroll/setup/pay-groups", data),
   payrollPeriods: (params?: Record<string, unknown>) => api.get("/payroll/setup/periods", { params }),
@@ -248,6 +325,10 @@ export const payrollApi = {
   createPayrollCalendar: (data: unknown) => api.post("/payroll/setup/calendars", data),
   complianceRules: (params?: Record<string, unknown>) => api.get("/payroll/setup/compliance-rules", { params }),
   createComplianceRule: (data: unknown) => api.post("/payroll/setup/compliance-rules", data),
+  setupStatutoryProfiles: (params?: Record<string, unknown>) =>
+    api.get("/payroll/setup/statutory-profiles", { params }),
+  createSetupStatutoryProfile: (data: unknown) =>
+    api.post("/payroll/setup/statutory-profiles", data),
   bankAdviceFormats: () => api.get("/payroll/setup/bank-advice-formats"),
   createBankAdviceFormat: (data: unknown) => api.post("/payroll/setup/bank-advice-formats", data),
   pfRules: () => api.get("/payroll/statutory/pf-rules"),
@@ -329,6 +410,18 @@ export const payrollApi = {
     api.put(`/payroll/settlements/${id}/approve`, null, { params: { remarks } }),
 };
 
+export const statutoryComplianceApi = {
+  legalEntities: () => api.get("/statutory-compliance/legal-entities"),
+  createLegalEntity: (data: unknown) => api.post("/statutory-compliance/legal-entities", data),
+  calendar: (params?: Record<string, unknown>) => api.get("/statutory-compliance/calendar", { params }),
+  createCalendarEvent: (data: unknown) => api.post("/statutory-compliance/calendar", data),
+  form16: (params?: Record<string, unknown>) => api.get("/statutory-compliance/form16", { params }),
+  createForm16: (data: unknown) => api.post("/statutory-compliance/form16", data),
+  portalSubmissions: (params?: Record<string, unknown>) =>
+    api.get("/statutory-compliance/portal-submissions", { params }),
+  createPortalSubmission: (data: unknown) => api.post("/statutory-compliance/portal-submissions", data),
+};
+
 export const recruitmentApi = {
   jobs: (params?: Record<string, unknown>) => api.get("/recruitment/jobs", { params }),
   createJob: (data: unknown) => api.post("/recruitment/jobs", data),
@@ -354,6 +447,23 @@ export const recruitmentApi = {
     api.put(`/recruitment/offers/${id}/status`, null, { params: { status } }),
 };
 
+export const backgroundVerificationApi = {
+  vendors: () => api.get("/background-verification/vendors"),
+  createVendor: (data: unknown) => api.post("/background-verification/vendors", data),
+  requests: (params?: Record<string, unknown>) =>
+    api.get("/background-verification/requests", { params }),
+  createRequest: (data: unknown) => api.post("/background-verification/requests", data),
+  updateRequest: (id: number, data: unknown) =>
+    api.put(`/background-verification/requests/${id}`, data),
+  captureConsent: (id: number, data: unknown) =>
+    api.put(`/background-verification/requests/${id}/consent`, data),
+  submitToVendor: (id: number) =>
+    api.post(`/background-verification/requests/${id}/submit`),
+  updateCheck: (id: number, data: unknown) =>
+    api.put(`/background-verification/checks/${id}`, data),
+  events: (id: number) => api.get(`/background-verification/requests/${id}/events`),
+};
+
 export const performanceApi = {
   cycles: () => api.get("/performance/cycles"),
   createCycle: (data: unknown) => api.post("/performance/cycles", data),
@@ -364,6 +474,50 @@ export const performanceApi = {
   submitReview: (data: unknown) => api.post("/performance/reviews", data),
   employeeReviews: (empId: number, cycleId?: number) =>
     api.get(`/performance/reviews/${empId}`, { params: { cycle_id: cycleId } }),
+  createGoalCheckIn: (data: unknown) => api.post("/performance/goals/check-ins", data),
+  goalCheckIns: (goalId: number) => api.get(`/performance/goals/${goalId}/check-ins`),
+  reviewTemplates: (params?: Record<string, unknown>) =>
+    api.get("/performance/review-templates", { params }),
+  createReviewTemplate: (data: unknown) => api.post("/performance/review-templates", data),
+  feedback360Requests: (params?: Record<string, unknown>) =>
+    api.get("/performance/360/requests", { params }),
+  createFeedback360Request: (data: unknown) => api.post("/performance/360/requests", data),
+  submitFeedback360: (id: number, data: unknown) =>
+    api.put(`/performance/360/requests/${id}/submit`, data),
+  competencies: (params?: Record<string, unknown>) =>
+    api.get("/performance/competencies", { params }),
+  createCompetency: (data: unknown) => api.post("/performance/competencies", data),
+  createRoleSkillRequirement: (data: unknown) =>
+    api.post("/performance/role-skill-requirements", data),
+  createCompetencyAssessment: (data: unknown) =>
+    api.post("/performance/competency-assessments", data),
+  skillGap: (employeeId: number) => api.get(`/performance/employees/${employeeId}/skill-gap`),
+  createCompensationCycle: (data: unknown) => api.post("/performance/compensation/cycles", data),
+  createPayBand: (data: unknown) => api.post("/performance/compensation/pay-bands", data),
+  createMeritRecommendation: (data: unknown) =>
+    api.post("/performance/compensation/merit-recommendations", data),
+  reviewMeritRecommendation: (id: number, data: unknown) =>
+    api.put(`/performance/compensation/merit-recommendations/${id}`, data),
+};
+
+export const benefitsApi = {
+  plans: (params?: Record<string, unknown>) => api.get("/benefits/plans", { params }),
+  createPlan: (data: unknown) => api.post("/benefits/plans", data),
+  enrollments: (params?: Record<string, unknown>) =>
+    api.get("/benefits/enrollments", { params }),
+  createEnrollment: (data: unknown) => api.post("/benefits/enrollments", data),
+  flexiPolicies: () => api.get("/benefits/flexi-policies"),
+  createFlexiPolicy: (data: unknown) => api.post("/benefits/flexi-policies", data),
+  createFlexiAllocation: (data: unknown) => api.post("/benefits/flexi-allocations", data),
+  createPayrollDeduction: (data: unknown) => api.post("/benefits/payroll-deductions", data),
+  claims: (params?: Record<string, unknown>) => api.get("/benefits/claims", { params }),
+  createClaim: (data: unknown) => api.post("/benefits/claims", data),
+  reviewClaim: (id: number, data: unknown) => api.put(`/benefits/claims/${id}/review`, data),
+  esopPlans: () => api.get("/benefits/esop/plans"),
+  createEsopPlan: (data: unknown) => api.post("/benefits/esop/plans", data),
+  esopGrants: (params?: Record<string, unknown>) => api.get("/benefits/esop/grants", { params }),
+  createEsopGrant: (data: unknown) => api.post("/benefits/esop/grants", data),
+  esopVesting: (grantId: number) => api.get(`/benefits/esop/grants/${grantId}/vesting`),
 };
 
 export const helpdeskApi = {
@@ -391,6 +545,10 @@ export const helpdeskApi = {
 
 export const reportsApi = {
   dashboard: () => api.get("/reports/dashboard"),
+  managerDashboard: () => api.get("/reports/manager-dashboard"),
+  essSummary: () => api.get("/reports/ess-summary"),
+  peopleMoments: (days = 30) => api.get("/reports/people-moments", { params: { days } }),
+  globalSearch: (q: string) => api.get("/reports/global-search", { params: { q } }),
   headcountByDept: () => api.get("/reports/headcount-by-department"),
   attendanceTrend: (month: number, year: number) =>
     api.get("/reports/attendance-trend", { params: { month, year } }),
@@ -400,12 +558,28 @@ export const reportsApi = {
     api.get("/reports/payroll-summary", { params: { year } }),
   turnover: (fromDate: string, toDate: string) =>
     api.get("/reports/employee-turnover", { params: { from_date: fromDate, to_date: toDate } }),
+  deiAnalytics: (params?: Record<string, unknown>) =>
+    api.get("/reports/dei-analytics", { params }),
   recruitmentFunnel: (jobId?: number) =>
     api.get("/reports/recruitment-funnel", { params: { job_id: jobId } }),
   fieldCatalog: (params?: Record<string, unknown>) => api.get("/reports/field-catalog", { params }),
   definitions: (params?: Record<string, unknown>) => api.get("/reports/definitions", { params }),
   createDefinition: (data: unknown) => api.post("/reports/definitions", data),
   runDefinition: (id: number) => api.post(`/reports/definitions/${id}/run`),
+};
+
+export const engagementApi = {
+  announcements: (publishedOnly = true) =>
+    api.get("/engagement/announcements", { params: { published_only: publishedOnly } }),
+  createAnnouncement: (data: unknown) => api.post("/engagement/announcements", data),
+  surveys: (activeOnly = false) => api.get("/engagement/surveys", { params: { active_only: activeOnly } }),
+  createSurvey: (data: unknown) => api.post("/engagement/surveys", data),
+  submitSurveyResponse: (data: unknown) => api.post("/engagement/survey-responses", data),
+  surveyResults: (id: number) => api.get(`/engagement/surveys/${id}/results`),
+  recognitions: () => api.get("/engagement/recognition-wall"),
+  createRecognition: (data: unknown) => api.post("/engagement/recognitions", data),
+  reactToRecognition: (id: number, data: unknown) =>
+    api.post(`/engagement/recognitions/${id}/reactions`, data),
 };
 
 export const timesheetsApi = {
@@ -424,6 +598,14 @@ export const timesheetsApi = {
 
 export const workflowApi = {
   inbox: (mine?: boolean) => api.get("/workflow/inbox", { params: { mine } }),
+  definitions: () => api.get("/workflow-engine/definitions"),
+  createDefinition: (data: unknown) => api.post("/workflow-engine/definitions", data),
+  startInstance: (data: unknown) => api.post("/workflow-engine/instances", data),
+  tasks: () => api.get("/workflow-engine/tasks"),
+  decideTask: (id: number, data: unknown) =>
+    api.put(`/workflow-engine/tasks/${id}/decision`, data),
+  sendReminders: () => api.post("/workflow-engine/tasks/send-reminders"),
+  processEscalations: () => api.post("/workflow-engine/tasks/process-escalations"),
 };
 
 export const notificationsApi = {

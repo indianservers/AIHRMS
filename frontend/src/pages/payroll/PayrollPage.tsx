@@ -2,15 +2,16 @@ import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   DollarSign, FileText, Play, CheckCircle2, RefreshCw,
-  ChevronLeft, ChevronRight, Download, ShieldCheck
+  ChevronLeft, ChevronRight, Download, ShieldCheck, Building2,
+  ClipboardCheck, Eye, Mail, PauseCircle, Settings2, AlertTriangle
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { payrollApi } from "@/services/api";
-import { formatCurrency, formatDate, statusColor } from "@/lib/utils";
+import { payrollApi, statutoryComplianceApi } from "@/services/api";
+import { assetUrl, formatCurrency, formatDate, statusColor } from "@/lib/utils";
 import { toast } from "@/hooks/use-toast";
 
 interface PayrollRun {
@@ -55,6 +56,41 @@ interface PayrollVariance {
   reason?: string;
 }
 
+interface PayrollPreRunCheck {
+  id: number;
+  check_name: string;
+  check_type: string;
+  status: string;
+  message?: string;
+  blocker: boolean;
+}
+
+interface SalaryComponent {
+  id: number;
+  name: string;
+  code: string;
+  component_type: string;
+  calculation_type: string;
+  amount: number;
+  payslip_group: string;
+}
+
+interface SalaryStructure {
+  id: number;
+  name: string;
+  version: string;
+  components?: unknown[];
+}
+
+interface LegalEntity {
+  id: number;
+  legal_name: string;
+  state?: string;
+  pan?: string;
+  tan?: string;
+  is_default?: boolean;
+}
+
 const MONTHS = [
   "January","February","March","April","May","June",
   "July","August","September","October","November","December"
@@ -63,7 +99,8 @@ const MONTHS = [
 export default function PayrollPage() {
   const qc = useQueryClient();
   const today = new Date();
-  const [activeTab, setActiveTab] = useState<"payslip" | "runs" | "inputs" | "setup" | "statutory" | "tax" | "casebook">("payslip");
+  const [activeTab, setActiveTab] = useState<"wizard" | "run" | "viewer" | "variance" | "inputs" | "setup" | "statutory" | "tax" | "casebook">("wizard");
+  const [wizardStep, setWizardStep] = useState(0);
   const [slipMonth, setSlipMonth] = useState(today.getMonth() + 1);
   const [slipYear, setSlipYear] = useState(today.getFullYear());
   const [runMonth, setRunMonth] = useState(today.getMonth() + 1);
@@ -89,6 +126,17 @@ export default function PayrollPage() {
   const [paymentBatchId, setPaymentBatchId] = useState("");
   const [templateName, setTemplateName] = useState("Default Salary Template");
   const [templateCode, setTemplateCode] = useState("DEFAULT-SALARY");
+  const [legalName, setLegalName] = useState("Indian Servers Pvt Ltd");
+  const [legalState, setLegalState] = useState("Telangana");
+  const [legalPan, setLegalPan] = useState("");
+  const [legalTan, setLegalTan] = useState("");
+  const [componentName, setComponentName] = useState("Basic Salary");
+  const [componentCode, setComponentCode] = useState("BASIC");
+  const [componentType, setComponentType] = useState("Earning");
+  const [componentAmount, setComponentAmount] = useState("50000");
+  const [structureName, setStructureName] = useState("India Monthly Structure");
+  const [structureVersion, setStructureVersion] = useState("1.0");
+  const [selectedRecordId, setSelectedRecordId] = useState<number | null>(null);
 
   const { data: payslip, isLoading: loadingSlip } = useQuery({
     queryKey: ["payslip", slipMonth, slipYear],
@@ -114,9 +162,36 @@ export default function PayrollPage() {
     enabled: !!selectedRun,
   });
 
+  const { data: preRunChecks } = useQuery({
+    queryKey: ["payroll-pre-run-checks", selectedRun?.id],
+    queryFn: () => payrollApi.preRunChecks(selectedRun!.id).then((r) => r.data),
+    enabled: !!selectedRun,
+  });
+
   const { data: payGroups } = useQuery({
     queryKey: ["payroll-pay-groups"],
     queryFn: () => payrollApi.payGroups().then((r) => r.data),
+  });
+
+  const { data: legalEntities } = useQuery({
+    queryKey: ["payroll-legal-entities"],
+    queryFn: () => statutoryComplianceApi.legalEntities().then((r) => r.data),
+  });
+
+  const { data: salaryComponents } = useQuery({
+    queryKey: ["salary-components"],
+    queryFn: () => payrollApi.components().then((r) => r.data),
+  });
+
+  const { data: salaryStructures } = useQuery({
+    queryKey: ["salary-structures"],
+    queryFn: () => payrollApi.structures().then((r) => r.data),
+  });
+
+  const { data: setupStatutoryProfiles } = useQuery({
+    queryKey: ["payroll-setup-statutory-profiles", (legalEntities as LegalEntity[] | undefined)?.[0]?.id],
+    queryFn: () => payrollApi.setupStatutoryProfiles({ legal_entity_id: (legalEntities as LegalEntity[])[0].id }).then((r) => r.data),
+    enabled: Boolean((legalEntities as LegalEntity[] | undefined)?.[0]?.id),
   });
 
   const { data: salaryTemplates } = useQuery({
@@ -320,6 +395,24 @@ export default function PayrollPage() {
     },
   });
 
+  const legalEntityMutation = useMutation({
+    mutationFn: () =>
+      statutoryComplianceApi.createLegalEntity({
+        legal_name: legalName,
+        state: legalState,
+        pan: legalPan || undefined,
+        tan: legalTan || undefined,
+        registered_address: "Registered office",
+        is_default: true,
+      }),
+    onSuccess: () => {
+      toast({ title: "Legal entity created" });
+      qc.invalidateQueries({ queryKey: ["payroll-legal-entities"] });
+      setWizardStep(1);
+    },
+    onError: () => toast({ title: "Could not create legal entity", variant: "destructive" }),
+  });
+
   const payGroupMutation = useMutation({
     mutationFn: () =>
       payrollApi.createPayGroup({
@@ -327,12 +420,64 @@ export default function PayrollPage() {
         code: payGroupCode,
         description: "Default payroll group",
         pay_frequency: "Monthly",
+        legal_entity_id: (legalEntities as LegalEntity[] | undefined)?.[0]?.id,
+        state: legalState,
+        is_default: true,
       }),
     onSuccess: () => {
       toast({ title: "Pay group created" });
       qc.invalidateQueries({ queryKey: ["payroll-pay-groups"] });
+      setWizardStep(2);
     },
     onError: () => toast({ title: "Could not create pay group", variant: "destructive" }),
+  });
+
+  const componentMutation = useMutation({
+    mutationFn: () =>
+      payrollApi.createComponent({
+        name: componentName,
+        code: componentCode,
+        component_type: componentType,
+        calculation_type: "Fixed",
+        amount: componentAmount,
+        payslip_group: componentType === "Deduction" ? "Deductions" : "Earnings",
+        display_sequence: componentType === "Deduction" ? 200 : 100,
+        is_taxable: componentType === "Earning",
+        appears_in_ctc: true,
+        appears_in_payslip: true,
+      }),
+    onSuccess: () => {
+      toast({ title: "Salary component created" });
+      qc.invalidateQueries({ queryKey: ["salary-components"] });
+      setWizardStep(3);
+    },
+    onError: (e: unknown) => {
+      const msg = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail || "Could not create component";
+      toast({ title: "Component failed", description: msg, variant: "destructive" });
+    },
+  });
+
+  const structureMutation = useMutation({
+    mutationFn: () =>
+      payrollApi.createStructure({
+        name: structureName,
+        version: structureVersion,
+        effective_from: `${today.getFullYear()}-04-01`,
+        components: (salaryComponents as SalaryComponent[] | undefined || []).slice(0, 8).map((component, index) => ({
+          component_id: component.id,
+          amount: component.amount || 0,
+          order_sequence: index + 1,
+        })),
+      }),
+    onSuccess: () => {
+      toast({ title: "Salary structure created" });
+      qc.invalidateQueries({ queryKey: ["salary-structures"] });
+      setWizardStep(4);
+    },
+    onError: (e: unknown) => {
+      const msg = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail || "Create at least one component first";
+      toast({ title: "Structure failed", description: msg, variant: "destructive" });
+    },
   });
 
   const salaryTemplateMutation = useMutation({
@@ -365,8 +510,28 @@ export default function PayrollPage() {
     onSuccess: () => {
       toast({ title: "Tax cycle opened" });
       qc.invalidateQueries({ queryKey: ["tax-cycles"] });
+      setWizardStep(5);
     },
     onError: () => toast({ title: "Could not open tax cycle", variant: "destructive" }),
+  });
+
+  const setupStatutoryProfileMutation = useMutation({
+    mutationFn: () =>
+      payrollApi.createSetupStatutoryProfile({
+        legal_entity_id: (legalEntities as LegalEntity[] | undefined)?.[0]?.id,
+        pf_establishment_code: "PF-SETUP",
+        pf_signatory: "Payroll Manager",
+        esi_employer_code: "ESI-SETUP",
+        pt_registration_number: "PT-SETUP",
+        tan_circle: legalState,
+        effective_from: ruleEffectiveFrom,
+      }),
+    onSuccess: () => {
+      toast({ title: "Statutory profile created" });
+      qc.invalidateQueries({ queryKey: ["payroll-setup-statutory-profiles"] });
+      setWizardStep(5);
+    },
+    onError: () => toast({ title: "Could not create statutory profile", variant: "destructive" }),
   });
 
   const taxDeclarationMutation = useMutation({
@@ -462,6 +627,23 @@ export default function PayrollPage() {
     },
   });
 
+  const generatePdfMutation = useMutation({
+    mutationFn: (recordId: number) => payrollApi.generatePayslipPdf(recordId),
+    onSuccess: (response) => {
+      toast({ title: "Payslip PDF generated", description: response.data.payslip_pdf_url });
+      qc.invalidateQueries({ queryKey: ["run-records"] });
+    },
+    onError: () => toast({ title: "Could not generate payslip PDF", variant: "destructive" }),
+  });
+
+  const publishPayslipsMutation = useMutation({
+    mutationFn: (runId: number) => payrollApi.publishPayslips(runId, { send_email: true }),
+    onSuccess: (response) => {
+      toast({ title: "Payslips published", description: `${response.data.total_payslips} payslips queued for email` });
+    },
+    onError: () => toast({ title: "Could not publish payslips", variant: "destructive" }),
+  });
+
   const prevSlipMonth = () => {
     if (slipMonth === 1) { setSlipMonth(12); setSlipYear((y) => y - 1); }
     else setSlipMonth((m) => m - 1);
@@ -470,17 +652,18 @@ export default function PayrollPage() {
     if (slipMonth === 12) { setSlipMonth(1); setSlipYear((y) => y + 1); }
     else setSlipMonth((m) => m + 1);
   };
+  const selectedPayslipRecord = (runRecords as PayslipRecord[] | undefined || []).find((record) => record.id === selectedRecordId);
 
   return (
     <div className="space-y-6">
       <div>
         <h1 className="page-title">Payroll</h1>
-        <p className="page-description">View payslips and manage payroll runs.</p>
+        <p className="page-description">Configure salary setup, run monthly payroll, publish payslips, and review variance.</p>
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-2 border-b">
-        {(["payslip", "runs", "inputs", "setup", "statutory", "tax", "casebook"] as const).map((tab) => (
+      <div className="flex flex-wrap gap-2 border-b">
+        {(["wizard", "run", "viewer", "variance", "inputs", "statutory", "tax", "casebook"] as const).map((tab) => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
@@ -490,12 +673,12 @@ export default function PayrollPage() {
                 : "border-transparent text-muted-foreground hover:text-foreground"
             }`}
           >
-            {tab === "payslip" ? "My Payslip" : tab === "runs" ? "Payroll Runs" : tab === "inputs" ? "Inputs" : tab === "setup" ? "Setup" : tab === "statutory" ? "Statutory" : tab === "tax" ? "Tax" : "Real Cases"}
+            {tab === "wizard" ? "Setup Wizard" : tab === "run" ? "Run Payroll" : tab === "viewer" ? "Payslip Viewer" : tab === "variance" ? "Variance" : tab === "inputs" ? "Inputs" : tab === "statutory" ? "Statutory" : tab === "tax" ? "Tax" : "Real Cases"}
           </button>
         ))}
       </div>
 
-      {activeTab === "payslip" && (
+      {activeTab === "viewer" && (
         <div className="space-y-4">
           {/* Month navigator */}
           <div className="flex items-center gap-3">
@@ -510,10 +693,114 @@ export default function PayrollPage() {
             </Button>
           </div>
 
+          <Card>
+            <CardHeader>
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <CardTitle className="text-base">Run Payslip Browser</CardTitle>
+                  <CardDescription>Select a payroll run to render employee payslips, generate PDFs, and bulk publish by email.</CardDescription>
+                </div>
+                <Button
+                  variant="outline"
+                  disabled={!selectedRun || publishPayslipsMutation.isPending}
+                  onClick={() => selectedRun && publishPayslipsMutation.mutate(selectedRun.id)}
+                >
+                  <Mail className="mr-2 h-4 w-4" />
+                  Bulk publish
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="flex flex-wrap gap-2">
+                {(runs as PayrollRun[] | undefined || []).slice(0, 8).map((run) => (
+                  <Button
+                    key={run.id}
+                    variant={selectedRun?.id === run.id ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setSelectedRun(run)}
+                  >
+                    {MONTHS[run.month - 1]} {run.year}
+                  </Button>
+                ))}
+              </div>
+              {selectedRun && (
+                <div className="overflow-x-auto rounded-md border">
+                  <table className="w-full text-sm">
+                    <thead className="border-b bg-muted/50">
+                      <tr>
+                        {["Employee", "Gross", "Deductions", "Net", "Status", "Actions"].map((h) => (
+                          <th key={h} className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground">{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(runRecords as PayslipRecord[] | undefined || []).map((record) => (
+                        <tr key={record.id} className={`border-b ${selectedRecordId === record.id ? "bg-muted/40" : ""}`}>
+                          <td className="px-4 py-3 font-medium">{record.employee?.first_name} {record.employee?.last_name}<p className="text-xs text-muted-foreground">{record.employee?.employee_id}</p></td>
+                          <td className="px-4 py-3">{formatCurrency(record.gross_salary)}</td>
+                          <td className="px-4 py-3">{formatCurrency(record.total_deductions)}</td>
+                          <td className="px-4 py-3 font-medium text-green-600">{formatCurrency(record.net_salary)}</td>
+                          <td className="px-4 py-3"><Badge variant="outline">{record.status}</Badge></td>
+                          <td className="px-4 py-3">
+                            <div className="flex flex-wrap gap-2">
+                              <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => setSelectedRecordId(record.id)}>
+                                <Eye className="mr-1 h-3 w-3" /> Preview
+                              </Button>
+                              <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => generatePdfMutation.mutate(record.id)}>
+                                PDF
+                              </Button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {selectedPayslipRecord && (
+            <Card className="payslip-print">
+              <CardHeader>
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <CardTitle>Employee Payslip Preview</CardTitle>
+                    <CardDescription>{selectedPayslipRecord.employee?.first_name} {selectedPayslipRecord.employee?.last_name} | {selectedRun ? `${MONTHS[selectedRun.month - 1]} ${selectedRun.year}` : "Selected run"}</CardDescription>
+                  </div>
+                  <Button variant="outline" size="sm" onClick={() => generatePdfMutation.mutate(selectedPayslipRecord.id)}>
+                    <Download className="mr-2 h-4 w-4" />
+                    Generate PDF
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid gap-3 rounded-md bg-muted/30 p-4 text-sm sm:grid-cols-3">
+                  <div><p className="text-muted-foreground">Employee</p><p className="font-medium">{selectedPayslipRecord.employee?.employee_id}</p></div>
+                  <div><p className="text-muted-foreground">Gross</p><p className="font-medium">{formatCurrency(selectedPayslipRecord.gross_salary)}</p></div>
+                  <div><p className="text-muted-foreground">Net Pay</p><p className="font-medium text-green-600">{formatCurrency(selectedPayslipRecord.net_salary)}</p></div>
+                </div>
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="rounded-md border p-4">
+                    <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground">Deductions</h3>
+                    <div className="flex justify-between text-sm"><span>Total deductions</span><span>{formatCurrency(selectedPayslipRecord.total_deductions)}</span></div>
+                  </div>
+                  <div className="rounded-md border p-4">
+                    <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground">YTD</h3>
+                    <div className="grid grid-cols-2 gap-3 text-sm">
+                      <div><p className="text-muted-foreground">Gross</p><p className="font-medium">{formatCurrency(selectedPayslipRecord.ytd?.gross_salary || 0)}</p></div>
+                      <div><p className="text-muted-foreground">Net</p><p className="font-medium">{formatCurrency(selectedPayslipRecord.ytd?.net_salary || 0)}</p></div>
+                    </div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
           {loadingSlip ? (
             <Card><CardContent className="p-8 text-center"><div className="h-40 skeleton rounded" /></CardContent></Card>
           ) : !payslip ? (
-            <Card>
+            <Card className="payslip-print">
               <CardContent className="p-12 text-center text-muted-foreground">
                 <FileText className="h-10 w-10 mx-auto mb-3 opacity-30" />
                 <p>No payslip available for {MONTHS[slipMonth - 1]} {slipYear}</p>
@@ -531,6 +818,9 @@ export default function PayrollPage() {
                     {payslip.status || "Draft"}
                   </span>
                 </div>
+                <Button variant="outline" size="sm" className="no-print mt-3" onClick={() => window.print()}>
+                  Print payslip
+                </Button>
               </CardHeader>
               <CardContent className="space-y-6">
                 {/* Employee info */}
@@ -656,7 +946,7 @@ export default function PayrollPage() {
         </div>
       )}
 
-      {activeTab === "runs" && (
+      {activeTab === "run" && (
         <div className="space-y-4">
           {/* Run payroll card */}
           <Card>
@@ -700,6 +990,61 @@ export default function PayrollPage() {
               </div>
             </CardContent>
           </Card>
+
+          <div className="grid gap-4 md:grid-cols-4">
+            {[
+              ["Selected run", selectedRun ? `${MONTHS[selectedRun.month - 1]} ${selectedRun.year}` : "Choose a run"],
+              ["Employees", selectedRun?.total_employees ?? 0],
+              ["Gross", formatCurrency(selectedRun?.total_gross || 0)],
+              ["Net", formatCurrency(selectedRun?.total_net || 0)],
+            ].map(([label, value]) => (
+              <Card key={label}>
+                <CardContent className="p-4">
+                  <p className="text-sm text-muted-foreground">{label}</p>
+                  <p className="mt-1 text-xl font-semibold">{value}</p>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+
+          {selectedRun && (
+            <Card>
+              <CardHeader>
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <CardTitle className="text-base">Pre-Run Checks Dashboard</CardTitle>
+                    <CardDescription>Blockers must be cleared before approval and publish.</CardDescription>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <Button variant="outline" size="sm" onClick={() => worksheetMutation.mutate(selectedRun.id)} disabled={worksheetMutation.isPending}>
+                      <RefreshCw className="mr-2 h-4 w-4" />
+                      Reprocess
+                    </Button>
+                    <Button size="sm" onClick={() => approveMutation.mutate(selectedRun.id)} disabled={approveMutation.isPending || selectedRun.status !== "Draft"}>
+                      <CheckCircle2 className="mr-2 h-4 w-4" />
+                      Approve run
+                    </Button>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent className="grid gap-3 md:grid-cols-3">
+                {(preRunChecks as PayrollPreRunCheck[] | undefined || []).map((check) => (
+                  <div key={check.id} className="rounded-md border p-3 text-sm">
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="font-medium">{check.check_name}</p>
+                      <Badge variant={check.status === "Passed" ? "secondary" : check.blocker ? "destructive" : "outline"}>{check.status}</Badge>
+                    </div>
+                    <p className="mt-1 text-xs text-muted-foreground">{check.message || check.check_type}</p>
+                  </div>
+                ))}
+                {!(preRunChecks as PayrollPreRunCheck[] | undefined)?.length && (
+                  <div className="rounded-md border p-4 text-sm text-muted-foreground md:col-span-3">
+                    No pre-run checks generated yet. Run payroll or process the worksheet to populate checks.
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
 
           {/* Runs list */}
           <Card>
@@ -879,7 +1224,7 @@ export default function PayrollPage() {
                   <table className="w-full text-sm">
                     <thead className="border-b bg-muted/50">
                       <tr>
-                        {["Employee", "Input", "Calculation", "Approval", "Net", "Hold"].map((h) => (
+                        {["Employee", "Input", "Calculation", "Approval", "Net", "Hold / Reprocess"].map((h) => (
                           <th key={h} className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wide">{h}</th>
                         ))}
                       </tr>
@@ -892,7 +1237,19 @@ export default function PayrollPage() {
                           <td className="px-4 py-3">{row.calculation_status}</td>
                           <td className="px-4 py-3">{row.approval_status}</td>
                           <td className="px-4 py-3">{formatCurrency(row.net_salary)}</td>
-                          <td className="px-4 py-3 text-muted-foreground">{row.hold_reason || "-"}</td>
+                          <td className="px-4 py-3">
+                            <div className="flex flex-wrap items-center gap-2">
+                              {row.hold_reason ? (
+                                <Badge variant="destructive"><PauseCircle className="mr-1 h-3 w-3" /> Hold</Badge>
+                              ) : (
+                                <span className="text-muted-foreground">-</span>
+                              )}
+                              <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => worksheetMutation.mutate(selectedRun.id)}>
+                                Reprocess
+                              </Button>
+                            </div>
+                            {row.hold_reason && <p className="mt-1 text-xs text-muted-foreground">{row.hold_reason}</p>}
+                          </td>
                         </tr>
                       ))}
                     </tbody>
@@ -1013,6 +1370,82 @@ export default function PayrollPage() {
               </CardContent>
             </Card>
           )}
+        </div>
+      )}
+
+      {activeTab === "variance" && (
+        <div className="space-y-4">
+          <Card>
+            <CardHeader>
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <CardTitle className="text-base">Variance Report</CardTitle>
+                  <CardDescription>Compare each payroll run against previous month and flag large deviations.</CardDescription>
+                </div>
+                <Button variant="outline" size="sm" onClick={() => refetchVariance()} disabled={!selectedRun}>
+                  <RefreshCw className="mr-2 h-4 w-4" />
+                  Refresh variance
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex flex-wrap gap-2">
+                {(runs as PayrollRun[] | undefined || []).slice(0, 10).map((run) => (
+                  <Button key={run.id} variant={selectedRun?.id === run.id ? "default" : "outline"} size="sm" onClick={() => setSelectedRun(run)}>
+                    {MONTHS[run.month - 1]} {run.year}
+                  </Button>
+                ))}
+              </div>
+              <div className="grid gap-3 md:grid-cols-4">
+                {[
+                  ["Rows", (runVariance as unknown[] | undefined)?.length || 0],
+                  ["High/Critical", (runVariance as PayrollVariance[] | undefined || []).filter((item) => ["High", "Critical"].includes(item.severity)).length],
+                  ["Current gross", formatCurrency(selectedRun?.total_gross || 0)],
+                  ["Current net", formatCurrency(selectedRun?.total_net || 0)],
+                ].map(([label, value]) => (
+                  <div key={label} className="rounded-md border p-3 text-sm">
+                    <p className="text-muted-foreground">{label}</p>
+                    <p className="mt-1 text-xl font-semibold">{value}</p>
+                  </div>
+                ))}
+              </div>
+              <div className="overflow-x-auto rounded-md border">
+                <table className="w-full text-sm">
+                  <thead className="border-b bg-muted/50">
+                    <tr>
+                      {["Employee", "Gross Previous", "Gross Current", "Net Previous", "Net Current", "Deviation", "Flag"].map((h) => (
+                        <th key={h} className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground">{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(runVariance as PayrollVariance[] | undefined || []).map((item) => (
+                      <tr key={item.id} className="border-b hover:bg-muted/30">
+                        <td className="px-4 py-3">#{item.employee_id}</td>
+                        <td className="px-4 py-3">{formatCurrency(item.previous_gross)}</td>
+                        <td className="px-4 py-3">{formatCurrency(item.current_gross)}</td>
+                        <td className="px-4 py-3">{formatCurrency(item.previous_net)}</td>
+                        <td className="px-4 py-3">{formatCurrency(item.current_net)}</td>
+                        <td className="px-4 py-3">
+                          <p>{Number(item.gross_delta_percent).toFixed(1)}% gross</p>
+                          <p className="text-xs text-muted-foreground">{Number(item.net_delta_percent).toFixed(1)}% net</p>
+                        </td>
+                        <td className="px-4 py-3">
+                          <Badge variant={["High", "Critical"].includes(item.severity) ? "destructive" : "outline"}>
+                            {item.severity}
+                          </Badge>
+                          {item.reason && <p className="mt-1 text-xs text-muted-foreground">{item.reason}</p>}
+                        </td>
+                      </tr>
+                    ))}
+                    {!(runVariance as PayrollVariance[] | undefined)?.length && (
+                      <tr><td colSpan={7} className="px-4 py-10 text-center text-muted-foreground">Select a run to view month-on-month payroll variance.</td></tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </CardContent>
+          </Card>
         </div>
       )}
 
@@ -1139,7 +1572,171 @@ export default function PayrollPage() {
         </div>
       )}
 
-      {activeTab === "setup" && (
+      {activeTab === "wizard" && (
+        <div className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Payroll Setup Wizard</CardTitle>
+              <CardDescription>Complete the minimum production setup in order: legal entity, pay group, components, structure, tax, statutory profile.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="grid gap-3 md:grid-cols-6">
+                {[
+                  ["Legal Entity", (legalEntities as unknown[] | undefined)?.length || 0],
+                  ["Pay Group", (payGroups as unknown[] | undefined)?.length || 0],
+                  ["Components", (salaryComponents as unknown[] | undefined)?.length || 0],
+                  ["Structures", (salaryStructures as unknown[] | undefined)?.length || 0],
+                  ["Tax Config", (taxCycles as unknown[] | undefined)?.length || 0],
+                  ["Statutory Profile", (setupStatutoryProfiles as unknown[] | undefined)?.length || 0],
+                ].map(([label, count], index) => (
+                  <button
+                    key={label}
+                    type="button"
+                    onClick={() => setWizardStep(index)}
+                    className={`rounded-md border p-3 text-left text-sm transition-colors ${wizardStep === index ? "border-primary bg-primary/5" : "hover:bg-muted/50"}`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="font-medium">{label}</span>
+                      {Number(count) > 0 ? <CheckCircle2 className="h-4 w-4 text-green-600" /> : <AlertTriangle className="h-4 w-4 text-amber-600" />}
+                    </div>
+                    <p className="mt-2 text-2xl font-semibold">{count}</p>
+                  </button>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+
+          <div className="grid gap-4 lg:grid-cols-[0.9fr_1.1fr]">
+            {wizardStep === 0 && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2 text-base"><Building2 className="h-4 w-4" /> Legal Entity</CardTitle>
+                  <CardDescription>Required for statutory filings, Form 16, challans, and payroll grouping.</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div className="space-y-1.5"><Label>Legal name</Label><Input value={legalName} onChange={(event) => setLegalName(event.target.value)} /></div>
+                    <div className="space-y-1.5"><Label>State</Label><Input value={legalState} onChange={(event) => setLegalState(event.target.value)} /></div>
+                    <div className="space-y-1.5"><Label>PAN</Label><Input value={legalPan} onChange={(event) => setLegalPan(event.target.value.toUpperCase())} /></div>
+                    <div className="space-y-1.5"><Label>TAN</Label><Input value={legalTan} onChange={(event) => setLegalTan(event.target.value.toUpperCase())} /></div>
+                  </div>
+                  <Button onClick={() => legalEntityMutation.mutate()} disabled={legalEntityMutation.isPending || !legalName}>
+                    Create legal entity
+                  </Button>
+                </CardContent>
+              </Card>
+            )}
+            {wizardStep === 1 && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2 text-base"><ClipboardCheck className="h-4 w-4" /> Pay Group</CardTitle>
+                  <CardDescription>Defines pay frequency, cutoffs, tax regime, and legal entity mapping.</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div className="space-y-1.5"><Label>Pay group name</Label><Input value={payGroupName} onChange={(event) => setPayGroupName(event.target.value)} /></div>
+                    <div className="space-y-1.5"><Label>Code</Label><Input value={payGroupCode} onChange={(event) => setPayGroupCode(event.target.value.toUpperCase())} /></div>
+                  </div>
+                  <Button onClick={() => payGroupMutation.mutate()} disabled={payGroupMutation.isPending || !(legalEntities as LegalEntity[] | undefined)?.length}>
+                    Create pay group
+                  </Button>
+                </CardContent>
+              </Card>
+            )}
+            {wizardStep === 2 && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2 text-base"><DollarSign className="h-4 w-4" /> Salary Components</CardTitle>
+                  <CardDescription>Create earnings, deductions, reimbursements, and statutory payslip lines.</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div className="space-y-1.5"><Label>Name</Label><Input value={componentName} onChange={(event) => setComponentName(event.target.value)} /></div>
+                    <div className="space-y-1.5"><Label>Code</Label><Input value={componentCode} onChange={(event) => setComponentCode(event.target.value.toUpperCase())} /></div>
+                    <div className="space-y-1.5">
+                      <Label>Type</Label>
+                      <select className="h-10 rounded-md border bg-background px-3 text-sm" value={componentType} onChange={(event) => setComponentType(event.target.value)}>
+                        {["Earning", "Deduction", "Statutory", "Reimbursement"].map((type) => <option key={type}>{type}</option>)}
+                      </select>
+                    </div>
+                    <div className="space-y-1.5"><Label>Monthly amount</Label><Input value={componentAmount} onChange={(event) => setComponentAmount(event.target.value)} /></div>
+                  </div>
+                  <Button onClick={() => componentMutation.mutate()} disabled={componentMutation.isPending}>
+                    Create component
+                  </Button>
+                </CardContent>
+              </Card>
+            )}
+            {wizardStep === 3 && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2 text-base"><Settings2 className="h-4 w-4" /> Salary Structure</CardTitle>
+                  <CardDescription>Build a structure from active components. Formula and cap/floor rules remain in backend setup.</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div className="space-y-1.5"><Label>Structure name</Label><Input value={structureName} onChange={(event) => setStructureName(event.target.value)} /></div>
+                    <div className="space-y-1.5"><Label>Version</Label><Input value={structureVersion} onChange={(event) => setStructureVersion(event.target.value)} /></div>
+                  </div>
+                  <Button onClick={() => structureMutation.mutate()} disabled={structureMutation.isPending || !(salaryComponents as SalaryComponent[] | undefined)?.length}>
+                    Create structure from active components
+                  </Button>
+                </CardContent>
+              </Card>
+            )}
+            {wizardStep === 4 && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2 text-base"><FileText className="h-4 w-4" /> Tax Config</CardTitle>
+                  <CardDescription>Open the current financial-year declaration/projection cycle.</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <Button onClick={() => taxCycleMutation.mutate()} disabled={taxCycleMutation.isPending}>
+                    Open current FY tax cycle
+                  </Button>
+                  {activeTaxCycle && <p className="rounded-md border p-3 text-sm">Active cycle: <span className="font-medium">{activeTaxCycle.name}</span></p>}
+                </CardContent>
+              </Card>
+            )}
+            {wizardStep === 5 && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2 text-base"><ShieldCheck className="h-4 w-4" /> Statutory Profiles</CardTitle>
+                  <CardDescription>Bind PF/ESI/PT/TDS registration details to the legal entity.</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div className="space-y-1.5"><Label>State / TAN circle</Label><Input value={legalState} onChange={(event) => setLegalState(event.target.value)} /></div>
+                    <div className="space-y-1.5"><Label>Effective from</Label><Input type="date" value={ruleEffectiveFrom} onChange={(event) => setRuleEffectiveFrom(event.target.value)} /></div>
+                  </div>
+                  <Button onClick={() => setupStatutoryProfileMutation.mutate()} disabled={setupStatutoryProfileMutation.isPending || !(legalEntities as LegalEntity[] | undefined)?.length}>
+                    Create statutory profile
+                  </Button>
+                </CardContent>
+              </Card>
+            )}
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Setup Health</CardTitle>
+                <CardDescription>What payroll can use right now.</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {[
+                  ...(legalEntities as LegalEntity[] | undefined || []).map((item) => ({ id: `le-${item.id}`, title: item.legal_name, detail: `${item.state || "-"} | PAN ${item.pan || "-"}`, type: "Legal Entity" })),
+                  ...(payGroups as { id: number; name: string; code: string; pay_frequency: string }[] | undefined || []).map((item) => ({ id: `pg-${item.id}`, title: item.name, detail: `${item.code} | ${item.pay_frequency}`, type: "Pay Group" })),
+                  ...(salaryComponents as SalaryComponent[] | undefined || []).slice(0, 6).map((item) => ({ id: `sc-${item.id}`, title: item.name, detail: `${item.code} | ${formatCurrency(item.amount || 0)}`, type: item.component_type })),
+                  ...(salaryStructures as SalaryStructure[] | undefined || []).map((item) => ({ id: `ss-${item.id}`, title: item.name, detail: `v${item.version} | ${item.components?.length || 0} components`, type: "Structure" })),
+                ].slice(0, 12).map((item) => (
+                  <div key={item.id} className="flex items-center justify-between rounded-md border p-3 text-sm">
+                    <div><p className="font-medium">{item.title}</p><p className="text-muted-foreground">{item.detail}</p></div>
+                    <Badge variant="outline">{item.type}</Badge>
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+          </div>
+
         <div className="grid gap-4 lg:grid-cols-2">
           <Card>
             <CardHeader>
@@ -1220,6 +1817,7 @@ export default function PayrollPage() {
               ))}
             </CardContent>
           </Card>
+        </div>
         </div>
       )}
 

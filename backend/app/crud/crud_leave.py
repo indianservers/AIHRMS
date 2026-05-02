@@ -109,6 +109,7 @@ def has_overlapping_leave(
 ) -> bool:
     query = db.query(LeaveRequest).filter(
         LeaveRequest.employee_id == employee_id,
+        LeaveRequest.deleted_at.is_(None),
         LeaveRequest.status.in_(["Pending", "Approved"]),
         LeaveRequest.from_date <= to_date,
         LeaveRequest.to_date >= from_date,
@@ -165,7 +166,10 @@ def approve_leave_request(
     db: Session, request_id: int, status: str, reviewer_id: int, remarks: str = None
 ) -> Optional[LeaveRequest]:
     from datetime import datetime, timezone
-    request = db.query(LeaveRequest).filter(LeaveRequest.id == request_id).first()
+    request = db.query(LeaveRequest).filter(
+        LeaveRequest.id == request_id,
+        LeaveRequest.deleted_at.is_(None),
+    ).first()
     if not request or request.status != "Pending":
         return None
 
@@ -206,7 +210,10 @@ def approve_leave_request(
 
 
 def cancel_leave_request(db: Session, request_id: int, actor_id: int | None = None) -> Optional[LeaveRequest]:
-    request = db.query(LeaveRequest).filter(LeaveRequest.id == request_id).first()
+    request = db.query(LeaveRequest).filter(
+        LeaveRequest.id == request_id,
+        LeaveRequest.deleted_at.is_(None),
+    ).first()
     if not request or request.status != "Pending":
         return None
 
@@ -251,7 +258,7 @@ def get_leave_requests(
     skip: int = 0,
     limit: int = 50,
 ) -> Tuple[List[LeaveRequest], int]:
-    query = db.query(LeaveRequest)
+    query = db.query(LeaveRequest).filter(LeaveRequest.deleted_at.is_(None))
     if employee_id:
         query = query.filter(LeaveRequest.employee_id == employee_id)
     if status:

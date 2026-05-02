@@ -155,7 +155,18 @@ def _locked_period(db: Session, month: int, year: int) -> Optional[PayrollRun]:
         PayrollRun.month == month,
         PayrollRun.year == year,
         PayrollRun.status == "Locked",
+        PayrollRun.deleted_at.is_(None),
     ).first()
+
+
+def _get_payroll_run_or_404(db: Session, run_id: int) -> PayrollRun:
+    run = db.query(PayrollRun).filter(
+        PayrollRun.id == run_id,
+        PayrollRun.deleted_at.is_(None),
+    ).first()
+    if not run:
+        raise HTTPException(status_code=404, detail="Payroll run not found")
+    return run
 
 
 def _ensure_not_locked_period(db: Session, month: int, year: int, action: str) -> None:
@@ -170,7 +181,10 @@ def _ensure_not_locked_for_date(db: Session, value: Optional[date], action: str)
 
 
 def _ensure_no_locked_payroll_exists(db: Session, action: str) -> None:
-    if db.query(PayrollRun).filter(PayrollRun.status == "Locked").first():
+    if db.query(PayrollRun).filter(
+        PayrollRun.status == "Locked",
+        PayrollRun.deleted_at.is_(None),
+    ).first():
         raise HTTPException(
             status_code=400,
             detail=f"A payroll period is locked; clone/version setup before you {action}",
@@ -1701,9 +1715,11 @@ def set_employee_salary(
     existing = crud_payroll.get_active_salary(db, data.employee_id)
     if existing:
         existing.is_active = False
-        existing.effective_to = data.effective_from
+        existing.effective_to = data.effective_from - timedelta(days=1)
 
-    salary = EmployeeSalary(**data.model_dump())
+    payload = data.model_dump()
+    payload["effective_date"] = payload.get("effective_date") or payload["effective_from"]
+    salary = EmployeeSalary(**payload)
     db.add(salary)
     _audit(db, None, "salary_assigned", current_user.id, f"employee_id={data.employee_id}")
     db.commit()
@@ -1720,7 +1736,7 @@ def get_employee_salary_history(
     from app.models.payroll import EmployeeSalary
     return db.query(EmployeeSalary).filter(
         EmployeeSalary.employee_id == employee_id
-    ).order_by(EmployeeSalary.effective_from.desc()).all()
+    ).order_by(EmployeeSalary.effective_from.desc(), EmployeeSalary.id.desc()).all()
 
 
 @router.post("/salary-revisions", response_model=SalaryRevisionRequestSchema, status_code=201)
@@ -1792,12 +1808,13 @@ def review_salary_revision_request(
         existing = crud_payroll.get_active_salary(db, request.employee_id)
         if existing:
             existing.is_active = False
-            existing.effective_to = request.effective_from
+            existing.effective_to = request.effective_from - timedelta(days=1)
         salary = EmployeeSalary(
             employee_id=request.employee_id,
             structure_id=request.proposed_structure_id,
             ctc=request.proposed_ctc,
             effective_from=request.effective_from,
+            effective_date=request.effective_from,
             is_active=True,
         )
         db.add(salary)
@@ -1841,7 +1858,9 @@ def list_payroll_runs(
     db: Session = Depends(get_db),
     current_user: User = Depends(RequirePermission("payroll_view")),
 ):
-    return db.query(PayrollRun).order_by(PayrollRun.year.desc(), PayrollRun.month.desc()).all()
+    return db.query(PayrollRun).filter(
+        PayrollRun.deleted_at.is_(None)
+    ).order_by(PayrollRun.year.desc(), PayrollRun.month.desc()).all()
 
 
 @router.post("/run", response_model=PayrollRunSchema, status_code=201)
@@ -1852,7 +1871,16 @@ def run_payroll(
 ):
     _ensure_not_locked_period(db, data.month, data.year, "rerun payroll")
     try:
-        return crud_payroll.run_payroll(db, data.month, data.year, current_user.id)
+        run = crud_payroll.run_payroll(db, data.month, data.year, current_user.id)
+        if data.company_id is not None:
+            run.company_id = data.company_id
+        if data.pay_period_start is not None:
+            run.pay_period_start = data.pay_period_start
+        if data.pay_period_end is not None:
+            run.pay_period_end = data.pay_period_end
+        db.commit()
+        db.refresh(run)
+        return run
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -1863,10 +1891,7 @@ def get_payroll_run(
     db: Session = Depends(get_db),
     current_user: User = Depends(RequirePermission("payroll_view")),
 ):
-    run = db.query(PayrollRun).filter(PayrollRun.id == run_id).first()
-    if not run:
-        raise HTTPException(status_code=404, detail="Payroll run not found")
-    return run
+    return _get_payroll_run_or_404(db, run_id)
 
 
 @router.put("/runs/{run_id}/approve")
@@ -1876,9 +1901,7 @@ def approve_payroll(
     db: Session = Depends(get_db),
     current_user: User = Depends(RequirePermission("payroll_approve")),
 ):
-    run = db.query(PayrollRun).filter(PayrollRun.id == run_id).first()
-    if not run:
-        raise HTTPException(status_code=404, detail="Payroll run not found")
+    run = _get_payroll_run_or_404(db, run_id)
     if run.status == "Locked":
         raise HTTPException(status_code=400, detail="Payroll run is already locked")
 
@@ -1926,9 +1949,7 @@ def create_payroll_export(
 ):
     if export_type not in EXPORT_TYPES:
         raise HTTPException(status_code=400, detail="Unsupported payroll export type")
-    run = db.query(PayrollRun).filter(PayrollRun.id == run_id).first()
-    if not run:
-        raise HTTPException(status_code=404, detail="Payroll run not found")
+    run = _get_payroll_run_or_404(db, run_id)
     records = db.query(PayrollRecord).filter(PayrollRecord.payroll_run_id == run_id).all()
     total_records = len(records)
     export_dir = os.path.join(settings.UPLOAD_DIR, "exports", "payroll", str(run_id))
@@ -2014,6 +2035,7 @@ def list_payroll_worksheet(
     db: Session = Depends(get_db),
     current_user: User = Depends(RequirePermission("payroll_view")),
 ):
+    _get_payroll_run_or_404(db, run_id)
     return db.query(PayrollRunEmployee).filter(PayrollRunEmployee.payroll_run_id == run_id).order_by(PayrollRunEmployee.id).all()
 
 
@@ -2023,9 +2045,7 @@ def process_payroll_worksheet(
     db: Session = Depends(get_db),
     current_user: User = Depends(RequirePermission("payroll_run")),
 ):
-    run = db.query(PayrollRun).filter(PayrollRun.id == run_id).first()
-    if not run:
-        raise HTTPException(status_code=404, detail="Payroll run not found")
+    run = _get_payroll_run_or_404(db, run_id)
     if run.status == "Locked":
         raise HTTPException(status_code=400, detail="Payroll run is locked")
     period = _payroll_period_for_run(db, run)
@@ -2168,9 +2188,7 @@ def create_payment_batch(
 ):
     from app.models.employee import Employee
 
-    run = db.query(PayrollRun).filter(PayrollRun.id == data.payroll_run_id).first()
-    if not run:
-        raise HTTPException(status_code=404, detail="Payroll run not found")
+    run = _get_payroll_run_or_404(db, data.payroll_run_id)
     records = db.query(PayrollRecord).filter(PayrollRecord.payroll_run_id == run.id).all()
     if not records:
         raise HTTPException(status_code=400, detail="No payroll records available for payment batch")
@@ -2309,9 +2327,7 @@ def list_gl_mappings(db: Session = Depends(get_db), current_user: User = Depends
 def generate_accounting_journal(run_id: int, db: Session = Depends(get_db), current_user: User = Depends(RequirePermission("payroll_run"))):
     from app.models.employee import Employee
 
-    run = db.query(PayrollRun).filter(PayrollRun.id == run_id).first()
-    if not run:
-        raise HTTPException(status_code=404, detail="Payroll run not found")
+    run = _get_payroll_run_or_404(db, run_id)
     ledgers = _ensure_default_ledgers(db)
     journal = PayrollJournalEntry(payroll_run_id=run_id, status="Generated", generated_by=current_user.id)
     db.add(journal)
@@ -2443,9 +2459,7 @@ def add_pre_run_check(
     db: Session = Depends(get_db),
     current_user: User = Depends(RequirePermission("payroll_run")),
 ):
-    run = db.query(PayrollRun).filter(PayrollRun.id == run_id).first()
-    if not run:
-        raise HTTPException(status_code=404, detail="Payroll run not found")
+    run = _get_payroll_run_or_404(db, run_id)
     check = PayrollPreRunCheck(payroll_run_id=run_id, **data.model_dump())
     db.add(check)
     _audit(db, run_id, "pre_run_check_added", current_user.id, f"{data.check_type}:{data.status}")
@@ -2470,9 +2484,7 @@ def create_manual_input(
     db: Session = Depends(get_db),
     current_user: User = Depends(RequirePermission("payroll_run")),
 ):
-    run = db.query(PayrollRun).filter(PayrollRun.id == run_id).first()
-    if not run:
-        raise HTTPException(status_code=404, detail="Payroll run not found")
+    run = _get_payroll_run_or_404(db, run_id)
     _ensure_not_locked_period(db, run.month, run.year, "add payroll manual input")
     item = PayrollManualInput(payroll_run_id=run_id, created_by=current_user.id, **data.model_dump())
     db.add(item)
@@ -2521,9 +2533,7 @@ def create_unlock_request(
     db: Session = Depends(get_db),
     current_user: User = Depends(RequirePermission("payroll_run")),
 ):
-    run = db.query(PayrollRun).filter(PayrollRun.id == run_id).first()
-    if not run:
-        raise HTTPException(status_code=404, detail="Payroll run not found")
+    run = _get_payroll_run_or_404(db, run_id)
     if run.status != "Locked":
         raise HTTPException(status_code=400, detail="Only locked payroll can be requested for unlock")
     request = PayrollUnlockRequest(payroll_run_id=run_id, reason=data.reason, requested_by=current_user.id)
@@ -2579,9 +2589,7 @@ def publish_payslips(
     db: Session = Depends(get_db),
     current_user: User = Depends(RequirePermission("payroll_run")),
 ):
-    run = db.query(PayrollRun).filter(PayrollRun.id == run_id).first()
-    if not run:
-        raise HTTPException(status_code=404, detail="Payroll run not found")
+    run = _get_payroll_run_or_404(db, run_id)
     total = db.query(PayrollRecord).filter(PayrollRecord.payroll_run_id == run_id).count()
     batch = PayslipPublishBatch(
         payroll_run_id=run_id,

@@ -124,3 +124,34 @@
   background-size: 200% 100%;
   animation: shimmer 1.5s infinite;
 }
+
+@media print {
+  aside,
+  header,
+  nav,
+  button,
+  .no-print {
+    display: none !important;
+  }
+
+  body {
+    background: #fff !important;
+    color: #111 !important;
+  }
+
+  main {
+    overflow: visible !important;
+    padding: 0 !important;
+  }
+
+  .payslip-print,
+  .payslip-print * {
+    color: #111 !important;
+    box-shadow: none !important;
+  }
+
+  .payslip-print {
+    border: 1px solid #ddd !important;
+    page-break-inside: avoid;
+  }
+}

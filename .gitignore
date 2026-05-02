@@ -9,6 +9,7 @@ htmlcov/
 backend/venv/
 backend/.env
 backend/uploads/
+uploads/
 
 # Frontend
 frontend/node_modules/

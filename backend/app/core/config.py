@@ -72,6 +72,7 @@ class Settings(BaseSettings):
     # AI
     OPENAI_API_KEY: str = ""
     ANTHROPIC_API_KEY: str = ""
+    ANTHROPIC_MODEL: str = "claude-sonnet-4-20250514"
 
     # CORS
     BACKEND_CORS_ORIGINS: Union[List[str], str] = ["http://localhost:5173", "http://localhost:3000"]

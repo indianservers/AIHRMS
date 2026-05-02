@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Boolean, ForeignKey, DateTime, Date, Numeric, Text
+from sqlalchemy import Column, Integer, String, Boolean, ForeignKey, DateTime, Date, Numeric, Text, Index
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from app.db.base_class import Base
@@ -47,6 +47,10 @@ class LeaveBalance(Base):
 
 class LeaveRequest(Base):
     __tablename__ = "leave_requests"
+    __table_args__ = (
+        Index("idx_leave_request_status", "status", "employee_id"),
+        Index("idx_leave_request_active_status", "deleted_at", "status", "employee_id"),
+    )
 
     id = Column(Integer, primary_key=True, index=True)
     employee_id = Column(Integer, ForeignKey("employees.id", ondelete="CASCADE"), nullable=False)
@@ -67,6 +71,8 @@ class LeaveRequest(Base):
 
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+    deleted_at = Column(DateTime(timezone=True))
+    deleted_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
 
     employee = relationship("Employee", back_populates="leaves", foreign_keys=[employee_id])
     leave_type = relationship("LeaveType", back_populates="leave_requests")

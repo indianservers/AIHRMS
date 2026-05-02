@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session, joinedload
 from app.core.deps import RequirePermission, get_current_user, get_db
 from app.models.notification import Notification, NotificationDeliveryLog
 from app.models.user import User
+from app.models.employee import Employee
 from app.schemas.common import PaginatedResponse
 from app.schemas.notification import NotificationCreate, NotificationSchema
 
@@ -140,3 +141,46 @@ def mark_all_notifications_read(
     ).update({"is_read": True, "read_at": datetime.now(timezone.utc)}, synchronize_session=False)
     db.commit()
     return {"message": "Notifications marked as read"}
+
+
+@router.post("/people-moments/run")
+def run_people_moment_notifications(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(RequirePermission("notification_manage")),
+):
+    today = datetime.now(timezone.utc).date()
+    users = db.query(User).filter(User.is_active == True).all()
+    employees = db.query(Employee).filter(Employee.status == "Active").all()
+    moments = []
+    for employee in employees:
+        if employee.date_of_birth and employee.date_of_birth.month == today.month and employee.date_of_birth.day == today.day:
+            moments.append(("birthday", employee))
+        if employee.date_of_joining and employee.date_of_joining.month == today.month and employee.date_of_joining.day == today.day:
+            moments.append(("anniversary", employee))
+    created = 0
+    for moment_type, employee in moments:
+        title = "Birthday today" if moment_type == "birthday" else "Work anniversary today"
+        message = f"{employee.first_name} {employee.last_name} has a {moment_type} today."
+        for user in users:
+            exists = db.query(Notification).filter(
+                Notification.user_id == user.id,
+                Notification.event_type == f"people_moment_{moment_type}",
+                Notification.related_entity_type == "employee",
+                Notification.related_entity_id == employee.id,
+                func.date(Notification.created_at) == today,
+            ).first()
+            if not exists:
+                create_notification(db, NotificationCreate(
+                    user_id=user.id,
+                    title=title,
+                    message=message,
+                    module="engagement",
+                    event_type=f"people_moment_{moment_type}",
+                    related_entity_type="employee",
+                    related_entity_id=employee.id,
+                    action_url="/dashboard",
+                    priority="normal",
+                    channels=["in_app"],
+                ))
+                created += 1
+    return {"moments": len(moments), "notifications_created": created}

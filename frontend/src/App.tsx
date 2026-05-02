@@ -4,6 +4,7 @@ import { useAuthStore } from "@/store/authStore";
 import AppLayout from "@/components/layout/AppLayout";
 import LoginPage from "@/pages/auth/LoginPage";
 import DashboardPage from "@/pages/dashboard/DashboardPage";
+import ManagerDashboardPage from "@/pages/dashboard/ManagerDashboardPage";
 import EmployeesPage from "@/pages/employees/EmployeesPage";
 import EmployeeDetailPage from "@/pages/employees/EmployeeDetailPage";
 import AddEmployeePage from "@/pages/employees/AddEmployeePage";
@@ -19,13 +20,16 @@ import HelpdeskPage from "@/pages/helpdesk/HelpdeskPage";
 import ReportsPage from "@/pages/reports/ReportsPage";
 import AdminLogsPage from "@/pages/logs/AdminLogsPage";
 import CompanyPage from "@/pages/company/CompanyPage";
+import OrgChartPage from "@/pages/company/OrgChartPage";
 import AIAssistantPage from "@/pages/ai/AIAssistantPage";
 import ProfilePage from "@/pages/profile/ProfilePage";
+import ESSPortalPage from "@/pages/profile/ESSPortalPage";
 import AssetsPage from "@/pages/assets/AssetsPage";
 import OnboardingPage from "@/pages/onboarding/OnboardingPage";
 import DocumentsPage from "@/pages/documents/DocumentsPage";
 import ExitPage from "@/pages/exit/ExitPage";
 import SettingsPage from "@/pages/settings/SettingsPage";
+import EngagementPage from "@/pages/engagement/EngagementPage";
 import { canAccessRoute } from "@/lib/roles";
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -53,6 +57,8 @@ export default function App() {
         >
           <Route index element={<Navigate to="/dashboard" replace />} />
           <Route path="dashboard" element={<DashboardPage />} />
+          <Route path="manager-dashboard" element={<ManagerDashboardPage />} />
+          <Route path="ess" element={<ESSPortalPage />} />
           <Route path="employees" element={<EmployeesPage />} />
           <Route path="employees/new" element={<AddEmployeePage />} />
           <Route path="employees/:id" element={<EmployeeDetailPage />} />
@@ -64,10 +70,12 @@ export default function App() {
           <Route path="payroll" element={<PayrollPage />} />
           <Route path="recruitment" element={<RecruitmentPage />} />
           <Route path="performance" element={<PerformancePage />} />
+          <Route path="engagement" element={<EngagementPage />} />
           <Route path="helpdesk" element={<HelpdeskPage />} />
           <Route path="reports" element={<ReportsPage />} />
           <Route path="logs" element={<AdminLogsPage />} />
           <Route path="company" element={<CompanyPage />} />
+          <Route path="org-chart" element={<OrgChartPage />} />
           <Route path="settings" element={<SettingsPage />} />
           <Route path="assets" element={<AssetsPage />} />
           <Route path="onboarding" element={<OnboardingPage />} />

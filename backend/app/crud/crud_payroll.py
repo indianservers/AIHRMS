@@ -2,7 +2,7 @@ from datetime import date
 from decimal import Decimal
 from typing import List, Optional
 from sqlalchemy.orm import Session
-from sqlalchemy import and_
+from sqlalchemy import and_, or_
 from app.models.payroll import (
     SalaryComponent, SalaryStructure, SalaryStructureComponent,
     EmployeeSalary, PayrollRun, PayrollRecord, PayrollComponent, Reimbursement,
@@ -18,7 +18,53 @@ def _money(value: Decimal) -> Decimal:
 def get_active_salary(db: Session, employee_id: int) -> Optional[EmployeeSalary]:
     return db.query(EmployeeSalary).filter(
         and_(EmployeeSalary.employee_id == employee_id, EmployeeSalary.is_active == True)
+    ).order_by(
+        EmployeeSalary.effective_from.desc(),
+        EmployeeSalary.id.desc(),
     ).first()
+
+
+def _salary_effective_from(salary: EmployeeSalary) -> date:
+    return salary.effective_date or salary.effective_from
+
+
+def get_prorated_salary_for_period(
+    db: Session,
+    employee_id: int,
+    period_start: date,
+    period_end: date,
+) -> tuple[Decimal, Decimal, Decimal]:
+    salaries = db.query(EmployeeSalary).filter(
+        EmployeeSalary.employee_id == employee_id,
+        EmployeeSalary.effective_from <= period_end,
+        or_(EmployeeSalary.effective_to.is_(None), EmployeeSalary.effective_to >= period_start),
+    ).order_by(
+        EmployeeSalary.effective_from.asc(),
+        EmployeeSalary.id.asc(),
+    ).all()
+    if not salaries:
+        return Decimal("0"), Decimal("0"), Decimal("0")
+
+    total_days = Decimal(str((period_end - period_start).days + 1))
+    monthly_ctc = Decimal("0")
+    basic = Decimal("0")
+    hra = Decimal("0")
+
+    for salary in salaries:
+        segment_start = max(_salary_effective_from(salary), period_start)
+        segment_end = min(salary.effective_to or period_end, period_end)
+        if segment_end < segment_start:
+            continue
+        segment_days = Decimal(str((segment_end - segment_start).days + 1))
+        weight = segment_days / total_days
+        segment_monthly_ctc = Decimal(salary.ctc or 0) / Decimal("12")
+        segment_basic = Decimal(salary.basic or 0) or (segment_monthly_ctc * Decimal("0.4"))
+        segment_hra = Decimal(salary.hra or 0) or (segment_basic * Decimal("0.5"))
+        monthly_ctc += segment_monthly_ctc * weight
+        basic += segment_basic * weight
+        hra += segment_hra * weight
+
+    return _money(monthly_ctc), _money(basic), _money(hra)
 
 
 def run_payroll(db: Session, month: int, year: int, run_by_user_id: int) -> PayrollRun:
@@ -26,18 +72,27 @@ def run_payroll(db: Session, month: int, year: int, run_by_user_id: int) -> Payr
     from app.models.attendance import Attendance
     import calendar
 
+    period_start = date(year, month, 1)
+    period_end = date(year, month, calendar.monthrange(year, month)[1])
+
     # Create or get existing run
     payroll_run = db.query(PayrollRun).filter(
-        and_(PayrollRun.month == month, PayrollRun.year == year)
+        and_(PayrollRun.month == month, PayrollRun.year == year, PayrollRun.deleted_at.is_(None))
     ).first()
 
     if payroll_run and payroll_run.status == "Locked":
         raise ValueError("Payroll is already locked for this period")
 
+    if payroll_run:
+        payroll_run.pay_period_start = payroll_run.pay_period_start or period_start
+        payroll_run.pay_period_end = payroll_run.pay_period_end or period_end
+
     if not payroll_run:
         payroll_run = PayrollRun(
             month=month,
             year=year,
+            pay_period_start=period_start,
+            pay_period_end=period_end,
             run_date=date.today(),
             status="Processing",
         )
@@ -45,7 +100,10 @@ def run_payroll(db: Session, month: int, year: int, run_by_user_id: int) -> Payr
         db.flush()
 
     # Get all active employees
-    employees = db.query(Employee).filter(Employee.status == "Active").all()
+    employees = db.query(Employee).filter(
+        Employee.status == "Active",
+        Employee.deleted_at.is_(None),
+    ).all()
     total_working_days = sum(1 for d in range(1, calendar.monthrange(year, month)[1] + 1)
                              if date(year, month, d).weekday() < 5)  # Mon-Fri
 
@@ -70,8 +128,8 @@ def run_payroll(db: Session, month: int, year: int, run_by_user_id: int) -> Payr
             and_(
                 Attendance.employee_id == emp.id,
                 Attendance.status.in_(["Present", "WFH", "Half-day"]),
-                Attendance.attendance_date >= date(year, month, 1),
-                Attendance.attendance_date <= date(year, month, calendar.monthrange(year, month)[1]),
+                Attendance.attendance_date >= period_start,
+                Attendance.attendance_date <= period_end,
             )
         ).count()
 
@@ -86,10 +144,12 @@ def run_payroll(db: Session, month: int, year: int, run_by_user_id: int) -> Payr
             paid_days = min(present_days, Decimal(str(total_working_days)))
             lop_days = max(Decimal("0"), Decimal(str(total_working_days)) - paid_days)
 
-        ctc = salary.ctc
-        monthly_ctc = ctc / Decimal("12")
-        basic = salary.basic or (monthly_ctc * Decimal("0.4"))
-        hra = salary.hra or (basic * Decimal("0.5"))
+        monthly_ctc, basic, hra = get_prorated_salary_for_period(db, emp.id, period_start, period_end)
+        if monthly_ctc == Decimal("0"):
+            ctc = salary.ctc
+            monthly_ctc = ctc / Decimal("12")
+            basic = salary.basic or (monthly_ctc * Decimal("0.4"))
+            hra = salary.hra or (basic * Decimal("0.5"))
         other_allowances = monthly_ctc - basic - hra
 
         per_day_salary = monthly_ctc / Decimal(str(total_working_days or 1))
@@ -113,8 +173,8 @@ def run_payroll(db: Session, month: int, year: int, run_by_user_id: int) -> Payr
                 Reimbursement.employee_id == emp.id,
                 Reimbursement.status == "Approved",
                 Reimbursement.payroll_record_id.is_(None),
-                Reimbursement.date >= date(year, month, 1),
-                Reimbursement.date <= date(year, month, calendar.monthrange(year, month)[1]),
+                Reimbursement.date >= period_start,
+                Reimbursement.date <= period_end,
             )
         ).all()
         reimbursement_total = sum((item.amount or Decimal("0")) for item in approved_reimbursements)
@@ -222,7 +282,13 @@ def run_payroll(db: Session, month: int, year: int, run_by_user_id: int) -> Payr
                     exempt_amount=Decimal("0"),
                     wage_base_flags={"pf": component_name == "Basic", "esi": component_type == "Earning"},
                     calculation_order=order,
-                    formula_trace_json={"engine": "legacy-run-v1", "attendance_input_id": attendance_input.id if attendance_input else None},
+                    formula_trace_json={
+                        "engine": "legacy-run-v1",
+                        "attendance_input_id": attendance_input.id if attendance_input else None,
+                        "salary_proration": "calendar_days",
+                        "period_start": period_start.isoformat(),
+                        "period_end": period_end.isoformat(),
+                    },
                 ))
 
         for reimbursement in approved_reimbursements:
@@ -251,7 +317,10 @@ def run_payroll(db: Session, month: int, year: int, run_by_user_id: int) -> Payr
 def calculate_payroll_variance(db: Session, payroll_run_id: int) -> List[PayrollVarianceItem]:
     import calendar
 
-    run = db.query(PayrollRun).filter(PayrollRun.id == payroll_run_id).first()
+    run = db.query(PayrollRun).filter(
+        PayrollRun.id == payroll_run_id,
+        PayrollRun.deleted_at.is_(None),
+    ).first()
     if not run:
         raise ValueError("Payroll run not found")
 
@@ -260,6 +329,7 @@ def calculate_payroll_variance(db: Session, payroll_run_id: int) -> List[Payroll
     previous_run = db.query(PayrollRun).filter(
         PayrollRun.month == previous_month,
         PayrollRun.year == previous_year,
+        PayrollRun.deleted_at.is_(None),
     ).first()
 
     db.query(PayrollVarianceItem).filter(PayrollVarianceItem.payroll_run_id == payroll_run_id).delete()
@@ -328,6 +398,7 @@ def get_payslip(db: Session, employee_id: int, month: int, year: int) -> Optiona
             PayrollRecord.employee_id == employee_id,
             PayrollRun.month == month,
             PayrollRun.year == year,
+            PayrollRun.deleted_at.is_(None),
         )
     ).first()
 
@@ -375,6 +446,7 @@ def build_payslip_payload(db: Session, record: PayrollRecord) -> dict:
         PayrollRecord.employee_id == record.employee_id,
         PayrollRun.year == run.year,
         PayrollRun.month <= run.month,
+        PayrollRun.deleted_at.is_(None),
     ).all()
     ytd = {
         "gross_salary": sum((item.gross_salary or Decimal("0")) for item in ytd_records),

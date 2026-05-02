@@ -1,6 +1,6 @@
 from datetime import date, datetime
 from decimal import Decimal
-from typing import Optional
+from typing import Any, Optional
 from pydantic import BaseModel
 
 
@@ -65,6 +65,207 @@ class PerformanceReviewSchema(PerformanceReviewCreate):
     reviewer_id: int
     status: str
     submitted_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
+class GoalCheckInCreate(BaseModel):
+    goal_id: int
+    progress_percent: Decimal = Decimal("0")
+    confidence: str = "On Track"
+    update_text: Optional[str] = None
+    blocker_text: Optional[str] = None
+
+
+class GoalCheckInSchema(GoalCheckInCreate):
+    id: int
+    employee_id: int
+    manager_comment: Optional[str] = None
+    checked_in_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class ReviewTemplateQuestionCreate(BaseModel):
+    question_text: str
+    question_type: str = "Rating"
+    competency_code: Optional[str] = None
+    weightage: Decimal = Decimal("0")
+    is_required: bool = True
+    order_sequence: int = 1
+
+
+class ReviewTemplateQuestionSchema(ReviewTemplateQuestionCreate):
+    id: int
+    template_id: int
+
+    class Config:
+        from_attributes = True
+
+
+class ReviewTemplateCreate(BaseModel):
+    name: str
+    template_type: str = "Performance"
+    description: Optional[str] = None
+    rating_scale_min: int = 1
+    rating_scale_max: int = 5
+    is_active: bool = True
+    questions: list[ReviewTemplateQuestionCreate] = []
+
+
+class ReviewTemplateSchema(BaseModel):
+    id: int
+    name: str
+    template_type: str
+    description: Optional[str] = None
+    rating_scale_min: int
+    rating_scale_max: int
+    is_active: bool
+    created_at: datetime
+    questions: list[ReviewTemplateQuestionSchema] = []
+
+    class Config:
+        from_attributes = True
+
+
+class Feedback360RequestCreate(BaseModel):
+    cycle_id: int
+    employee_id: int
+    reviewer_id: int
+    relationship_type: str = "Peer"
+    due_date: Optional[date] = None
+
+
+class Feedback360Submit(BaseModel):
+    responses_json: list[dict[str, Any]] = []
+    overall_rating: Optional[Decimal] = None
+    comments: Optional[str] = None
+
+
+class Feedback360RequestSchema(Feedback360RequestCreate):
+    id: int
+    status: str
+    submitted_at: Optional[datetime] = None
+    responses_json: Optional[list[dict[str, Any]]] = None
+    overall_rating: Optional[Decimal] = None
+    comments: Optional[str] = None
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class CompetencyCreate(BaseModel):
+    code: str
+    name: str
+    category: Optional[str] = None
+    description: Optional[str] = None
+    is_active: bool = True
+
+
+class CompetencySchema(CompetencyCreate):
+    id: int
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class RoleSkillRequirementCreate(BaseModel):
+    designation_id: Optional[int] = None
+    job_profile_id: Optional[int] = None
+    competency_id: int
+    required_level: int = 3
+    importance: str = "Core"
+    is_active: bool = True
+
+
+class RoleSkillRequirementSchema(RoleSkillRequirementCreate):
+    id: int
+
+    class Config:
+        from_attributes = True
+
+
+class EmployeeCompetencyAssessmentCreate(BaseModel):
+    employee_id: int
+    competency_id: int
+    assessed_level: int = 1
+    assessment_source: str = "Manager"
+    evidence: Optional[str] = None
+
+
+class EmployeeCompetencyAssessmentSchema(EmployeeCompetencyAssessmentCreate):
+    id: int
+    assessed_by: Optional[int] = None
+    assessed_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class CompensationCycleCreate(BaseModel):
+    name: str
+    cycle_type: str = "Merit"
+    financial_year: str
+    budget_amount: Decimal = Decimal("0")
+    budget_percent: Decimal = Decimal("0")
+    starts_on: Optional[date] = None
+    ends_on: Optional[date] = None
+
+
+class CompensationCycleSchema(CompensationCycleCreate):
+    id: int
+    status: str
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class PayBandCreate(BaseModel):
+    name: str
+    grade_band_id: Optional[int] = None
+    location_id: Optional[int] = None
+    currency: str = "INR"
+    min_ctc: Decimal = Decimal("0")
+    midpoint_ctc: Decimal = Decimal("0")
+    max_ctc: Decimal = Decimal("0")
+    effective_from: Optional[date] = None
+    is_active: bool = True
+
+
+class PayBandSchema(PayBandCreate):
+    id: int
+
+    class Config:
+        from_attributes = True
+
+
+class MeritRecommendationCreate(BaseModel):
+    compensation_cycle_id: int
+    employee_id: int
+    current_ctc: Decimal = Decimal("0")
+    recommended_ctc: Decimal = Decimal("0")
+    performance_rating: Optional[Decimal] = None
+    compa_ratio: Optional[Decimal] = None
+    manager_remarks: Optional[str] = None
+
+
+class MeritRecommendationReview(BaseModel):
+    status: str
+    manager_remarks: Optional[str] = None
+
+
+class MeritRecommendationSchema(MeritRecommendationCreate):
+    id: int
+    increase_percent: Decimal
+    status: str
+    approved_by: Optional[int] = None
+    approved_at: Optional[datetime] = None
+    created_at: datetime
 
     class Config:
         from_attributes = True

@@ -193,7 +193,9 @@ export default function EmployeesPage() {
             variant="ghost"
             size="icon"
             className="h-8 w-8 text-destructive"
-            onClick={() => deleteMutation.mutate(info.row.original.id)}
+            title="Terminate employee"
+            aria-label="Terminate employee"
+            onClick={() => window.confirm("Terminate this employee?") && deleteMutation.mutate(info.row.original.id)}
           >
             <UserX className="h-3.5 w-3.5" />
           </Button>

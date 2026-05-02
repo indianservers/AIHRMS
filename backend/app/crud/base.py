@@ -1,3 +1,4 @@
+from datetime import datetime, timezone
 from typing import Any, Dict, Generic, List, Optional, Type, TypeVar, Union
 from fastapi.encoders import jsonable_encoder
 from pydantic import BaseModel
@@ -14,7 +15,10 @@ class CRUDBase(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
         self.model = model
 
     def get(self, db: Session, id: int) -> Optional[ModelType]:
-        return db.query(self.model).filter(self.model.id == id).first()
+        query = db.query(self.model).filter(self.model.id == id)
+        if hasattr(self.model, "deleted_at"):
+            query = query.filter(self.model.deleted_at.is_(None))
+        return query.first()
 
     def get_multi(
         self,
@@ -25,6 +29,8 @@ class CRUDBase(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
         filters: Optional[Dict[str, Any]] = None,
     ) -> tuple[List[ModelType], int]:
         query = db.query(self.model)
+        if hasattr(self.model, "deleted_at"):
+            query = query.filter(self.model.deleted_at.is_(None))
         if filters:
             for key, value in filters.items():
                 if hasattr(self.model, key) and value is not None:
@@ -64,6 +70,10 @@ class CRUDBase(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
     def remove(self, db: Session, *, id: int) -> Optional[ModelType]:
         obj = db.query(self.model).get(id)
         if obj:
-            db.delete(obj)
+            if hasattr(obj, "deleted_at"):
+                obj.deleted_at = datetime.now(timezone.utc)
+                db.add(obj)
+            else:
+                db.delete(obj)
             db.commit()
         return obj

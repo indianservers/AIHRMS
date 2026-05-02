@@ -7,11 +7,13 @@ from app.core.security import (
     verify_refresh_token, get_password_hash
 )
 from app.models.user import User
-from app.models.user import Role, Permission
+from app.models.user import Role, Permission, UserSession, MFAMethod, PasswordPolicy, LoginAttempt
 from app.schemas.auth import (
     LoginRequest, TokenResponse, RefreshTokenRequest,
     ChangePasswordRequest, UserCreate, UserSchema,
     RoleCreate, RoleUpdate, RoleSchema, PermissionSchema,
+    UserSessionCreate, UserSessionSchema, MFAMethodCreate, MFAMethodSchema,
+    PasswordPolicyCreate, PasswordPolicySchema, LoginAttemptSchema,
 )
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
@@ -21,14 +23,19 @@ router = APIRouter(prefix="/auth", tags=["Authentication"])
 def login(request: LoginRequest, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.email == request.email).first()
     if not user or not verify_password(request.password, user.hashed_password):
+        db.add(LoginAttempt(email=request.email, user_id=user.id if user else None, status="Failed", failure_reason="Incorrect credentials"))
+        db.commit()
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect email or password",
         )
     if not user.is_active:
+        db.add(LoginAttempt(email=request.email, user_id=user.id, status="Failed", failure_reason="Account disabled"))
+        db.commit()
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Account is disabled")
 
     user.last_login = datetime.now(timezone.utc)
+    db.add(LoginAttempt(email=request.email, user_id=user.id, status="Success"))
     db.commit()
 
     access_token = create_access_token(user.id)
@@ -216,3 +223,107 @@ def delete_role(
     db.delete(role)
     db.commit()
     return {"message": "Role deleted"}
+
+
+@router.post("/sessions", response_model=UserSessionSchema, status_code=201)
+def create_user_session(
+    data: UserSessionCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_superuser),
+):
+    item = UserSession(**data.model_dump(), last_seen_at=datetime.now(timezone.utc))
+    db.add(item)
+    db.commit()
+    db.refresh(item)
+    return item
+
+
+@router.get("/sessions", response_model=list[UserSessionSchema])
+def list_user_sessions(
+    user_id: int | None = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_superuser),
+):
+    query = db.query(UserSession)
+    if user_id:
+        query = query.filter(UserSession.user_id == user_id)
+    return query.order_by(UserSession.id.desc()).limit(300).all()
+
+
+@router.put("/sessions/{session_id}/revoke", response_model=UserSessionSchema)
+def revoke_user_session(
+    session_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_superuser),
+):
+    item = db.query(UserSession).filter(UserSession.id == session_id).first()
+    if not item:
+        raise HTTPException(status_code=404, detail="Session not found")
+    item.status = "Revoked"
+    db.commit()
+    db.refresh(item)
+    return item
+
+
+@router.post("/mfa-methods", response_model=MFAMethodSchema, status_code=201)
+def create_mfa_method(
+    data: MFAMethodCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_superuser),
+):
+    item = MFAMethod(**data.model_dump())
+    db.add(item)
+    db.commit()
+    db.refresh(item)
+    return item
+
+
+@router.put("/mfa-methods/{method_id}/verify", response_model=MFAMethodSchema)
+def verify_mfa_method(
+    method_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_superuser),
+):
+    item = db.query(MFAMethod).filter(MFAMethod.id == method_id).first()
+    if not item:
+        raise HTTPException(status_code=404, detail="MFA method not found")
+    item.is_verified = True
+    item.enabled_at = datetime.now(timezone.utc)
+    db.commit()
+    db.refresh(item)
+    return item
+
+
+@router.post("/password-policies", response_model=PasswordPolicySchema, status_code=201)
+def create_password_policy(
+    data: PasswordPolicyCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_superuser),
+):
+    if data.is_active:
+        db.query(PasswordPolicy).update({PasswordPolicy.is_active: False})
+    item = PasswordPolicy(**data.model_dump())
+    db.add(item)
+    db.commit()
+    db.refresh(item)
+    return item
+
+
+@router.get("/password-policies", response_model=list[PasswordPolicySchema])
+def list_password_policies(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_superuser),
+):
+    return db.query(PasswordPolicy).order_by(PasswordPolicy.id.desc()).all()
+
+
+@router.get("/login-attempts", response_model=list[LoginAttemptSchema])
+def list_login_attempts(
+    email: str | None = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_superuser),
+):
+    query = db.query(LoginAttempt)
+    if email:
+        query = query.filter(LoginAttempt.email == email)
+    return query.order_by(LoginAttempt.id.desc()).limit(300).all()

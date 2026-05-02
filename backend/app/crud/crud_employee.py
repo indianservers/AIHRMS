@@ -23,7 +23,10 @@ class CRUDEmployee(CRUDBase[Employee, EmployeeCreate, EmployeeUpdate]):
         return f"EMP{next_num:05d}"
 
     def get_by_employee_id(self, db: Session, employee_id: str) -> Optional[Employee]:
-        return db.query(Employee).filter(Employee.employee_id == employee_id).first()
+        return db.query(Employee).filter(
+            Employee.employee_id == employee_id,
+            Employee.deleted_at.is_(None),
+        ).first()
 
     def get_with_details(self, db: Session, id: int) -> Optional[Employee]:
         return (
@@ -35,7 +38,7 @@ class CRUDEmployee(CRUDBase[Employee, EmployeeCreate, EmployeeUpdate]):
                 joinedload(Employee.documents),
                 joinedload(Employee.lifecycle_events),
             )
-            .filter(Employee.id == id)
+            .filter(Employee.id == id, Employee.deleted_at.is_(None))
             .first()
         )
 
@@ -52,7 +55,7 @@ class CRUDEmployee(CRUDBase[Employee, EmployeeCreate, EmployeeUpdate]):
         skip: int = 0,
         limit: int = 50,
     ) -> Tuple[List[Employee], int]:
-        query = db.query(Employee)
+        query = db.query(Employee).filter(Employee.deleted_at.is_(None))
 
         if search:
             term = f"%{search}%"
@@ -176,10 +179,11 @@ class CRUDEmployee(CRUDBase[Employee, EmployeeCreate, EmployeeUpdate]):
         return event
 
     def get_headcount_stats(self, db: Session) -> dict:
-        total = db.query(func.count(Employee.id)).scalar()
-        active = db.query(func.count(Employee.id)).filter(Employee.status == "Active").scalar()
-        on_leave = db.query(func.count(Employee.id)).filter(Employee.status == "On Leave").scalar()
-        resigned = db.query(func.count(Employee.id)).filter(Employee.status == "Resigned").scalar()
+        active_query = db.query(func.count(Employee.id)).filter(Employee.deleted_at.is_(None))
+        total = active_query.scalar()
+        active = active_query.filter(Employee.status == "Active").scalar()
+        on_leave = active_query.filter(Employee.status == "On Leave").scalar()
+        resigned = active_query.filter(Employee.status == "Resigned").scalar()
         return {"total": total, "active": active, "on_leave": on_leave, "resigned": resigned}
 
 

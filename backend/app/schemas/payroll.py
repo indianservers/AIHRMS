@@ -36,6 +36,7 @@ class SalaryComponentBase(BaseModel):
     rounding_rule: str = "Nearest Rupee"
     effective_from: Optional[date_type] = None
     effective_to: Optional[date_type] = None
+    is_currency_fixed: bool = True
 
 
 class SalaryComponentCreate(SalaryComponentBase):
@@ -364,6 +365,8 @@ class EmployeeSalaryCreate(BaseModel):
     basic: Optional[Decimal] = None
     hra: Optional[Decimal] = None
     effective_from: date_type
+    effective_date: Optional[date_type] = None
+    effective_to: Optional[date_type] = None
 
 
 class EmployeeSalarySchema(BaseModel):
@@ -374,6 +377,7 @@ class EmployeeSalarySchema(BaseModel):
     basic: Optional[Decimal] = None
     hra: Optional[Decimal] = None
     effective_from: date_type
+    effective_date: Optional[date_type] = None
     effective_to: Optional[date_type] = None
     is_active: bool
 
@@ -433,6 +437,9 @@ class SensitiveSalaryAuditLogSchema(BaseModel):
 class PayrollRunCreate(BaseModel):
     month: int
     year: int
+    company_id: Optional[int] = None
+    pay_period_start: Optional[date_type] = None
+    pay_period_end: Optional[date_type] = None
 
 
 class PayrollRunApproval(BaseModel):
@@ -444,12 +451,17 @@ class PayrollRunSchema(BaseModel):
     id: int
     month: int
     year: int
+    company_id: Optional[int] = None
+    pay_period_start: Optional[date_type] = None
+    pay_period_end: Optional[date_type] = None
     run_date: Optional[date_type] = None
     status: str
     total_gross: Decimal
     total_deductions: Decimal
     total_net: Decimal
     remarks: Optional[str] = None
+    deleted_at: Optional[datetime] = None
+    deleted_by: Optional[int] = None
 
     class Config:
         from_attributes = True

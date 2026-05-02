@@ -61,11 +61,15 @@ class AuditLogMiddleware(BaseHTTPMiddleware):
 
         db = SessionLocal()
         try:
+            forwarded_for = request.headers.get("x-forwarded-for")
+            ip_address = forwarded_for.split(",")[0].strip() if forwarded_for else (
+                request.client.host if request.client else None
+            )
             log = AuditLog(
                 user_id=user_id,
                 method=request.method,
                 endpoint=str(request.url.path),
-                ip_address=request.client.host if request.client else None,
+                ip_address=ip_address,
                 user_agent=request.headers.get("user-agent"),
                 status_code=status_code,
                 duration_ms=duration_ms,

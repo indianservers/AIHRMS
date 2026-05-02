@@ -105,6 +105,8 @@ class LeaveRequestSchema(BaseModel):
     applied_at: datetime
     reviewed_at: Optional[datetime] = None
     review_remarks: Optional[str] = None
+    deleted_at: Optional[datetime] = None
+    deleted_by: Optional[int] = None
 
     class Config:
         from_attributes = True

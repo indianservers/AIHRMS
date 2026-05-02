@@ -2,6 +2,9 @@ import { useState } from "react";
 import { Outlet } from "react-router-dom";
 import Sidebar from "./Sidebar";
 import Topbar from "./Topbar";
+import BackToTop from "@/components/app/BackToTop";
+import Breadcrumbs from "@/components/app/Breadcrumbs";
+import SessionTimeoutWarning from "@/components/app/SessionTimeoutWarning";
 
 export default function AppLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -25,8 +28,11 @@ export default function AppLayout() {
       >
         <Topbar onMenuClick={() => setSidebarOpen(true)} />
         <main className="flex-1 overflow-y-auto p-4 md:p-6 lg:p-8 animate-fade-in">
+          <Breadcrumbs />
           <Outlet />
         </main>
+        <BackToTop />
+        <SessionTimeoutWarning />
       </div>
 
       {/* Mobile overlay */}

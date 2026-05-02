@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Boolean, ForeignKey, DateTime, Date, Numeric, Text
+from sqlalchemy import Column, Integer, String, Boolean, ForeignKey, DateTime, Date, Numeric, Text, JSON
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from app.db.base_class import Base
@@ -66,3 +66,164 @@ class PerformanceReview(Base):
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
     cycle = relationship("AppraisalCycle", back_populates="reviews")
+
+
+class GoalCheckIn(Base):
+    __tablename__ = "goal_check_ins"
+
+    id = Column(Integer, primary_key=True, index=True)
+    goal_id = Column(Integer, ForeignKey("performance_goals.id", ondelete="CASCADE"), nullable=False, index=True)
+    employee_id = Column(Integer, ForeignKey("employees.id", ondelete="CASCADE"), nullable=False, index=True)
+    progress_percent = Column(Numeric(5, 2), default=0)
+    confidence = Column(String(30), default="On Track")  # At Risk, On Track, Ahead
+    update_text = Column(Text)
+    blocker_text = Column(Text)
+    manager_comment = Column(Text)
+    checked_in_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
+
+    goal = relationship("PerformanceGoal")
+    employee = relationship("Employee")
+
+
+class ReviewTemplate(Base):
+    __tablename__ = "review_templates"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(150), nullable=False)
+    template_type = Column(String(40), default="Performance", index=True)  # Performance, 360, Probation, Manager
+    description = Column(Text)
+    rating_scale_min = Column(Integer, default=1)
+    rating_scale_max = Column(Integer, default=5)
+    is_active = Column(Boolean, default=True, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    questions = relationship("ReviewTemplateQuestion", back_populates="template", cascade="all, delete-orphan")
+
+
+class ReviewTemplateQuestion(Base):
+    __tablename__ = "review_template_questions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    template_id = Column(Integer, ForeignKey("review_templates.id", ondelete="CASCADE"), nullable=False, index=True)
+    question_text = Column(Text, nullable=False)
+    question_type = Column(String(30), default="Rating")  # Rating, Text, YesNo
+    competency_code = Column(String(80), index=True)
+    weightage = Column(Numeric(5, 2), default=0)
+    is_required = Column(Boolean, default=True)
+    order_sequence = Column(Integer, default=1)
+
+    template = relationship("ReviewTemplate", back_populates="questions")
+
+
+class Feedback360Request(Base):
+    __tablename__ = "feedback_360_requests"
+
+    id = Column(Integer, primary_key=True, index=True)
+    cycle_id = Column(Integer, ForeignKey("appraisal_cycles.id", ondelete="CASCADE"), nullable=False, index=True)
+    employee_id = Column(Integer, ForeignKey("employees.id", ondelete="CASCADE"), nullable=False, index=True)
+    reviewer_id = Column(Integer, ForeignKey("employees.id", ondelete="CASCADE"), nullable=False, index=True)
+    relationship_type = Column(String(30), default="Peer")  # Peer, Manager, Direct Report, Customer
+    status = Column(String(30), default="Requested", index=True)
+    due_date = Column(Date)
+    submitted_at = Column(DateTime(timezone=True))
+    responses_json = Column(JSON)
+    overall_rating = Column(Numeric(3, 1))
+    comments = Column(Text)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    cycle = relationship("AppraisalCycle")
+    employee = relationship("Employee", foreign_keys=[employee_id])
+    reviewer = relationship("Employee", foreign_keys=[reviewer_id])
+
+
+class Competency(Base):
+    __tablename__ = "competencies"
+
+    id = Column(Integer, primary_key=True, index=True)
+    code = Column(String(80), unique=True, nullable=False, index=True)
+    name = Column(String(150), nullable=False)
+    category = Column(String(80), index=True)
+    description = Column(Text)
+    is_active = Column(Boolean, default=True, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class RoleSkillRequirement(Base):
+    __tablename__ = "role_skill_requirements"
+
+    id = Column(Integer, primary_key=True, index=True)
+    designation_id = Column(Integer, ForeignKey("designations.id", ondelete="CASCADE"), nullable=True, index=True)
+    job_profile_id = Column(Integer, ForeignKey("job_profiles.id", ondelete="CASCADE"), nullable=True, index=True)
+    competency_id = Column(Integer, ForeignKey("competencies.id", ondelete="CASCADE"), nullable=False, index=True)
+    required_level = Column(Integer, default=3)
+    importance = Column(String(30), default="Core")  # Core, Critical, Optional
+    is_active = Column(Boolean, default=True, index=True)
+
+    competency = relationship("Competency")
+
+
+class EmployeeCompetencyAssessment(Base):
+    __tablename__ = "employee_competency_assessments"
+
+    id = Column(Integer, primary_key=True, index=True)
+    employee_id = Column(Integer, ForeignKey("employees.id", ondelete="CASCADE"), nullable=False, index=True)
+    competency_id = Column(Integer, ForeignKey("competencies.id", ondelete="CASCADE"), nullable=False, index=True)
+    assessed_level = Column(Integer, default=1)
+    assessment_source = Column(String(40), default="Manager")  # Self, Manager, Review, Certification
+    assessed_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    assessed_at = Column(DateTime(timezone=True), server_default=func.now())
+    evidence = Column(Text)
+
+    employee = relationship("Employee")
+    competency = relationship("Competency")
+
+
+class CompensationCycle(Base):
+    __tablename__ = "compensation_cycles"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(150), nullable=False)
+    cycle_type = Column(String(40), default="Merit")  # Merit, Promotion, Bonus, Correction
+    financial_year = Column(String(20), nullable=False, index=True)
+    budget_amount = Column(Numeric(14, 2), default=0)
+    budget_percent = Column(Numeric(5, 2), default=0)
+    status = Column(String(30), default="Draft", index=True)
+    starts_on = Column(Date)
+    ends_on = Column(Date)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class PayBand(Base):
+    __tablename__ = "pay_bands"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(120), nullable=False)
+    grade_band_id = Column(Integer, ForeignKey("grade_bands.id", ondelete="SET NULL"), nullable=True, index=True)
+    location_id = Column(Integer, ForeignKey("work_locations.id", ondelete="SET NULL"), nullable=True, index=True)
+    currency = Column(String(10), default="INR")
+    min_ctc = Column(Numeric(14, 2), default=0)
+    midpoint_ctc = Column(Numeric(14, 2), default=0)
+    max_ctc = Column(Numeric(14, 2), default=0)
+    effective_from = Column(Date)
+    is_active = Column(Boolean, default=True, index=True)
+
+
+class MeritRecommendation(Base):
+    __tablename__ = "merit_recommendations"
+
+    id = Column(Integer, primary_key=True, index=True)
+    compensation_cycle_id = Column(Integer, ForeignKey("compensation_cycles.id", ondelete="CASCADE"), nullable=False, index=True)
+    employee_id = Column(Integer, ForeignKey("employees.id", ondelete="CASCADE"), nullable=False, index=True)
+    current_ctc = Column(Numeric(14, 2), default=0)
+    recommended_ctc = Column(Numeric(14, 2), default=0)
+    increase_percent = Column(Numeric(5, 2), default=0)
+    performance_rating = Column(Numeric(3, 1))
+    compa_ratio = Column(Numeric(6, 3))
+    manager_remarks = Column(Text)
+    status = Column(String(30), default="Draft", index=True)
+    approved_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    approved_at = Column(DateTime(timezone=True))
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    cycle = relationship("CompensationCycle")
+    employee = relationship("Employee")

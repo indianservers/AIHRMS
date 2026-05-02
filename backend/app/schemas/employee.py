@@ -1,6 +1,6 @@
 from datetime import date, datetime
 from decimal import Decimal
-from typing import List, Optional
+from typing import Any, List, Optional
 from pydantic import BaseModel, EmailStr
 
 
@@ -154,6 +154,9 @@ class EmployeeBase(BaseModel):
     nationality: str = "Indian"
     religion: Optional[str] = None
     category: Optional[str] = None
+    gender_identity: Optional[str] = None
+    disability_status: Optional[str] = None
+    veteran_status: Optional[str] = None
     personal_email: Optional[str] = None
     phone_number: Optional[str] = None
     alternate_phone: Optional[str] = None
@@ -173,8 +176,14 @@ class EmployeeBase(BaseModel):
     branch_id: Optional[int] = None
     department_id: Optional[int] = None
     designation_id: Optional[int] = None
+    business_unit_id: Optional[int] = None
+    cost_center_id: Optional[int] = None
+    location_id: Optional[int] = None
+    grade_band_id: Optional[int] = None
+    position_id: Optional[int] = None
     reporting_manager_id: Optional[int] = None
     employment_type: str = "Full-time"
+    worker_type: str = "Employee"
     status: str = "Active"
     work_location: str = "Office"
     shift_id: Optional[int] = None
@@ -189,6 +198,7 @@ class EmployeeBase(BaseModel):
     uan_number: Optional[str] = None
     pf_number: Optional[str] = None
     esic_number: Optional[str] = None
+    salary_currency: str = "INR"
     bio: Optional[str] = None
     interests: Optional[str] = None
     research_work: Optional[str] = None
@@ -229,8 +239,14 @@ class EmployeeUpdate(BaseModel):
     branch_id: Optional[int] = None
     department_id: Optional[int] = None
     designation_id: Optional[int] = None
+    business_unit_id: Optional[int] = None
+    cost_center_id: Optional[int] = None
+    location_id: Optional[int] = None
+    grade_band_id: Optional[int] = None
+    position_id: Optional[int] = None
     reporting_manager_id: Optional[int] = None
     employment_type: Optional[str] = None
+    worker_type: Optional[str] = None
     status: Optional[str] = None
     work_location: Optional[str] = None
     shift_id: Optional[int] = None
@@ -242,6 +258,7 @@ class EmployeeUpdate(BaseModel):
     pan_number: Optional[str] = None
     aadhaar_number: Optional[str] = None
     uan_number: Optional[str] = None
+    salary_currency: Optional[str] = None
     profile_photo_url: Optional[str] = None
     bio: Optional[str] = None
     interests: Optional[str] = None
@@ -260,10 +277,16 @@ class EmployeeListSchema(BaseModel):
     designation_id: Optional[int] = None
     department_id: Optional[int] = None
     branch_id: Optional[int] = None
+    business_unit_id: Optional[int] = None
+    cost_center_id: Optional[int] = None
+    location_id: Optional[int] = None
+    grade_band_id: Optional[int] = None
+    position_id: Optional[int] = None
     employment_type: str
     status: str
     date_of_joining: date
     profile_photo_url: Optional[str] = None
+    salary_currency: str = "INR"
 
     class Config:
         from_attributes = True
@@ -278,6 +301,36 @@ class EmployeeSchema(EmployeeBase):
     skills: List[EmployeeSkillSchema] = []
     documents: List[EmployeeDocumentSchema] = []
     lifecycle_events: List[EmployeeLifecycleEventSchema] = []
+
+    class Config:
+        from_attributes = True
+
+
+class EmployeeChangeRequestCreate(BaseModel):
+    employee_id: int
+    request_type: str
+    effective_date: Optional[date] = None
+    field_changes_json: Any
+    reason: Optional[str] = None
+
+
+class EmployeeChangeRequestReview(BaseModel):
+    status: str
+    review_remarks: Optional[str] = None
+    apply_changes: bool = True
+
+
+class EmployeeChangeRequestSchema(EmployeeChangeRequestCreate):
+    id: int
+    status: str
+    requested_by: Optional[int] = None
+    reviewed_by: Optional[int] = None
+    reviewed_at: Optional[datetime] = None
+    review_remarks: Optional[str] = None
+    created_at: datetime
+    employee_name: Optional[str] = None
+    employee_code: Optional[str] = None
+    current_values_json: Optional[Any] = None
 
     class Config:
         from_attributes = True

@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Optional
+from typing import Any, Optional
 from pydantic import BaseModel, ConfigDict
 
 
@@ -39,6 +39,7 @@ class WorkflowInstanceCreate(BaseModel):
     module: str
     entity_type: str
     entity_id: int
+    context_json: Optional[dict[str, Any]] = None
 
 
 class WorkflowTaskDecision(BaseModel):
@@ -53,6 +54,9 @@ class WorkflowTaskSchema(BaseModel):
     assigned_role: Optional[str] = None
     status: str
     due_at: Optional[datetime] = None
+    reminder_sent_at: Optional[datetime] = None
+    escalated_at: Optional[datetime] = None
+    escalated_to_user_id: Optional[int] = None
     decision: Optional[str] = None
     decision_reason: Optional[str] = None
     decided_by: Optional[int] = None
@@ -67,6 +71,7 @@ class WorkflowInstanceSchema(BaseModel):
     entity_type: str
     entity_id: int
     requester_user_id: Optional[int] = None
+    context_json: Optional[dict[str, Any]] = None
     status: str
     current_step_order: int
     started_at: Optional[datetime] = None

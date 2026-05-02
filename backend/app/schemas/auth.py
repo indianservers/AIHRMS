@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import List, Optional
 from pydantic import BaseModel, EmailStr
 
@@ -89,6 +90,79 @@ class UserSchema(BaseModel):
     is_superuser: bool
     role: Optional[RoleSchema] = None
     employee_id: Optional[int] = None
+
+    class Config:
+        from_attributes = True
+
+
+class UserSessionCreate(BaseModel):
+    user_id: int
+    session_token_hash: str
+    device_name: Optional[str] = None
+    ip_address: Optional[str] = None
+    user_agent: Optional[str] = None
+    trusted_device: bool = False
+    status: str = "Active"
+    expires_at: Optional[datetime] = None
+
+
+class UserSessionSchema(UserSessionCreate):
+    id: int
+    last_seen_at: Optional[datetime] = None
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class MFAMethodCreate(BaseModel):
+    user_id: int
+    method_type: str
+    secret_ref: Optional[str] = None
+    phone_number: Optional[str] = None
+    email: Optional[str] = None
+    is_primary: bool = False
+
+
+class MFAMethodSchema(MFAMethodCreate):
+    id: int
+    is_verified: bool
+    enabled_at: Optional[datetime] = None
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class PasswordPolicyCreate(BaseModel):
+    name: str
+    min_length: int = 8
+    require_uppercase: bool = True
+    require_lowercase: bool = True
+    require_number: bool = True
+    require_symbol: bool = False
+    expiry_days: int = 90
+    lockout_attempts: int = 5
+    lockout_minutes: int = 30
+    is_active: bool = True
+
+
+class PasswordPolicySchema(PasswordPolicyCreate):
+    id: int
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class LoginAttemptSchema(BaseModel):
+    id: int
+    email: Optional[str] = None
+    user_id: Optional[int] = None
+    ip_address: Optional[str] = None
+    status: str
+    failure_reason: Optional[str] = None
+    created_at: datetime
 
     class Config:
         from_attributes = True

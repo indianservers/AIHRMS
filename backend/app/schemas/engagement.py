@@ -21,6 +21,8 @@ class AnnouncementSchema(AnnouncementCreate):
 class EngagementSurveyCreate(BaseModel):
     title: str
     survey_type: str = "Pulse"
+    question: Optional[str] = None
+    options_json: Optional[list[str]] = None
     start_date: Optional[date] = None
     end_date: Optional[date] = None
     status: str = "Draft"
@@ -60,3 +62,7 @@ class RecognitionSchema(RecognitionCreate):
     from_employee_id: Optional[int] = None
     created_at: Optional[datetime] = None
     model_config = ConfigDict(from_attributes=True)
+
+
+class RecognitionReactionCreate(BaseModel):
+    emoji: str = "clap"

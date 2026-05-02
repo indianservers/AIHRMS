@@ -1,9 +1,10 @@
-import { Bell, Menu, Moon, Search, Sun } from "lucide-react";
+import { Bell, Menu, Moon, Sun } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import GlobalSearch from "@/components/app/GlobalSearch";
+import KeyboardShortcuts from "@/components/app/KeyboardShortcuts";
 import { useThemeStore } from "@/store/themeStore";
 import { useAuthStore } from "@/store/authStore";
-import { getRoleLabel, getSearchPlaceholder } from "@/lib/roles";
+import { getRoleLabel } from "@/lib/roles";
 
 interface TopbarProps {
   onMenuClick: () => void;
@@ -28,14 +29,7 @@ export default function Topbar({ onMenuClick }: TopbarProps) {
         <Menu className="h-5 w-5" />
       </Button>
 
-      {/* Search */}
-      <div className="relative hidden sm:flex flex-1 max-w-md">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-        <Input
-          placeholder={getSearchPlaceholder(user?.role, user?.is_superuser)}
-          className="pl-9 bg-secondary/50 border-0 focus-visible:ring-1"
-        />
-      </div>
+      <GlobalSearch />
 
       <div className="ml-auto flex items-center gap-2">
         {/* Notifications */}
@@ -43,6 +37,7 @@ export default function Topbar({ onMenuClick }: TopbarProps) {
           <Bell className="h-5 w-5" />
           <span className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-red-500" />
         </Button>
+        <KeyboardShortcuts />
 
         {/* Theme toggle */}
         <Button variant="ghost" size="icon" onClick={toggleTheme}>

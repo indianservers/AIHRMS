@@ -1,20 +1,24 @@
 from typing import List, Optional
-from datetime import date
+from datetime import date, timedelta
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import Response
 from sqlalchemy.orm import Session
 from sqlalchemy import func, extract
 import csv
 import io
-from app.core.deps import get_db, RequirePermission
+from app.core.deps import get_current_user, get_db, RequirePermission
 from app.models.user import User
-from app.models.employee import Employee
-from app.models.attendance import Attendance
+from app.models.employee import Employee, EmployeeChangeRequest
+from app.models.attendance import Attendance, AttendanceRegularization, Holiday
 from app.models.leave import LeaveRequest
+from app.models.helpdesk import HelpdeskTicket
+from app.models.document import CompanyPolicy, GeneratedDocument
 from app.models.payroll import PayrollRecord, PayrollRun
 from app.models.recruitment import Candidate, Job
 from app.models.timesheet import Project, Timesheet
 from app.models.platform import ReportDefinition, ReportRun
+from app.models.asset import AssetAssignment
+from app.models.performance import PerformanceGoal, PerformanceReview
 from app.schemas.platform import ReportDefinitionCreate, ReportDefinitionSchema, ReportRunSchema
 
 router = APIRouter(prefix="/reports", tags=["Reports & Analytics"])
@@ -26,6 +30,21 @@ REPORT_FIELD_CATALOG = {
     "payroll": ["employee_id", "payroll_run_id", "gross_salary", "total_deductions", "net_salary"],
     "recruitment": ["id", "job_id", "first_name", "last_name", "email", "status", "source"],
 }
+
+
+def _distribution(db: Session, field, label: str):
+    total = db.query(func.count(Employee.id)).filter(Employee.status == "Active").scalar() or 0
+    rows = db.query(field.label(label), func.count(Employee.id).label("count")).filter(
+        Employee.status == "Active"
+    ).group_by(field).order_by(func.count(Employee.id).desc()).all()
+    return [
+        {
+            label: row[0] or "Not specified",
+            "count": row[1],
+            "percent": round((row[1] / total * 100) if total else 0, 2),
+        }
+        for row in rows
+    ]
 
 
 @router.get("/field-catalog")
@@ -140,6 +159,229 @@ def dashboard_stats(
     }
 
 
+@router.get("/manager-dashboard")
+def manager_dashboard(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(RequirePermission("reports_view")),
+):
+    employee = current_user.employee
+    team_ids = []
+    if employee:
+        team_ids = [row.id for row in db.query(Employee.id).filter(Employee.reporting_manager_id == employee.id, Employee.deleted_at.is_(None)).all()]
+    if not team_ids and (current_user.is_superuser or (current_user.role and current_user.role.name in {"hr_manager", "super_admin"})):
+        team_ids = [row.id for row in db.query(Employee.id).filter(Employee.status == "Active", Employee.deleted_at.is_(None)).limit(50).all()]
+    today = date.today()
+    month_start = today.replace(day=1)
+    month_end = (month_start.replace(day=28) + timedelta(days=4)).replace(day=1) - timedelta(days=1)
+    pending_leaves = db.query(func.count(LeaveRequest.id)).filter(
+        LeaveRequest.status == "Pending",
+        LeaveRequest.deleted_at.is_(None),
+        LeaveRequest.employee_id.in_(team_ids or [0]),
+    ).scalar() or 0
+    attendance_rows = db.query(Attendance).filter(
+        Attendance.attendance_date == today,
+        Attendance.employee_id.in_(team_ids or [0]),
+    ).all()
+    present_today = sum(1 for row in attendance_rows if row.status == "Present")
+    wfh_today = sum(1 for row in attendance_rows if row.status == "WFH")
+    on_leave_today = db.query(func.count(LeaveRequest.id)).filter(
+        LeaveRequest.status == "Approved",
+        LeaveRequest.deleted_at.is_(None),
+        LeaveRequest.employee_id.in_(team_ids or [0]),
+        LeaveRequest.from_date <= today,
+        LeaveRequest.to_date >= today,
+    ).scalar() or 0
+    pending_regularizations = db.query(func.count(AttendanceRegularization.id)).filter(
+        AttendanceRegularization.employee_id.in_(team_ids or [0]),
+        AttendanceRegularization.status == "Pending",
+    ).scalar() or 0
+    pending_change_requests = db.query(func.count(EmployeeChangeRequest.id)).filter(
+        EmployeeChangeRequest.employee_id.in_(team_ids or [0]),
+        EmployeeChangeRequest.status == "Pending",
+    ).scalar() or 0
+    open_tickets = db.query(func.count(HelpdeskTicket.id)).filter(
+        HelpdeskTicket.employee_id.in_(team_ids or [0]),
+        HelpdeskTicket.status.notin_(["Resolved", "Closed"]),
+    ).scalar() or 0
+    members = db.query(Employee).filter(Employee.id.in_(team_ids or [0]), Employee.deleted_at.is_(None)).limit(50).all()
+
+    leave_rows = db.query(LeaveRequest).filter(
+        LeaveRequest.employee_id.in_(team_ids or [0]),
+        LeaveRequest.deleted_at.is_(None),
+        LeaveRequest.status.in_(["Pending", "Approved"]),
+        LeaveRequest.from_date <= month_end,
+        LeaveRequest.to_date >= month_start,
+    ).all()
+    holidays = db.query(Holiday).filter(
+        Holiday.is_active == True,
+        Holiday.holiday_date >= month_start,
+        Holiday.holiday_date <= month_end,
+    ).all()
+    calendar_days = []
+    cursor = month_start
+    while cursor <= month_end:
+        day_leaves = [
+            {
+                "employee_id": row.employee_id,
+                "status": row.status,
+                "from_date": row.from_date.isoformat(),
+                "to_date": row.to_date.isoformat(),
+                "employee_name": next((f"{m.first_name} {m.last_name}" for m in members if m.id == row.employee_id), None),
+            }
+            for row in leave_rows if row.from_date <= cursor <= row.to_date
+        ]
+        calendar_days.append({
+            "date": cursor.isoformat(),
+            "leave_count": len(day_leaves),
+            "leaves": day_leaves,
+            "holidays": [{"name": item.name, "type": item.holiday_type} for item in holidays if item.holiday_date == cursor],
+        })
+        cursor += timedelta(days=1)
+
+    week_end = today + timedelta(days=7)
+    moments = {
+        "birthdays": [
+            {"employee_id": item.id, "name": f"{item.first_name} {item.last_name}", "date": item.date_of_birth.replace(year=today.year).isoformat()}
+            for item in members if item.date_of_birth and today <= item.date_of_birth.replace(year=today.year) <= week_end
+        ],
+        "anniversaries": [
+            {"employee_id": item.id, "name": f"{item.first_name} {item.last_name}", "date": item.date_of_joining.replace(year=today.year).isoformat(), "years": today.year - item.date_of_joining.year}
+            for item in members if item.date_of_joining and today <= item.date_of_joining.replace(year=today.year) <= week_end
+        ],
+    }
+    return {
+        "team_size": len(team_ids),
+        "present_today": present_today,
+        "wfh_today": wfh_today,
+        "on_leave_today": on_leave_today,
+        "pending_leave_approvals": pending_leaves,
+        "pending_regularizations": pending_regularizations,
+        "pending_change_requests": pending_change_requests,
+        "open_helpdesk_tickets": open_tickets,
+        "calendar_month": month_start.strftime("%B %Y"),
+        "team_calendar": calendar_days,
+        "moments_this_week": moments,
+        "team": [
+            {
+                "id": item.id,
+                "employee_id": item.employee_id,
+                "name": f"{item.first_name} {item.last_name}",
+                "status": item.status,
+                "profile_photo_url": item.profile_photo_url,
+            }
+            for item in members
+        ],
+    }
+
+
+@router.get("/ess-summary")
+def ess_summary(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    employee = current_user.employee
+    if not employee:
+        raise HTTPException(status_code=404, detail="Employee profile not linked")
+    latest_records = (
+        db.query(PayrollRecord, PayrollRun)
+        .join(PayrollRun, PayrollRun.id == PayrollRecord.payroll_run_id)
+        .filter(PayrollRecord.employee_id == employee.id, PayrollRun.deleted_at.is_(None))
+        .order_by(PayrollRun.year.desc(), PayrollRun.month.desc())
+        .limit(12)
+        .all()
+    )
+    documents = db.query(GeneratedDocument).filter(GeneratedDocument.employee_id == employee.id).order_by(GeneratedDocument.created_at.desc()).limit(12).all()
+    assets = db.query(AssetAssignment).filter(AssetAssignment.employee_id == employee.id, AssetAssignment.is_active == True).limit(20).all()
+    goals = db.query(PerformanceGoal).filter(PerformanceGoal.employee_id == employee.id).order_by(PerformanceGoal.created_at.desc()).limit(10).all()
+    reviews = db.query(PerformanceReview).filter(PerformanceReview.employee_id == employee.id).order_by(PerformanceReview.created_at.desc()).limit(5).all()
+    return {
+        "employee": {"id": employee.id, "employee_id": employee.employee_id, "name": f"{employee.first_name} {employee.last_name}"},
+        "payslips": [
+            {
+                "record_id": record.id,
+                "month": run.month,
+                "year": run.year,
+                "net_salary": record.net_salary,
+                "gross_salary": record.gross_salary,
+                "pdf_url": record.payslip_pdf_url,
+            }
+            for record, run in latest_records
+        ],
+        "documents": [
+            {"id": item.id, "document_type": item.document_type, "document_name": item.document_name, "file_url": item.file_url}
+            for item in documents
+        ],
+        "assets": [
+            {
+                "id": item.id,
+                "asset_id": item.asset_id,
+                "asset_tag": item.asset.asset_tag if item.asset else None,
+                "name": item.asset.name if item.asset else None,
+                "assigned_date": item.assigned_date,
+                "condition": item.condition_at_assignment,
+            }
+            for item in assets
+        ],
+        "goals": [{"id": item.id, "title": item.title, "status": item.status, "target_date": item.target_date} for item in goals],
+        "reviews": [{"id": item.id, "cycle_id": item.cycle_id, "review_type": item.review_type, "status": item.status, "overall_rating": item.overall_rating} for item in reviews],
+    }
+
+
+@router.get("/people-moments")
+def people_moments(
+    days: int = Query(30, ge=1, le=90),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    today = date.today()
+
+    def in_next_window(value: date | None) -> bool:
+        if not value:
+            return False
+        candidate = value.replace(year=today.year)
+        if candidate < today:
+            candidate = candidate.replace(year=today.year + 1)
+        return today <= candidate <= today + timedelta(days=days)
+
+    employees = db.query(Employee).filter(Employee.status == "Active").all()
+    birthdays = [
+        {"employee_id": e.id, "name": f"{e.first_name} {e.last_name}", "date": e.date_of_birth.replace(year=today.year).isoformat()}
+        for e in employees if in_next_window(e.date_of_birth)
+    ]
+    anniversaries = [
+        {"employee_id": e.id, "name": f"{e.first_name} {e.last_name}", "date": e.date_of_joining.replace(year=today.year).isoformat(), "years": today.year - e.date_of_joining.year}
+        for e in employees if in_next_window(e.date_of_joining)
+    ]
+    return {"days": days, "birthdays": birthdays, "anniversaries": anniversaries}
+
+
+@router.get("/global-search")
+def global_search(
+    q: str = Query(..., min_length=2),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(RequirePermission("reports_view")),
+):
+    term = f"%{q.strip()}%"
+    employees = db.query(Employee).filter(
+        (Employee.first_name.ilike(term)) |
+        (Employee.last_name.ilike(term)) |
+        (Employee.employee_id.ilike(term)) |
+        (Employee.personal_email.ilike(term))
+    ).limit(8).all()
+    jobs = db.query(Job).filter((Job.title.ilike(term)) | (Job.department.ilike(term))).limit(5).all()
+    policies = db.query(CompanyPolicy).filter((CompanyPolicy.title.ilike(term)) | (CompanyPolicy.content.ilike(term))).limit(5).all()
+    tickets = db.query(HelpdeskTicket).filter((HelpdeskTicket.ticket_number.ilike(term)) | (HelpdeskTicket.subject.ilike(term))).limit(5).all()
+    return {
+        "query": q,
+        "results": [
+            *[{"type": "Employee", "title": f"{e.first_name} {e.last_name}", "subtitle": e.employee_id, "url": f"/employees/{e.id}"} for e in employees],
+            *[{"type": "Job", "title": j.title, "subtitle": j.status, "url": "/recruitment"} for j in jobs],
+            *[{"type": "Policy", "title": p.title, "subtitle": "Company policy", "url": "/documents"} for p in policies],
+            *[{"type": "Ticket", "title": t.subject, "subtitle": t.ticket_number, "url": f"/helpdesk"} for t in tickets],
+        ],
+    }
+
+
 @router.get("/headcount-by-department")
 def headcount_by_department(
     db: Session = Depends(get_db),
@@ -153,6 +395,97 @@ def headcount_by_department(
         .all()
     )
     return [{"department": r[0], "count": r[1]} for r in result]
+
+
+@router.get("/dei-analytics")
+def dei_analytics(
+    department_id: Optional[int] = Query(None),
+    include_pay_equity: bool = Query(False),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(RequirePermission("reports_view")),
+):
+    from app.models.company import Department, GradeBand
+
+    employee_query = db.query(Employee).filter(Employee.status == "Active")
+    if department_id:
+        employee_query = employee_query.filter(Employee.department_id == department_id)
+    employee_ids = [item.id for item in employee_query.all()]
+    total = len(employee_ids)
+
+    def scoped_distribution(field, label: str):
+        query = db.query(field.label(label), func.count(Employee.id).label("count")).filter(Employee.id.in_(employee_ids))
+        rows = query.group_by(field).order_by(func.count(Employee.id).desc()).all() if employee_ids else []
+        return [
+            {
+                label: row[0] or "Not specified",
+                "count": row[1],
+                "percent": round((row[1] / total * 100) if total else 0, 2),
+            }
+            for row in rows
+        ]
+
+    by_department = (
+        db.query(Department.name, func.count(Employee.id).label("count"))
+        .join(Employee, Employee.department_id == Department.id)
+        .filter(Employee.id.in_(employee_ids))
+        .group_by(Department.id, Department.name)
+        .order_by(func.count(Employee.id).desc())
+        .all()
+        if employee_ids else []
+    )
+    by_grade = (
+        db.query(GradeBand.name, func.count(Employee.id).label("count"))
+        .join(Employee, Employee.grade_band_id == GradeBand.id)
+        .filter(Employee.id.in_(employee_ids))
+        .group_by(GradeBand.id, GradeBand.name)
+        .order_by(GradeBand.level)
+        .all()
+        if employee_ids else []
+    )
+
+    result = {
+        "total_active_headcount": total,
+        "gender_identity": scoped_distribution(Employee.gender_identity, "gender_identity"),
+        "legal_gender": scoped_distribution(Employee.gender, "gender"),
+        "disability_status": scoped_distribution(Employee.disability_status, "disability_status"),
+        "veteran_status": scoped_distribution(Employee.veteran_status, "veteran_status"),
+        "by_department": [
+            {"department": row[0] or "Not specified", "count": row[1], "percent": round((row[1] / total * 100) if total else 0, 2)}
+            for row in by_department
+        ],
+        "by_grade_band": [
+            {"grade_band": row[0] or "Not specified", "count": row[1], "percent": round((row[1] / total * 100) if total else 0, 2)}
+            for row in by_grade
+        ],
+    }
+
+    if include_pay_equity:
+        latest_records = (
+            db.query(PayrollRecord.employee_id, func.max(PayrollRecord.id).label("record_id"))
+            .filter(PayrollRecord.employee_id.in_(employee_ids))
+            .group_by(PayrollRecord.employee_id)
+            .subquery()
+        )
+        rows = (
+            db.query(Employee.gender_identity, func.avg(PayrollRecord.gross_salary).label("avg_gross"), func.count(Employee.id).label("count"))
+            .join(latest_records, latest_records.c.employee_id == Employee.id)
+            .join(PayrollRecord, PayrollRecord.id == latest_records.c.record_id)
+            .group_by(Employee.gender_identity)
+            .all()
+        ) if employee_ids else []
+        result["pay_equity"] = {
+            "average_gross_by_gender_identity": [
+                {
+                    "gender_identity": row[0] or "Not specified",
+                    "employee_count": row[2],
+                    "average_gross_salary": round(float(row[1] or 0), 2),
+                }
+                for row in rows
+            ],
+            "note": "Uses latest payroll record per employee and should be reviewed with role, grade, tenure, and location context.",
+        }
+
+    return result
 
 
 @router.get("/attendance-trend")

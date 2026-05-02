@@ -43,10 +43,12 @@ The ERP has moved beyond a broad HRMS MVP skeleton into a database-backed HRMS f
 
 - Auth, roles, permissions
 - Company, branch, department, designation
-- Employee master with profile, job, statutory, bank, education, experience, skills, documents, document verification, document expiry, and lifecycle history
+- Employee master with profile, job, statutory, bank, education, experience, skills, documents, document verification, document expiry, lifecycle history, profile completion nudges, self-service document uploads, and profile change approvals
 - Leave types, balances, ledger, requests, overlap/balance checks, approval/cancel, and calendar/team view
 - Attendance shifts, weekly-off/roster foundation, holidays, punch in/out, regularization, late/early/short-hours computation, monthly summary
 - Payroll setup, legal entities, statutory profiles, pay groups, generated payroll periods, salary components/categories/formula rules, structures, structure versioning, salary templates, employee template assignments, component overrides, salary revisions, maker-checker approval, payroll run, pre-run checks, manual inputs, lock/unlock workflow, variance/anomaly review, payslip payload, publish hook, reimbursements, reimbursement ledger, loans/EMI ledger, tax regimes/slabs/sections/elections/worksheets, previous employment tax, tax declarations/proofs, and full-final settlement
+- Database scale controls for attendance/leave/payroll/notification/audit lookups, soft-delete preservation for employee/leave/payroll history, salary effective-date proration, multi-currency payroll fields, and audit IP/user-agent capture
+- Daily-use frontend depth for real-time org chart, manager dashboard, ESS portal, announcements, polls, recognition wall, and people moments
 - Recruitment jobs, candidates, interviews, feedback, offers, AI resume parsing
 - Onboarding templates/tasks, policy acknowledgement
 - Documents, policies, policy versioning, generated documents, employee certificates, import/export logs
@@ -62,7 +64,7 @@ The ERP has moved beyond a broad HRMS MVP skeleton into a database-backed HRMS f
 
 | Area | Status | Notes |
 | --- | --- | --- |
-| Core HR foundation | Mostly complete | Employee master, lifecycle events, documents, certificates, import/export, masking, and role-aware access exist. Remaining: business units, cost centers, grades, positions, org chart, custom fields. |
+| Core HR foundation | Strong foundation | Employee master, lifecycle events, change requests, documents, certificates, import/export, masking, business units, cost centers, locations, grade bands, job families/profiles, positions, headcount plans, org chart, hierarchy validation, and role-aware access exist. Remaining: multi-tenant depth, legal entity separation across all modules, custom field renderers, Aadhaar e-KYC/DigiLocker. |
 | Leave | Strong foundation | Ledger, overlap checks, balance checks, approvals, holidays/calendar/team view exist. Remaining: accrual jobs, carry-forward processor, comp-off, delegation/escalation. |
 | Attendance | Foundation complete | Shifts, weekly off/roster, daily computation fields, regularization, summaries exist. Remaining: raw punch audit, biometric import, geo/selfie/QR, attendance lock, OD/field visit. |
 | Payroll | Strong DB/API foundation | Legal entity, statutory profile, pay groups, periods, component categories, safe formula rules, salary templates, tax regimes/slabs/elections/worksheets, statutory rules/contribution lines/challans/return validation, payroll attendance inputs, salary revisions, run controls, manual inputs, reimbursement, loans, F&F, audit, lock/unlock, PDF payslip, and CSV exports exist. Remaining: payroll worksheet processing, LOP/OT reconciliation, bank payment status, GL accounting, setup UI depth, final statutory formats. |
@@ -70,17 +72,18 @@ The ERP has moved beyond a broad HRMS MVP skeleton into a database-backed HRMS f
 | Workflow/notifications | Foundation complete | Shared workflow inbox and notification inbox exist. Remaining: fully configurable workflow designer, delegation, condition branches, reminder scheduler. |
 | Helpdesk | Foundation complete | SLA dates, escalation rules, knowledge base, ticket escalation, replies exist. Remaining: CSAT, AI source-cited suggestions, SLA analytics UI. |
 | Recruitment/onboarding | MVP | Jobs/candidates/interviews/offers/onboarding exist. Remaining: requisition approvals, candidate-to-employee conversion, career site, e-sign offer flow. |
-| Performance | MVP | Cycles, goals, reviews exist. Remaining: OKR check-ins, review templates, 360 feedback, calibration. |
+| Performance | Foundation | Cycles, goals, reviews, OKR check-ins, review templates, and 360 feedback request/submission foundation exist. Remaining: calibration, one-on-ones, nine-box, succession, and UI polish. |
 | LMS/learning | Foundation complete | Course catalog, assignments, completions, certifications, verification, and expiry tracking exist. Remaining: SCORM/xAPI, renewals, skill-linked learning, dashboards. |
-| Engagement | Foundation complete | Announcements, surveys/responses, and recognition feed exist. Remaining: eNPS scoring, anonymity controls, points, social wall, dashboards. |
-| Benefits | Foundation complete | Benefit plans, enrollments, flexi policies/allocations, and payroll deduction lines exist. Remaining: claims, limits, tax treatment, and payroll worksheet integration. |
+| Engagement | Foundation complete | Announcements, polls/survey responses with result charts, recognition wall, reactions, and people moment UI exist. Remaining: eNPS scoring, anonymity controls, points ledger, social wall moderation, and deeper dashboards. |
+| Benefits | Foundation complete | Benefit plans, enrollments, flexi policies/allocations, payroll deduction lines, claims with tax/exempt split, payroll record linkage, ESOP plans/grants, and vesting schedules exist. Remaining: dependent limits, worksheet auto-pull, exercise workflow, and benefit cost reports. |
 | WhatsApp ESS | Foundation complete | Provider config, sessions, inbound messages, and basic leave/payslip/attendance intents exist. Remaining: production WhatsApp Business connector, outbound templates, manager CTA approvals, delivery callbacks. |
 | Statutory compliance | Strong foundation | Legal entities, Form 16/24Q tracking, EPFO/ESIC portal submission tracking, compliance calendar, PF/ESI/PT/LWF/gratuity rules, challans, and return-file validation exist. Remaining: auto-reminders, final portal file conformance, DSC/signature hooks. |
-| Skills-based org | Missing | Employee skills field exists; no skills gap mapping, upskilling paths, competency framework. |
+| Skills-based org | Foundation | Competency library, role-skill requirements, employee competency assessments, and skill gap report exist. Remaining: skill endorsements, history, LMS-linked upskilling paths, and dashboards. |
 | Employee wellbeing | Missing | No burnout tracking, mental health resources, work-life balance metrics. |
-| Reports/analytics | Basic | Standard reports exist. Remaining: custom report builder, scheduled exports, governed metrics, PDF/XLSX outputs, DE&I analytics. |
+| Reports/analytics | Foundation | Standard reports, custom report definitions/runs, governed metrics, and DE&I analytics foundation exist. Remaining: scheduled exports, PDF/XLSX outputs, dashboards, controlled pay-equity models. |
 | Mobile ESS/PWA | Pending | Frontend is web-first. Competitors lead with mobile attendance, leave, payslip, approvals, documents, notifications. |
-| Enterprise security | Partial | JWT, RBAC, masking, audit foundations exist. Remaining: MFA, sessions/devices, field audit viewer, retention/privacy/legal hold. |
+| Enterprise security | Foundation complete | JWT, RBAC, masking, audit foundations, sessions/devices, MFA method records, password policies, login attempts, consent records, privacy requests, retention policies, and legal holds exist. Remaining: real OTP/TOTP enforcement, lockout/IP policy enforcement, SSO/SAML/OIDC, field audit viewer, privacy processors. |
+| Database scale/auditability | Foundation complete | Composite indexes now cover high-frequency attendance, leave, payroll run, notification, audit, employee active-status, and salary-effective queries. Employee, leave request, and payroll run records use soft-delete fields in core query paths. Remaining: tenant-wide partitioning/archive strategy and full module-level soft-delete sweep. |
 
 ---
 
@@ -113,7 +116,7 @@ These competitor gaps have already been addressed in the current implementation 
 - Payroll CSV file exports for PF ECR, ESI, PT, TDS 24Q, Form 16, bank advice, pay register, and accounting journal.
 - Payroll component formula preview with a controlled Decimal evaluator.
 - Attendance raw punch audit and monthly lock/unlock API.
-- Configurable workflow engine foundation with definitions, ordered steps, instances, task inbox, and decisions.
+- Configurable workflow engine foundation with definitions, ordered steps, condition expressions, context-based step skipping, instances, task inbox, decisions, due reminders, and escalation processing.
 - Project utilization report with CSV export.
 - Recruitment requisition approval and candidate-to-employee conversion.
 - PWA foundation with manifest, app icon, service worker, and production registration.
@@ -124,7 +127,7 @@ These competitor gaps have already been addressed in the current implementation 
 - EPFO/ESIC portal submission tracking with files, acknowledgements, payment references, and statuses.
 - Benefits administration foundation for group health/NPS/flexi-benefit style plans, enrollments, allocations, and payroll deduction lines.
 - Statutory compliance calendar for PF/ESI/PT/TDS due dates and completion tracking.
-- Background verification foundation with vendors, employee/candidate requests, checks, and result tracking.
+- Background verification foundation with vendors, connector metadata, consent capture, employee/candidate requests, vendor submission references, webhook sync, checks, result/report tracking, and connector event audit.
 - Admin request/error logging with log list, error list, analysis API, and frontend `/logs` page.
 - Attendance check-in hardening for older partial attendance rows.
 - Payroll-real next-20 foundation: statutory profiles, expanded pay groups, generated periods, period lock/unlock, component categories, salary templates, employee salary assignments/overrides, restricted AST salary formulas, tax regimes/slabs/sections, employee tax regime elections, previous employment tax details, and persisted monthly TDS worksheets.
@@ -134,6 +137,16 @@ These competitor gaps have already been addressed in the current implementation 
 - WhatsApp ESS production foundation: connector secret references, outbound template messages, employee opt-in/out, queued outbound messages, and delivery callbacks exist.
 - Biometric and mobile attendance foundation: biometric devices, import batches, punch dedupe, import error reports, geo/selfie/QR punch proof, and geofence exception status exist.
 - Configurability foundation: custom field definitions/values and report builder field catalog, saved definitions, and run history exist.
+- Dynamic custom forms foundation: form definitions, ordered custom fields, submissions, review flow, and persisted custom field values exist.
+- Core organization foundation: business units, cost centers, work locations, grade bands, job families/profiles, positions, headcount plans, org chart, and hierarchy validation exist.
+- Employee profile change request foundation with approval and controlled field application exists.
+- Enterprise platform foundation: session/device records, MFA method records, password policies, login attempt logs, integration credentials, webhook subscriptions, integration events, consent records, privacy requests, retention policies, legal holds, and governed metric definitions exist.
+- Talent and benefits next-10 foundation: OKR check-ins, review templates/questions, 360 feedback requests/submissions, competency framework, role-skill mapping, employee assessments, skill gap report, compensation cycles, pay bands, merit recommendations, benefit claims with tax treatment, payroll linkage, ESOP plans/grants, and vesting schedules exist.
+- Frontend completeness and ESS polish foundation: manager dashboard, ESS portal, org chart view, global Cmd/Ctrl+K search, breadcrumbs, keyboard help, back-to-top, session timeout countdown, profile completeness/change request UI, employee photo upload UX, company logo upload, print-friendly payslip CSS, and destructive-action confirmations exist.
+- Database improvement foundation: high-frequency indexes, employee/leave/payroll soft-delete fields and query filters, employee salary currency, salary-component currency flag, salary effective-date proration, and proxy-aware audit IP/user-agent capture exist.
+- Daily engagement and self-service UI foundation: org chart now supports filters/zoom/export/vacancies; manager dashboard shows team attendance, pending work, moments, and calendar; ESS portal shows payslips, documents, goals, tickets, and assets; engagement page supports announcements, polls/results, recognition wall, and reactions.
+- Employee profile self-service closure: completion meter now nudges missing bank, statutory, contact, photo, and document details; employees can upload Aadhaar/PAN/offer-letter/certificate files from profile; profile changes support current-vs-requested diff previews; HR/admin/direct managers can approve or reject requests with remarks before controlled field application.
+- Payroll operator UI closure: payroll now has a guided setup wizard for legal entity, pay group, salary components, salary structure, tax cycle, and statutory profile; a run payroll console with month picker, run summary, pre-run checks, worksheet reprocess, approval, employee status grid, payments, GL, and exports; a payslip browser with HTML preview, PDF generation, and bulk publish/email action; and a variance report with current-vs-previous gross/net comparisons and high-deviation flags.
 
 ---
 
@@ -149,7 +162,7 @@ These competitor gaps have already been addressed in the current implementation 
 | P0 | Payroll attendance/LOP/OT reconciliation | Keka/greytHR payroll needs paid leave, unpaid leave, LOP, OT, regularization, weekly off and holiday reconciliation before approval | Attendance input table exists. Next: LOP adjustments, OT policies, encashment, reconciliation API, approval blocker, input UI |
 | P0 | Payroll worksheet processing | Mature payroll suites show per-employee worksheet, calculation trace, hold/skip, deterministic recalculation, and lock snapshots | Add run employee table, calculation snapshots, expanded payroll component trace, staged processor, worksheet UI |
 | P0 | Payments and GL accounting | Payroll buyers expect bank advice, UTR import, failed payment correction, and accounting journal posting | Add payment batches/lines, status import, GL ledgers/mappings/journals, balanced journal tests |
-| P0 | Configurable workflow engine | Darwinbox/Zoho-style workflow automation across modules | Completed foundation: workflow definitions, ordered steps, approver resolution, instances, task inbox, and decisions. Next: conditions/reminders |
+| P0 | Configurable workflow engine | Darwinbox/Zoho-style workflow automation across modules | Completed foundation: workflow definitions, ordered steps, conditions, approver resolution, instances, task inbox, decisions, reminders, and escalations. Next: delegation, field-update actions, visual designer |
 | P0 | EPFO/ESIC portal integration | greytHR, factoHR submit ECR/ESIC challan directly to government portals | Foundation complete: EPFO/ESIC submission tracking, files, acknowledgements, payment references. Next: mandated file validation and real portal connector |
 
 ### P1 — High Impact (Differentiators and Buyer Requirements)
@@ -158,16 +171,16 @@ These competitor gaps have already been addressed in the current implementation 
 | --- | --- | --- | --- |
 | P1 | WhatsApp ESS | sumHR, Qandle, factoHR, HRMantra offer leave apply/approve, payslip fetch, attendance punch via WhatsApp | Foundation complete: provider config, sessions, inbound messages, templates, opt-in/out, outbound queue, and delivery callbacks. Next: real Meta Cloud API dispatch and manager CTA templates |
 | P1 | Mobile ESS/PWA | All top 10 competitors offer mobile leave, attendance, payslips, documents, approvals, notifications | Completed foundation: installable PWA manifest, icon, service worker, and production registration. Next: mobile ESS flows/offline drafts |
-| P1 | Benefits administration | ADP, SuccessFactors, BambooHR, Keka cover group health, flexi-benefits, NPS, ESOP | Foundation complete: benefit plans, enrollments, flexi policies/allocations, payroll deduction lines. Next: policy limits, employee claims, tax treatment, payroll worksheet integration |
+| P1 | Benefits administration | ADP, SuccessFactors, BambooHR, Keka cover group health, flexi-benefits, NPS, ESOP | Foundation complete: benefit plans, enrollments, flexi policies/allocations, payroll deduction lines, employee claims, tax/exempt split, payroll linkage, ESOP grants, and vesting schedules. Next: dependent limits, worksheet auto-pull, exercise workflow, and cost reports |
 | P1 | Statutory compliance calendar | greytHR, factoHR, HRMantra surface PF/ESI/PT/TDS due dates with alerts | Foundation complete: compliance event table/API with due dates, owners, statuses, completion tracking. Next: auto-population, dashboard widget, email/SMS reminders |
 | P1 | Recruitment requisition to employee conversion | All top 10 connect workforce plan → hiring approval → offer → onboarding → employee creation | Completed foundation: requisition model/API, approval creates job, candidate conversion creates employee. Next: offer/onboarding linkage |
 | P1 | LMS and certifications | Zoho/Keka/Darwinbox/Workday/SuccessFactors include learning/courses/certifications | Completed foundation: course catalog, assignments, completions, certificate expiry, verifier fields. Next: skill-linked completions |
 | P1 | Engagement: eNPS, announcements, recognition | BambooHR (eNPS), Keka (recognition), Zoho (surveys), Darwinbox (culture) — all table-stakes | Completed foundation: announcements, surveys/responses, recognition feed. Next: eNPS scoring and points |
-| P1 | Skills-based organization | Workday Skills Cloud, SuccessFactors Talent Intelligence Hub map skills to roles | Add competency framework, role-skill mapping, skills gap report, upskilling path recommendations |
-| P1 | Custom fields/forms | Zoho and Darwinbox sell configurable services and forms | Foundation complete: custom field definitions, values, module sections, validation metadata, and permissions. Next: frontend renderer in module forms |
-| P1 | Webhooks/integrations | All buyers expect accounting, biometric, e-sign, calendar/email, Slack/Teams, APIs | Add webhook subscriptions, event log, retry queue, connector credentials |
+| P1 | Skills-based organization | Workday Skills Cloud, SuccessFactors Talent Intelligence Hub map skills to roles | Foundation complete: competency framework, role-skill mapping, employee assessments, and skill gap report. Next: endorsements, skill history, LMS-linked upskilling paths, and dashboards |
+| P1 | Custom fields/forms | Zoho and Darwinbox sell configurable services and forms | Foundation complete: custom field definitions, values, module sections, validation metadata, dynamic form definitions, ordered fields, submissions, review flow, and permissions. Next: visual renderer inside module forms |
+| P1 | Webhooks/integrations | All buyers expect accounting, biometric, e-sign, calendar/email, Slack/Teams, APIs | Foundation complete: connector credentials, webhook subscriptions, and event log. Next: retry worker, connector SDKs, signed webhook delivery |
 | P1 | Report builder | Enterprise HR expects saved filters, scheduled exports, governed metrics | Foundation complete: report field catalog, saved definitions, run history, and service bindings. Next: frontend builder, scheduler worker, XLSX/PDF output |
-| P1 | Background verification integration | Keka, Darwinbox, Zoho integrate AuthBridge, HireRight, IDfy for BGV | Foundation complete: vendors, employee/candidate requests, checks, status/result tracking. Next: vendor API connector, consent, webhook sync |
+| P1 | Background verification integration | Keka, Darwinbox, Zoho integrate AuthBridge, HireRight, IDfy for BGV | Connector foundation complete: vendor metadata, consent capture, submission reference, webhook sync, report URL/result mapping, and event audit. Next: real AuthBridge/IDfy/HireRight SDK, signed webhook verification, report parser |
 | P1 | Biometric device integration | greytHR, factoHR, HRMantra support ZKTeco, eSSL, Mantra MFSL, Realtime biometric devices | Foundation complete: biometric devices, import batches, punch deduplication, and row-level import errors. Next: vendor SDK sync |
 | P1 | Manager dashboard | BambooHR, Keka, Workday provide manager-specific views: team attendance, leave, performance, approvals | Add manager home with team widgets: attendance heat map, leave calendar, pending approvals, performance snapshot |
 
@@ -179,12 +192,12 @@ These competitor gaps have already been addressed in the current implementation 
 | P2 | Aadhaar e-KYC / DigiLocker | factoHR, HRMantra, sumHR use Aadhaar OTP KYC and DigiLocker for document verification | Add Aadhaar e-KYC API hook and DigiLocker document pull for employee onboarding |
 | P2 | Shift marketplace / shift swap | UKG, Keka, Deputy allow employees to pick up open shifts or swap with peers | Add shift open-board, employee shift pickup, peer swap request with manager approval |
 | P2 | Contractor/gig worker management | ADP, Workday, Darwinbox manage contingent workforce separately | Add contract worker profiles, separate payroll run type, compliance for contract labor |
-| P2 | DE&I analytics | Workday, BambooHR, HiBob offer gender diversity, pay equity, representation metrics | Add diversity dimension to employee master, DE&I dashboard: gender/age/dept breakdown, pay equity flags |
+| P2 | DE&I analytics | Workday, BambooHR, HiBob offer gender diversity, pay equity, representation metrics | Foundation complete: gender identity/legal gender/disability/veteran/department/grade representation and latest-payroll average-gross pay-equity endpoint. Next: role/grade/tenure/location controls and dashboards |
 | P2 | Employee referral program | Keka, Zoho, Darwinbox track referral bonuses and gamification | Add referral tracking: referrer, bonus type, payout status linked to successful hire |
 | P2 | Interview scheduling with calendar sync | Zoho Recruit, Keka, Darwinbox sync interview slots with Google/Outlook calendar | Add calendar OAuth, slot availability, auto-invite send, reschedule flow |
 | P2 | Compensation planning | Workday, SuccessFactors, Lattice: merit cycles, pay bands, pay equity, budget simulation | Add compensation cycle model, merit recommendation engine, manager compensation planning UI |
 | P2 | Industry packs | Keka (Tech, Manufacturing), Darwinbox (BFSI, Retail, Healthcare) sell domain-fit workflows | Build Technology pack, then Manufacturing, BFSI, Retail, Healthcare, Education |
-| P2 | Enterprise security | MFA, sessions, lockout, IP restrictions, privacy and retention | Add session table, MFA policy, field audit viewer, retention/privacy request flows |
+| P2 | Enterprise security | MFA, sessions, lockout, IP restrictions, privacy and retention | Foundation complete: sessions, MFA methods, password policy, login attempts, privacy requests, consent, retention, and legal hold. Next: real enforcement, SSO, IP restrictions, field audit viewer |
 | P2 | UPI payroll disbursement | factoHR, sumHR support UPI bulk pay and NEFT bulk upload with bank confirmation | Add salary disbursement via NEFT bulk file + UPI bulk API, payment status webhook |
 | P2 | Project utilization reports | Keka PSA-style billable utilization and client/project profitability | Completed foundation: utilization report API and CSV export. Next: profitability and XLSX/scheduled exports |
 
@@ -196,16 +209,16 @@ These competitor gaps have already been addressed in the current implementation 
 | --- | --- | --- | --- |
 | P0 | Payslip PDF and statutory output generation | Payroll buyers need downloadable, audit-ready files. Form 16 is legally mandated. | Foundation complete: payslip PDFs are generated/stored/downloadable; PF/ESI/PT/TDS/Form 16/bank advice/pay register/accounting journal CSV files are generated with export history. Government-ready statutory file conformance remains pending |
 | P0 | EPFO/ESIC portal integration | greytHR and factoHR win SMB payroll business by eliminating manual portal uploads | ECR/ESIC challan file format exists as stubs; actual portal submission pipeline is missing |
-| P0 | Configurable workflow engine | Competitors route leave, payroll, onboarding, helpdesk, documents through configurable workflows | Foundation complete: workflow definitions, ordered approver steps, instances, task inbox, and decisions. Conditions, reminders, escalation, and visual designer remain pending |
+| P0 | Configurable workflow engine | Competitors route leave, payroll, onboarding, helpdesk, documents through configurable workflows | Foundation complete: workflow definitions, ordered approver steps, context conditions, instances, task inbox, decisions, reminders, and escalation processing. Delegation, field updates, and visual designer remain pending |
 | P0 | Payroll compliance depth | Keka/greytHR win heavily on India payroll statutory confidence | Foundation strengthened: formula preview, payslip PDF, CSV exports, lock guardrails, audit/export batches, loans, reimbursements, tax declarations, and full-final settlement exist. Final statutory file conformance remains pending |
 | P1 | WhatsApp ESS | India SMB market expects WhatsApp-first HR. sumHR and factoHR win on this specifically | Foundation complete: provider config, sessions, inbound message capture, and basic leave/payslip/attendance intent handling exist. Production connector, outbound templates, manager CTA approvals, delivery callbacks, and policy QA remain pending |
 | P1 | Mobile/ESS experience | All 10 competitors emphasize mobile leave, attendance, payslips, documents, approvals | PWA foundation is complete with manifest, icon, service worker, and production registration. Mobile UX polish and offline-safe forms remain pending |
-| P1 | Benefits administration | ADP, SuccessFactors, BambooHR make benefits a major module. India buyers need group health + NPS + flexi-benefits | Foundation complete for plans, enrollments, flexi allocations, and deduction lines. Policy claims, tax handling, and payroll worksheet integration remain |
+| P1 | Benefits administration | ADP, SuccessFactors, BambooHR make benefits a major module. India buyers need group health + NPS + flexi-benefits | Foundation complete for plans, enrollments, flexi allocations, deduction lines, claims, tax/exempt split, payroll linkage, and ESOP vesting. Worksheet auto-pull and cost reports remain |
 | P1 | Statutory compliance calendar | Compliance deadline tracking is a daily-use feature in greytHR and factoHR because it reduces accountant anxiety | Foundation complete: compliance event table/API with PF/ESI/PT/TDS due dates, owners, statuses, and completion tracking exists. Auto-population, reminders, dashboard widget, and escalation remain pending |
-| P1 | Skills-based organization | Workday and SuccessFactors are selling skills intelligence as next-generation HCM differentiation | Employee skills field exists; no competency framework, role-skill mapping, or upskilling paths |
+| P1 | Skills-based organization | Workday and SuccessFactors are selling skills intelligence as next-generation HCM differentiation | Competency framework, role-skill mapping, assessments, and skill gap report exist. Endorsements, history, LMS-linked upskilling paths, and dashboards remain |
 | P1 | Engagement/culture | Recognition, pulse surveys, eNPS, social wall are visible differentiators in all top 10 | Foundation complete: announcements, surveys/responses, and recognition feed APIs exist. eNPS analytics and richer social UX remain pending |
 | P1 | Learning and skill development | Keka, Zoho, Darwinbox, Workday, SuccessFactors all include LMS/talent development | Foundation complete: courses, assignments, completion/progress, and certifications with expiry/verifier fields exist. Skill gaps and competency framework remain pending |
-| P1 | Integrations/marketplace | All 10 buyers expect biometric, accounting, e-sign, calendar/email, Slack/Teams, APIs/webhooks | API exists, but connector framework/webhooks/import-export jobs are missing |
+| P1 | Integrations/marketplace | All 10 buyers expect biometric, accounting, e-sign, calendar/email, Slack/Teams, APIs/webhooks | Connector credential, webhook, and integration event foundation exists. Retry workers, connector SDKs, signed webhook dispatch, and marketplace UI remain |
 
 ---
 
@@ -215,7 +228,11 @@ These competitor gaps have already been addressed in the current implementation 
 
 Already present:
 - Company, branch, department, designation
+- Business units, cost centers, work locations, grade bands
+- Job families, job profiles, positions, headcount plans
+- Org chart and manager hierarchy validation
 - Employee master with personal/job/bank/statutory/profile fields
+- Employee profile change requests with approval
 - Reporting manager field
 - Employee education, experience, skills, documents
 - Employee lifecycle event history
@@ -226,22 +243,18 @@ Already present:
 Missing versus top 10:
 - Multi-tenant architecture (Workday, SAP, Darwinbox)
 - Legal entities separate from companies (SuccessFactors Employee Central, Darwinbox)
-- Business units, cost centers, locations, grades/bands, job families, job profiles (all enterprise)
-- Position management and vacancy/headcount slots (Workday, SuccessFactors, Darwinbox)
-- Manager hierarchy validation and org chart (all top 10)
-- Dynamic custom fields and custom forms (Zoho, Darwinbox, BambooHR)
-- Employee profile change requests with approval (Zoho, Darwinbox)
-- DE&I demographic fields and analytics (Workday, BambooHR, HiBob)
+- Visual dynamic custom form renderer inside module pages (Zoho, Darwinbox, BambooHR)
+- DE&I dashboard polish and controlled pay-equity analysis (Workday, BambooHR, HiBob)
 - Aadhaar e-KYC and DigiLocker integration (factoHR, HRMantra)
-- Contractor/gig worker profile type (ADP, Workday)
+- Contractor/gig worker workflows (ADP, Workday)
 
 Recommended build:
-1. Add business unit, cost center, grade/band, position.
-2. Add org chart and manager hierarchy validation.
-3. Add profile change request workflow.
-4. Add DE&I fields (gender identity, disability, veteran status optional).
-5. Add Aadhaar e-KYC hook for onboarding.
-6. Add custom fields after core org depth is stable.
+1. Build organization admin UI for business units, cost centers, locations, grades, jobs, positions, and headcount.
+2. Link headcount plans to requisition approval and hiring budgets.
+3. Add profile change request screens and route approvals into workflow inbox.
+4. Add DE&I dashboard using optional demographic fields.
+5. Add Aadhaar e-KYC and DigiLocker hooks for onboarding.
+6. Render custom forms inside core employee/profile/payroll forms.
 
 ### 2. Leave Management
 
@@ -521,26 +534,28 @@ Recommended build:
 Already present:
 - JWT auth, roles, permissions
 - Audit middleware/model
-- Some route-level `RequirePermission` usage
+- Route-level `RequirePermission` usage
+- Session/device records, MFA method records, password policy records, login attempt logs
+- Consent records, privacy requests, data retention policies, legal holds
+- Integration credentials, webhook subscriptions, integration event log
+- Governed metric definitions
 
 Missing versus enterprise products (Workday, SAP, Darwinbox, ADP):
-- Scoped RBAC: own/team/department/branch/company/all
-- Sensitive-field masking and view audit
-- MFA/OTP, session/device management
-- Password policy, lockout, IP restrictions
+- Fine-grained scoped RBAC: own/team/department/branch/company/all
+- Sensitive-field view audit
+- Real MFA/OTP/TOTP enforcement and recovery codes
+- Lockout enforcement and IP restrictions
 - Field-level audit for salary, bank, PAN, Aadhaar, manager, designation
-- Maker-checker for payroll, bank, salary, role changes
-- Data retention, consent, privacy requests, legal hold
-- DPDP (India Digital Personal Data Protection Act) posture artifacts
+- Maker-checker for bank and role changes
+- DPDP posture artifacts and privacy request processors
 - SOC2 readiness artifacts
-- Admin audit viewer
 - SSO (SAML/OIDC) for enterprise login (Workday, Darwinbox)
 
 Recommended build:
-1. Add scoped permissions and sensitive masking.
+1. Add fine-grained scoped permissions.
 2. Add field-level audit.
-3. Add session/MFA controls.
-4. Add privacy/retention workflows and DPDP consent model.
+3. Enforce real MFA/lockout/IP controls on login.
+4. Add privacy export/delete processors and DPDP evidence pack.
 5. Add SSO (SAML) for enterprise customers.
 
 ---
@@ -550,7 +565,7 @@ Recommended build:
 | Area | Current ERP | Workday | SAP SF | ADP | UKG | BambooHR | Keka | Zoho | greytHR | Darwinbox | Gap |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | Core HR | Strong foundation | Enterprise | Enterprise | Strong | Strong | Strong | Strong | Strong | Strong | Enterprise | Low/medium |
-| Organization depth | Basic | Enterprise | Enterprise | Medium | Medium | Medium | Medium | Medium | Medium | Enterprise | High |
+| Organization depth | Strong foundation | Enterprise | Enterprise | Medium | Medium | Medium | Medium | Medium | Medium | Enterprise | Medium |
 | Leave | Strong foundation | Strong | Strong | Strong | Strong | Strong | Strong | Strong | Strong | Strong | Medium |
 | Attendance | Foundation | Strong | Medium | Medium | Enterprise | Medium | Strong | Strong | Strong | Strong | Medium/high |
 | Payroll India | Strong foundation | Via partner | Via partner | Via partner | Via partner | — | Strong | Via Zoho Payroll | Strong | Strong | Medium/high |
@@ -569,11 +584,11 @@ Recommended build:
 | Wellbeing | Missing | Enterprise | — | — | Strong | Strong | — | — | — | Medium | High |
 | Helpdesk | Foundation | — | — | — | — | — | Present | Strong | Limited | Strong | Medium |
 | Analytics | Basic | Enterprise | Enterprise | Strong | Strong | Strong | Strong | Strong | Medium | Strong | High |
-| DE&I analytics | Missing | Enterprise | Enterprise | Strong | — | Strong | — | — | — | Medium | High |
-| Workflow automation | Inbox only | Enterprise | Enterprise | Strong | Strong | Medium | Strong | Strong | Medium | Enterprise | High |
+| DE&I analytics | Foundation | Enterprise | Enterprise | Strong | — | Strong | — | — | — | Medium | Medium |
+| Workflow automation | Foundation | Enterprise | Enterprise | Strong | Strong | Medium | Strong | Strong | Medium | Enterprise | High |
 | Mobile ESS | Web-first | Strong | Strong | Strong | Enterprise | Strong | Strong | Strong | Strong | Strong | Very high |
-| Integrations | Basic API | Enterprise | Enterprise | Marketplace | Enterprise | Medium | Marketplace | Zoho ecosystem | Marketplace | Enterprise | High |
-| Security/compliance | Partial | Enterprise | Enterprise | Strong | Strong | Medium | Strong | Strong | Strong | Enterprise | Medium/high |
+| Integrations | Foundation | Enterprise | Enterprise | Marketplace | Enterprise | Medium | Marketplace | Zoho ecosystem | Marketplace | Enterprise | Medium/high |
+| Security/compliance | Foundation | Enterprise | Enterprise | Strong | Strong | Medium | Strong | Strong | Strong | Enterprise | Medium/high |
 | DPDP/India privacy | Missing | — | — | — | — | — | — | — | — | — | High |
 | SSO / SAML | Missing | Present | Present | Present | Present | Present | Present | Present | — | Present | Medium |
 
@@ -593,6 +608,8 @@ Recommended build:
 - Bulk employee import/export
 - Leave calendar
 - Payroll variance review
+- Organization masters, positions, headcount plans, org chart
+- Employee profile change request foundation
 
 ### Completed: India Payroll Database/API Strength
 - Tax declarations and proofs
@@ -600,6 +617,12 @@ Recommended build:
 - Loans/advances, F&F settlement
 - Bank/accounting export stubs
 - Salary revisions, payroll manual inputs, reimbursements, pre-run checks
+
+### Completed: Enterprise Platform Foundation
+- Sessions/devices, MFA method records, password policies, login attempts
+- Consent records, privacy requests, retention policies, legal holds
+- Integration credentials, webhook subscriptions, integration events
+- Governed metric definitions
 
 ---
 
@@ -630,20 +653,20 @@ Recommended build:
 - Compensation cycles and pay bands
 
 ### Sprint 4: Integrations and Enterprise Layer (P1/P2)
-- Custom fields/forms
+- Custom form visual renderer and module embedding
 - Configurable workflow designer
-- Webhooks/integration framework
+- Webhooks retry worker and connector SDKs
 - Biometric device import (ZKTeco/eSSL flat file)
-- Background verification connector (AuthBridge/IDfy)
+- Background verification SDK connector and signed webhook verification (AuthBridge/IDfy)
 - Google/Outlook calendar sync for interviews
 - Employee referral tracking
 
 ### Sprint 5: Analytics, Security, and Compliance (P2)
 - Report builder and scheduled exports
-- DE&I analytics and span-of-control metrics
+- DE&I dashboard, controlled pay-equity model, and span-of-control metrics
 - Field-level audit and masking hardening
-- MFA/session/device management
-- DPDP consent and privacy request workflows
+- MFA/session/device enforcement
+- DPDP privacy processors and evidence pack
 - SSO/SAML for enterprise login
 - Aadhaar e-KYC and DigiLocker integration
 
@@ -670,11 +693,11 @@ The following are the most significant remaining gaps when benchmarked across al
 7. **Skills-based organization and competency framework** — 5/10 competitors (weighted heavily by Workday/SuccessFactors) are pushing this as the future of HCM. Early advantage if built now.
 8. **Employee wellbeing** — 4/10 competitors include dedicated wellbeing features. Growing buyer expectation.
 9. **Mobile-first PWA** — PWA shell is complete; mobile-first page polish, offline-safe ESS forms, and push notifications remain.
-10. **DE&I analytics** — 5/10 competitors surface gender/pay-equity dashboards. Missing from our reporting.
+10. **DE&I analytics** — Foundation exists for representation and latest-payroll average-gross pay equity; dashboards and controlled analysis by role/grade/tenure/location remain.
 11. **Biometric device integration** — 6/10 India competitors support ZKTeco/eSSL. Missing.
 12. **Background verification integration** — 5/10 competitors integrate BGV vendors. Missing from recruitment.
-13. **Configurable workflow engine** — Engine foundation is complete; visual designer, conditions, SLA reminders, escalations, and cross-module field updates remain.
-14. **Custom fields/forms** — 6/10 competitors sell this as a key differentiator. Missing.
+13. **Configurable workflow engine** — Engine foundation now includes conditions, reminders, escalations, and multi-step progression; visual designer, delegation, and cross-module field updates remain.
+14. **Custom fields/forms** — Dynamic field and form backend exists; visual renderer and module embedding remain.
 15. **SSO/SAML** — 8/10 competitors support enterprise SSO. Missing.
 
 ---

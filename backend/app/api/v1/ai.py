@@ -19,10 +19,11 @@ class ChatMessage(BaseModel):
 @router.post("/assistant")
 async def chat_with_assistant(
     data: ChatMessage,
+    db: Session = Depends(get_db),
     current_user: User = Depends(RequirePermission("ai_assistant")),
 ):
-    response = await hr_assistant.get_hr_response(data.message, data.history)
-    return {"response": response, "model": "claude-sonnet-4-6"}
+    response = await hr_assistant.get_hr_response(data.message, data.history, db=db, current_user=current_user)
+    return {"response": response, "model": "claude", "grounded": True}
 
 
 # ── Policy Q&A ────────────────────────────────────────────────────────────────

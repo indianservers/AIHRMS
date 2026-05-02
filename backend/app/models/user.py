@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Boolean, ForeignKey, DateTime, Table
+from sqlalchemy import Column, Integer, String, Boolean, ForeignKey, DateTime, Table, Text
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from app.db.base_class import Base
@@ -55,6 +55,73 @@ class User(Base):
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
     role = relationship("Role", back_populates="users")
-    employee = relationship("Employee", back_populates="user", uselist=False)
+    employee = relationship("Employee", back_populates="user", uselist=False, foreign_keys="Employee.user_id")
     audit_logs = relationship("AuditLog", back_populates="user")
     notifications = relationship("Notification", back_populates="user", cascade="all, delete-orphan")
+
+
+class UserSession(Base):
+    __tablename__ = "user_sessions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    session_token_hash = Column(String(255), nullable=False, index=True)
+    device_name = Column(String(150))
+    ip_address = Column(String(50))
+    user_agent = Column(Text)
+    trusted_device = Column(Boolean, default=False)
+    status = Column(String(30), default="Active", index=True)
+    last_seen_at = Column(DateTime(timezone=True))
+    expires_at = Column(DateTime(timezone=True))
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    user = relationship("User")
+
+
+class MFAMethod(Base):
+    __tablename__ = "mfa_methods"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    method_type = Column(String(30), nullable=False)  # TOTP, Email OTP, SMS OTP
+    secret_ref = Column(String(255))
+    phone_number = Column(String(30))
+    email = Column(String(120))
+    is_primary = Column(Boolean, default=False)
+    is_verified = Column(Boolean, default=False)
+    enabled_at = Column(DateTime(timezone=True))
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    user = relationship("User")
+
+
+class PasswordPolicy(Base):
+    __tablename__ = "password_policies"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(120), nullable=False)
+    min_length = Column(Integer, default=8)
+    require_uppercase = Column(Boolean, default=True)
+    require_lowercase = Column(Boolean, default=True)
+    require_number = Column(Boolean, default=True)
+    require_symbol = Column(Boolean, default=False)
+    expiry_days = Column(Integer, default=90)
+    lockout_attempts = Column(Integer, default=5)
+    lockout_minutes = Column(Integer, default=30)
+    is_active = Column(Boolean, default=True, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class LoginAttempt(Base):
+    __tablename__ = "login_attempts"
+
+    id = Column(Integer, primary_key=True, index=True)
+    email = Column(String(120), index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    ip_address = Column(String(50))
+    user_agent = Column(Text)
+    status = Column(String(30), nullable=False, index=True)
+    failure_reason = Column(String(255))
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    user = relationship("User")

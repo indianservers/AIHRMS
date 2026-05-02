@@ -9,7 +9,7 @@ from app.core.deps import get_db, get_current_user, RequirePermission
 from app.core.masking import mask_employee_detail, mask_employee_list_item
 from app.crud.crud_employee import crud_employee
 from app.models.user import User
-from app.models.employee import Employee, EmployeeDocument
+from app.models.employee import Employee, EmployeeDocument, EmployeeChangeRequest
 from app.api.v1.notifications import create_notification
 from app.schemas.notification import NotificationCreate
 from app.schemas.employee import (
@@ -19,6 +19,7 @@ from app.schemas.employee import (
     EmployeeSkillCreate, EmployeeSkillSchema,
     EmployeeDocumentCreate, EmployeeDocumentSchema, EmployeeDocumentVerificationUpdate,
     EmployeeLifecycleEventCreate, EmployeeLifecycleEventSchema,
+    EmployeeChangeRequestCreate, EmployeeChangeRequestReview, EmployeeChangeRequestSchema,
 )
 from app.schemas.common import PaginatedResponse
 import os, shutil
@@ -102,6 +103,7 @@ def list_expiring_employee_documents(
 ):
     today = date.today()
     query = db.query(EmployeeDocument).join(Employee).filter(
+        Employee.deleted_at.is_(None),
         EmployeeDocument.expiry_date.isnot(None),
         EmployeeDocument.expiry_date <= today + timedelta(days=days),
     )
@@ -126,7 +128,7 @@ def export_employees(
         "branch_id", "department_id", "designation_id", "reporting_manager_id",
     ])
 
-    query = db.query(Employee)
+    query = db.query(Employee).filter(Employee.deleted_at.is_(None))
     if status_filter:
         query = query.filter(Employee.status == status_filter)
     for emp in query.order_by(Employee.employee_id).all():
@@ -269,6 +271,183 @@ def get_my_employee_profile(
     return mask_employee_detail(emp, current_user)
 
 
+@router.get("/me/completeness")
+def my_profile_completeness(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    if not current_user.employee:
+        raise HTTPException(status_code=404, detail="Employee profile not linked")
+    employee = db.query(Employee).filter(
+        Employee.id == current_user.employee.id,
+        Employee.deleted_at.is_(None),
+    ).first()
+    fields = {
+        "personal_email": employee.personal_email,
+        "phone_number": employee.phone_number,
+        "date_of_birth": employee.date_of_birth,
+        "present_address": employee.present_address,
+        "permanent_address": employee.permanent_address,
+        "emergency_contact_name": employee.emergency_contact_name,
+        "emergency_contact_number": employee.emergency_contact_number,
+        "bank_name": employee.bank_name,
+        "account_number": employee.account_number,
+        "ifsc_code": employee.ifsc_code,
+        "pan_number": employee.pan_number,
+        "profile_photo_url": employee.profile_photo_url,
+    }
+    completed = [key for key, value in fields.items() if value]
+    missing = [key for key, value in fields.items() if not value]
+    percent = round((len(completed) / len(fields)) * 100, 2)
+    pending_requests = db.query(EmployeeChangeRequest).filter(
+        EmployeeChangeRequest.employee_id == employee.id,
+        EmployeeChangeRequest.status == "Pending",
+    ).count()
+    return {
+        "employee_id": employee.id,
+        "percent": percent,
+        "completed": completed,
+        "missing": missing,
+        "pending_change_requests": pending_requests,
+    }
+
+
+@router.post("/change-requests", response_model=EmployeeChangeRequestSchema, status_code=201)
+def create_employee_change_request(
+    data: EmployeeChangeRequestCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    if not current_user.is_superuser and not any(p.name == "employee_update" for p in (current_user.role.permissions if current_user.role else [])):
+        if not current_user.employee or current_user.employee.id != data.employee_id:
+            raise HTTPException(status_code=403, detail="Not authorized to request changes for this employee")
+    if not db.query(Employee).filter(
+        Employee.id == data.employee_id,
+        Employee.deleted_at.is_(None),
+    ).first():
+        raise HTTPException(status_code=404, detail="Employee not found")
+    item = EmployeeChangeRequest(**data.model_dump(), requested_by=current_user.id)
+    db.add(item)
+    db.commit()
+    db.refresh(item)
+    return item
+
+
+@router.get("/change-requests", response_model=List[EmployeeChangeRequestSchema])
+def list_employee_change_requests(
+    status_filter: Optional[str] = Query(None, alias="status"),
+    employee_id: Optional[int] = Query(None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    query = db.query(EmployeeChangeRequest)
+    role_name = (current_user.role.name if current_user.role else "").lower().replace(" ", "_")
+    has_employee_view = current_user.is_superuser or any(p.name == "employee_view" for p in (current_user.role.permissions if current_user.role else []))
+    has_employee_update = current_user.is_superuser or any(p.name == "employee_update" for p in (current_user.role.permissions if current_user.role else []))
+    if not has_employee_view and not current_user.employee:
+        raise HTTPException(status_code=403, detail="Not authorized to view change requests")
+    if not has_employee_update:
+        if role_name in {"manager", "team_lead", "department_head"} and current_user.employee:
+            direct_report_ids = [
+                row.id for row in db.query(Employee.id).filter(
+                    Employee.reporting_manager_id == current_user.employee.id,
+                    Employee.deleted_at.is_(None),
+                ).all()
+            ]
+            allowed_employee_ids = set(direct_report_ids + [current_user.employee.id])
+            query = query.filter(EmployeeChangeRequest.employee_id.in_(allowed_employee_ids or {0}))
+        elif current_user.employee:
+            query = query.filter(EmployeeChangeRequest.employee_id == current_user.employee.id)
+        else:
+            raise HTTPException(status_code=403, detail="Not authorized to view change requests")
+    if status_filter:
+        query = query.filter(EmployeeChangeRequest.status == status_filter)
+    if employee_id:
+        if not has_employee_update and current_user.employee and employee_id != current_user.employee.id:
+            if role_name not in {"manager", "team_lead", "department_head"}:
+                raise HTTPException(status_code=403, detail="Not authorized to view this employee's change requests")
+        query = query.filter(EmployeeChangeRequest.employee_id == employee_id)
+    items = query.order_by(EmployeeChangeRequest.id.desc()).limit(300).all()
+    employees = {
+        emp.id: emp
+        for emp in db.query(Employee).filter(
+            Employee.id.in_([item.employee_id for item in items] or [0]),
+            Employee.deleted_at.is_(None),
+        ).all()
+    }
+    payload = []
+    for item in items:
+        employee = employees.get(item.employee_id)
+        changes = item.field_changes_json or {}
+        current_values = {
+            field: getattr(employee, field, None)
+            for field in changes.keys()
+            if employee and hasattr(employee, field)
+        }
+        payload.append({
+            "id": item.id,
+            "employee_id": item.employee_id,
+            "request_type": item.request_type,
+            "effective_date": item.effective_date,
+            "field_changes_json": changes,
+            "reason": item.reason,
+            "status": item.status,
+            "requested_by": item.requested_by,
+            "reviewed_by": item.reviewed_by,
+            "reviewed_at": item.reviewed_at,
+            "review_remarks": item.review_remarks,
+            "created_at": item.created_at,
+            "employee_name": f"{employee.first_name} {employee.last_name}" if employee else None,
+            "employee_code": employee.employee_id if employee else None,
+            "current_values_json": current_values,
+        })
+    return payload
+
+
+@router.put("/change-requests/{request_id}/review", response_model=EmployeeChangeRequestSchema)
+def review_employee_change_request(
+    request_id: int,
+    data: EmployeeChangeRequestReview,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    item = db.query(EmployeeChangeRequest).filter(EmployeeChangeRequest.id == request_id).first()
+    if not item:
+        raise HTTPException(status_code=404, detail="Change request not found")
+    employee = db.query(Employee).filter(
+        Employee.id == item.employee_id,
+        Employee.deleted_at.is_(None),
+    ).first()
+    if not employee:
+        raise HTTPException(status_code=404, detail="Employee not found")
+    has_employee_update = any(p.name == "employee_update" for p in (current_user.role.permissions if current_user.role else []))
+    is_direct_manager = bool(current_user.employee and employee.reporting_manager_id == current_user.employee.id)
+    if not (current_user.is_superuser or has_employee_update or is_direct_manager):
+        raise HTTPException(status_code=403, detail="Not authorized to review this change request")
+    if item.status != "Pending":
+        raise HTTPException(status_code=400, detail="Change request already reviewed")
+    if data.status not in {"Approved", "Rejected"}:
+        raise HTTPException(status_code=400, detail="Status must be Approved or Rejected")
+    item.status = data.status
+    item.reviewed_by = current_user.id
+    item.reviewed_at = datetime.now(timezone.utc)
+    item.review_remarks = data.review_remarks
+    if data.status == "Approved" and data.apply_changes:
+        allowed_fields = {
+            "present_address", "permanent_address", "phone_number", "personal_email",
+            "bank_name", "bank_branch", "account_number", "ifsc_code", "pan_number",
+            "aadhaar_number", "branch_id", "department_id", "designation_id",
+            "business_unit_id", "cost_center_id", "location_id", "grade_band_id",
+            "position_id", "reporting_manager_id", "status", "worker_type",
+        }
+        for field, value in (item.field_changes_json or {}).items():
+            if field in allowed_fields and hasattr(employee, field):
+                setattr(employee, field, value)
+    db.commit()
+    db.refresh(item)
+    return item
+
+
 @router.get("/{employee_id}", response_model=EmployeeSchema)
 def get_employee(
     employee_id: int,
@@ -288,7 +467,7 @@ def update_employee(
     db: Session = Depends(get_db),
     current_user: User = Depends(RequirePermission("employee_update")),
 ):
-    emp = crud_employee.get(db, employee_id)
+    emp = db.query(Employee).filter(Employee.id == employee_id, Employee.deleted_at.is_(None)).first()
     if not emp:
         raise HTTPException(status_code=404, detail="Employee not found")
     return crud_employee.update(db, db_obj=emp, obj_in=data)
@@ -300,7 +479,7 @@ def list_lifecycle_events(
     db: Session = Depends(get_db),
     current_user: User = Depends(RequirePermission("employee_view")),
 ):
-    emp = crud_employee.get(db, employee_id)
+    emp = db.query(Employee).filter(Employee.id == employee_id, Employee.deleted_at.is_(None)).first()
     if not emp:
         raise HTTPException(status_code=404, detail="Employee not found")
     return crud_employee.list_lifecycle_events(db, employee_id)
@@ -313,7 +492,7 @@ def add_lifecycle_event(
     db: Session = Depends(get_db),
     current_user: User = Depends(RequirePermission("employee_update")),
 ):
-    emp = crud_employee.get(db, employee_id)
+    emp = db.query(Employee).filter(Employee.id == employee_id, Employee.deleted_at.is_(None)).first()
     if not emp:
         raise HTTPException(status_code=404, detail="Employee not found")
     return crud_employee.add_lifecycle_event(
@@ -330,10 +509,12 @@ def delete_employee(
     db: Session = Depends(get_db),
     current_user: User = Depends(RequirePermission("employee_delete")),
 ):
-    emp = crud_employee.get(db, employee_id)
+    emp = db.query(Employee).filter(Employee.id == employee_id, Employee.deleted_at.is_(None)).first()
     if not emp:
         raise HTTPException(status_code=404, detail="Employee not found")
     emp.status = "Terminated"
+    emp.deleted_at = datetime.now(timezone.utc)
+    emp.deleted_by = current_user.id
     db.commit()
     return {"message": "Employee terminated"}
 
@@ -401,8 +582,12 @@ async def upload_document(
     expiry_date: Optional[str] = Form(None),
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
-    current_user: User = Depends(RequirePermission("employee_update")),
+    current_user: User = Depends(get_current_user),
 ):
+    can_update = current_user.is_superuser or any(p.name == "employee_update" for p in (current_user.role.permissions if current_user.role else []))
+    is_self = bool(current_user.employee and current_user.employee.id == employee_id)
+    if not (can_update or is_self):
+        raise HTTPException(status_code=403, detail="Not authorized to upload documents for this employee")
     # Validate file type
     ext = file.filename.rsplit(".", 1)[-1].lower() if "." in file.filename else ""
     if ext not in settings.allowed_extensions_list:
@@ -463,8 +648,12 @@ async def upload_photo(
     employee_id: int,
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
-    current_user: User = Depends(RequirePermission("employee_update")),
+    current_user: User = Depends(get_current_user),
 ):
+    can_update = current_user.is_superuser or any(p.name == "employee_update" for p in (current_user.role.permissions if current_user.role else []))
+    is_self = bool(current_user.employee and current_user.employee.id == employee_id)
+    if not (can_update or is_self):
+        raise HTTPException(status_code=403, detail="Not authorized to upload photo for this employee")
     ext = file.filename.rsplit(".", 1)[-1].lower()
     if ext not in ["jpg", "jpeg", "png"]:
         raise HTTPException(status_code=400, detail="Only JPG/PNG allowed for photos")

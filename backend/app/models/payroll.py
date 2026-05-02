@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Boolean, ForeignKey, DateTime, Date, Numeric, Text, JSON
+from sqlalchemy import Column, Integer, String, Boolean, ForeignKey, DateTime, Date, Numeric, Text, JSON, Index
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from app.db.base_class import Base
@@ -40,6 +40,7 @@ class SalaryComponent(Base):
     rounding_rule = Column(String(50), default="Nearest Rupee")
     effective_from = Column(Date)
     effective_to = Column(Date)
+    is_currency_fixed = Column(Boolean, default=True)
 
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     category = relationship("SalaryComponentCategory")
@@ -689,6 +690,9 @@ class SalaryStructureComponent(Base):
 
 class EmployeeSalary(Base):
     __tablename__ = "employee_salaries"
+    __table_args__ = (
+        Index("idx_employee_salary_effective", "employee_id", "effective_from", "effective_to"),
+    )
 
     id = Column(Integer, primary_key=True, index=True)
     employee_id = Column(Integer, ForeignKey("employees.id", ondelete="CASCADE"), nullable=False)
@@ -697,6 +701,7 @@ class EmployeeSalary(Base):
     basic = Column(Numeric(12, 2))
     hra = Column(Numeric(12, 2))
     effective_from = Column(Date, nullable=False)
+    effective_date = Column(Date)
     effective_to = Column(Date)
     is_active = Column(Boolean, default=True)
 
@@ -741,10 +746,17 @@ class SensitiveSalaryAuditLog(Base):
 
 class PayrollRun(Base):
     __tablename__ = "payroll_runs"
+    __table_args__ = (
+        Index("idx_payroll_run_period", "pay_period_start", "pay_period_end", "company_id"),
+        Index("idx_payroll_run_active_month", "deleted_at", "year", "month"),
+    )
 
     id = Column(Integer, primary_key=True, index=True)
     month = Column(Integer, nullable=False)
     year = Column(Integer, nullable=False)
+    company_id = Column(Integer, ForeignKey("companies.id", ondelete="SET NULL"), nullable=True)
+    pay_period_start = Column(Date)
+    pay_period_end = Column(Date)
     run_date = Column(Date)
     status = Column(String(20), default="Draft")  # Draft, Processing, Completed, Approved, Locked
     approved_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
@@ -757,6 +769,8 @@ class PayrollRun(Base):
     remarks = Column(Text)
 
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+    deleted_at = Column(DateTime(timezone=True))
+    deleted_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     records = relationship("PayrollRecord", back_populates="payroll_run", cascade="all, delete-orphan")
     variance_items = relationship("PayrollVarianceItem", back_populates="payroll_run", cascade="all, delete-orphan")
     export_batches = relationship("PayrollExportBatch", back_populates="payroll_run", cascade="all, delete-orphan")

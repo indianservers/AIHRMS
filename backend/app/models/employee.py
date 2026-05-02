@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Boolean, ForeignKey, DateTime, Date, Numeric, Text
+from sqlalchemy import Column, Integer, String, Boolean, ForeignKey, DateTime, Date, Numeric, Text, JSON, Index
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from app.db.base_class import Base
@@ -6,6 +6,9 @@ from app.db.base_class import Base
 
 class Employee(Base):
     __tablename__ = "employees"
+    __table_args__ = (
+        Index("idx_employees_active_status", "deleted_at", "status"),
+    )
 
     id = Column(Integer, primary_key=True, index=True)
     employee_id = Column(String(50), unique=True, nullable=False, index=True)
@@ -22,6 +25,9 @@ class Employee(Base):
     nationality = Column(String(50), default="Indian")
     religion = Column(String(50))
     category = Column(String(20))  # General/OBC/SC/ST
+    gender_identity = Column(String(50))
+    disability_status = Column(String(50))
+    veteran_status = Column(String(50))
 
     # Contact
     personal_email = Column(String(150))
@@ -48,8 +54,14 @@ class Employee(Base):
     branch_id = Column(Integer, ForeignKey("branches.id", ondelete="SET NULL"), nullable=True)
     department_id = Column(Integer, ForeignKey("departments.id", ondelete="SET NULL"), nullable=True)
     designation_id = Column(Integer, ForeignKey("designations.id", ondelete="SET NULL"), nullable=True)
+    business_unit_id = Column(Integer, ForeignKey("business_units.id", ondelete="SET NULL"), nullable=True)
+    cost_center_id = Column(Integer, ForeignKey("cost_centers.id", ondelete="SET NULL"), nullable=True)
+    location_id = Column(Integer, ForeignKey("work_locations.id", ondelete="SET NULL"), nullable=True)
+    grade_band_id = Column(Integer, ForeignKey("grade_bands.id", ondelete="SET NULL"), nullable=True)
+    position_id = Column(Integer, ForeignKey("positions.id", ondelete="SET NULL"), nullable=True)
     reporting_manager_id = Column(Integer, ForeignKey("employees.id", ondelete="SET NULL"), nullable=True)
     employment_type = Column(String(50), default="Full-time")  # Full-time, Part-time, Contract, Intern
+    worker_type = Column(String(50), default="Employee")  # Employee, Contractor, Consultant, Gig
     status = Column(String(30), default="Active")  # Active, Probation, On Leave, Resigned, Terminated
     work_location = Column(String(50), default="Office")  # Office, Remote, Hybrid
     shift_id = Column(Integer, ForeignKey("shifts.id", ondelete="SET NULL"), nullable=True)
@@ -68,6 +80,7 @@ class Employee(Base):
     uan_number = Column(String(30))
     pf_number = Column(String(50))
     esic_number = Column(String(50))
+    salary_currency = Column(String(3), default="INR")
 
     # Profile
     profile_photo_url = Column(String(500))
@@ -79,14 +92,21 @@ class Employee(Base):
 
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+    deleted_at = Column(DateTime(timezone=True))
+    deleted_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
 
     # Relationships
-    user = relationship("User", back_populates="employee")
+    user = relationship("User", back_populates="employee", foreign_keys=[user_id])
     branch = relationship("Branch", back_populates="employees")
     department = relationship("Department", back_populates="employees", foreign_keys=[department_id])
     designation = relationship("Designation", back_populates="employees")
     reporting_manager = relationship("Employee", remote_side=[id], foreign_keys=[reporting_manager_id])
     shift = relationship("Shift", back_populates="employees")
+    business_unit = relationship("BusinessUnit", foreign_keys=[business_unit_id])
+    cost_center = relationship("CostCenter", foreign_keys=[cost_center_id])
+    location = relationship("WorkLocation", foreign_keys=[location_id])
+    grade_band = relationship("GradeBand", foreign_keys=[grade_band_id])
+    position = relationship("Position", foreign_keys=[position_id])
 
     educations = relationship("EmployeeEducation", back_populates="employee", cascade="all, delete-orphan")
     experiences = relationship("EmployeeExperience", back_populates="employee", cascade="all, delete-orphan")
@@ -202,3 +222,22 @@ class EmployeeLifecycleEvent(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     employee = relationship("Employee", foreign_keys=[employee_id], back_populates="lifecycle_events")
+
+
+class EmployeeChangeRequest(Base):
+    __tablename__ = "employee_change_requests"
+
+    id = Column(Integer, primary_key=True, index=True)
+    employee_id = Column(Integer, ForeignKey("employees.id", ondelete="CASCADE"), nullable=False, index=True)
+    request_type = Column(String(60), nullable=False, index=True)
+    effective_date = Column(Date)
+    field_changes_json = Column(JSON, nullable=False)
+    status = Column(String(30), default="Pending", index=True)
+    reason = Column(Text)
+    requested_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    reviewed_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    reviewed_at = Column(DateTime(timezone=True))
+    review_remarks = Column(Text)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    employee = relationship("Employee")

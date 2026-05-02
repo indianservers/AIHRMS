@@ -1,9 +1,9 @@
 from app.db.base_class import Base  # noqa: F401
 
 # Import all models so Alembic can detect them
-from app.models.user import User, Role, Permission  # noqa: F401
-from app.models.company import Company, Branch, Department, Designation  # noqa: F401
-from app.models.employee import Employee, EmployeeEducation, EmployeeExperience, EmployeeSkill, EmployeeDocument, EmployeeLifecycleEvent  # noqa: F401
+from app.models.user import User, Role, Permission, UserSession, MFAMethod, PasswordPolicy, LoginAttempt  # noqa: F401
+from app.models.company import Company, Branch, Department, Designation, BusinessUnit, CostCenter, WorkLocation, GradeBand, JobFamily, JobProfile, Position, HeadcountPlan  # noqa: F401
+from app.models.employee import Employee, EmployeeEducation, EmployeeExperience, EmployeeSkill, EmployeeDocument, EmployeeLifecycleEvent, EmployeeChangeRequest  # noqa: F401
 from app.models.attendance import Shift, ShiftWeeklyOff, ShiftRosterAssignment, Holiday, Attendance, AttendancePunch, BiometricDevice, BiometricImportBatch, GeoAttendancePolicy, AttendancePunchProof, AttendanceMonthLock, AttendanceRegularization, OvertimeRequest  # noqa: F401
 from app.models.leave import LeaveType, LeaveBalance, LeaveRequest, LeaveBalanceLedger  # noqa: F401
 from app.models.payroll import (  # noqa: F401
@@ -38,7 +38,12 @@ from app.models.recruitment import Job, RecruitmentRequisition, Candidate, Inter
 from app.models.onboarding import (  # noqa: F401
     OnboardingTemplate, OnboardingTask, EmployeeOnboarding, OnboardingTaskCompletion, PolicyAcknowledgement
 )
-from app.models.performance import AppraisalCycle, PerformanceGoal, PerformanceReview  # noqa: F401
+from app.models.performance import (  # noqa: F401
+    AppraisalCycle, PerformanceGoal, PerformanceReview,
+    GoalCheckIn, ReviewTemplate, ReviewTemplateQuestion, Feedback360Request,
+    Competency, RoleSkillRequirement, EmployeeCompetencyAssessment,
+    CompensationCycle, PayBand, MeritRecommendation,
+)
 from app.models.helpdesk import HelpdeskCategory, HelpdeskTicket, HelpdeskReply, HelpdeskKnowledgeArticle, HelpdeskEscalationRule  # noqa: F401
 from app.models.document import DocumentTemplate, GeneratedDocument, CompanyPolicy, CompanyPolicyVersion, EmployeeCertificate, CertificateImportExportBatch  # noqa: F401
 from app.models.asset import AssetCategory, Asset, AssetAssignment  # noqa: F401
@@ -48,9 +53,9 @@ from app.models.audit import AuditLog  # noqa: F401
 from app.models.notification import Notification, NotificationDeliveryLog  # noqa: F401
 from app.models.workflow_engine import WorkflowDefinition, WorkflowStepDefinition, WorkflowInstance, WorkflowTask  # noqa: F401
 from app.models.lms import LearningCourse, LearningAssignment, LearningCertification  # noqa: F401
-from app.models.engagement import Announcement, EngagementSurvey, EngagementSurveyResponse, Recognition  # noqa: F401
+from app.models.engagement import Announcement, EngagementSurvey, EngagementSurveyResponse, Recognition, RecognitionReaction  # noqa: F401
 from app.models.whatsapp_ess import WhatsAppESSConfig, WhatsAppESSSession, WhatsAppESSMessage, WhatsAppESSTemplate, WhatsAppESSOptIn, WhatsAppESSDeliveryEvent  # noqa: F401
 from app.models.statutory_compliance import PayrollLegalEntity, Form16Document, TDSReturnFiling, StatutoryPortalSubmission, StatutoryComplianceEvent  # noqa: F401
-from app.models.benefits import BenefitPlan, EmployeeBenefitEnrollment, FlexiBenefitPolicy, EmployeeFlexiBenefitAllocation, BenefitPayrollDeduction  # noqa: F401
-from app.models.background_verification import BackgroundVerificationVendor, BackgroundVerificationRequest, BackgroundVerificationCheck  # noqa: F401
-from app.models.platform import CustomFieldDefinition, CustomFieldValue, ReportDefinition, ReportRun  # noqa: F401
+from app.models.benefits import BenefitPlan, EmployeeBenefitEnrollment, FlexiBenefitPolicy, EmployeeFlexiBenefitAllocation, BenefitPayrollDeduction, BenefitClaim, ESOPPlan, ESOPGrant, ESOPVestingSchedule  # noqa: F401
+from app.models.background_verification import BackgroundVerificationVendor, BackgroundVerificationRequest, BackgroundVerificationCheck, BackgroundVerificationConnectorEvent  # noqa: F401
+from app.models.platform import CustomFieldDefinition, CustomFieldValue, CustomFormDefinition, CustomFormField, CustomFormSubmission, ReportDefinition, ReportRun, IntegrationCredential, WebhookSubscription, IntegrationEvent, ConsentRecord, DataPrivacyRequest, DataRetentionPolicy, LegalHold, MetricDefinition  # noqa: F401

@@ -110,3 +110,92 @@ class BenefitPayrollDeductionSchema(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class BenefitClaimCreate(BaseModel):
+    employee_id: int
+    benefit_plan_id: Optional[int] = None
+    policy_id: Optional[int] = None
+    claim_type: str
+    claim_date: date
+    claim_amount: Decimal
+    receipt_url: Optional[str] = None
+
+
+class BenefitClaimReview(BaseModel):
+    status: str
+    approved_amount: Decimal = Decimal("0")
+    taxable_amount: Decimal = Decimal("0")
+    tax_exempt_amount: Decimal = Decimal("0")
+    review_remarks: Optional[str] = None
+    payroll_record_id: Optional[int] = None
+
+
+class BenefitClaimSchema(BenefitClaimCreate):
+    id: int
+    approved_amount: Decimal
+    taxable_amount: Decimal
+    tax_exempt_amount: Decimal
+    status: str
+    submitted_by: Optional[int] = None
+    reviewed_by: Optional[int] = None
+    reviewed_at: Optional[datetime] = None
+    review_remarks: Optional[str] = None
+    payroll_record_id: Optional[int] = None
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class ESOPPlanCreate(BaseModel):
+    name: str
+    plan_code: str
+    grant_currency: str = "INR"
+    exercise_price: Decimal = Decimal("0")
+    vesting_frequency: str = "Annual"
+    cliff_months: int = 12
+    total_vesting_months: int = 48
+    description: Optional[str] = None
+    is_active: bool = True
+
+
+class ESOPPlanSchema(ESOPPlanCreate):
+    id: int
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class ESOPGrantCreate(BaseModel):
+    esop_plan_id: int
+    employee_id: int
+    grant_date: date
+    granted_units: Decimal
+    remarks: Optional[str] = None
+
+
+class ESOPGrantSchema(ESOPGrantCreate):
+    id: int
+    vested_units: Decimal
+    exercised_units: Decimal
+    forfeited_units: Decimal
+    status: str
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class ESOPVestingScheduleSchema(BaseModel):
+    id: int
+    grant_id: int
+    vesting_date: date
+    units: Decimal
+    status: str
+    vested_at: Optional[datetime] = None
+    created_at: datetime
+
+    class Config:
+        from_attributes = True

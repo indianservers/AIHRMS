@@ -139,6 +139,19 @@ export default function CompanyPage() {
     onError: (err: any) => toast({ title: "Could not deactivate record", description: apiError(err), variant: "destructive" }),
   });
 
+  const uploadLogo = useMutation({
+    mutationFn: (file: File) => {
+      const formData = new FormData();
+      formData.append("file", file);
+      return companyApi.uploadLogo(selectedCompanyId, formData);
+    },
+    onSuccess: () => {
+      toast({ title: "Company logo uploaded" });
+      qc.invalidateQueries({ queryKey: ["companies"] });
+    },
+    onError: (err: any) => toast({ title: "Could not upload logo", description: apiError(err), variant: "destructive" }),
+  });
+
   const update = (key: string, value: string) => setForm((current) => ({ ...current, [key]: value }));
   const branchName = (id: number) => (branches.data || []).find((branch: any) => branch.id === id)?.name || "Branch";
   const departmentName = (id: number) => (departments.data || []).find((dept: any) => dept.id === id)?.name || "Department";
@@ -236,6 +249,30 @@ export default function CompanyPage() {
                   <span className="flex min-w-0 items-center gap-2"><Phone className="h-4 w-4 shrink-0 text-muted-foreground" /><span className="truncate">{form.phone || "No phone"}</span></span>
                   <span className="flex min-w-0 items-center gap-2"><Globe className="h-4 w-4 shrink-0 text-muted-foreground" /><span className="truncate">{form.website || "No website"}</span></span>
                   <span className="flex min-w-0 items-center gap-2 sm:col-span-3"><MapPin className="h-4 w-4 shrink-0 text-muted-foreground" /><span className="truncate">{[form.address, form.city, form.state, form.pincode].filter(Boolean).join(", ") || "No address"}</span></span>
+                </div>
+                <div className="flex flex-col gap-3 rounded-lg border p-4 sm:col-span-2 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-12 w-12 items-center justify-center overflow-hidden rounded-md bg-muted">
+                      {form.logo_url ? <img src={form.logo_url} alt="Company logo" className="h-full w-full object-contain" /> : <Building2 className="h-5 w-5 text-muted-foreground" />}
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium">Company logo</p>
+                      <p className="text-xs text-muted-foreground">Used in payslips, letters, and reports</p>
+                    </div>
+                  </div>
+                  <Label className="cursor-pointer rounded-md border px-3 py-2 text-sm font-medium hover:bg-muted">
+                    Upload logo
+                    <input
+                      type="file"
+                      accept="image/png,image/jpeg,image/webp"
+                      className="hidden"
+                      disabled={!selectedCompanyId || uploadLogo.isPending}
+                      onChange={(event) => {
+                        const file = event.target.files?.[0];
+                        if (file) uploadLogo.mutate(file);
+                      }}
+                    />
+                  </Label>
                 </div>
                 <div className="flex justify-end sm:col-span-2">
                   <Button type="submit" disabled={saveCompany.isPending || !form.name}>
@@ -427,7 +464,14 @@ function OrgPanel({
                 <Button type="button" variant="ghost" size="icon" onClick={() => onEdit(item)} title="Edit">
                   <Edit3 className="h-4 w-4" />
                 </Button>
-                <Button type="button" variant="ghost" size="icon" onClick={() => onDelete(item.id)} title="Deactivate">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => window.confirm("Deactivate this record?") && onDelete(item.id)}
+                  title="Deactivate"
+                  aria-label="Deactivate"
+                >
                   <Trash2 className="h-4 w-4" />
                 </Button>
               </div>

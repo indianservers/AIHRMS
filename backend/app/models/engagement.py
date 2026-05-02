@@ -1,4 +1,4 @@
-from sqlalchemy import Boolean, Column, Date, DateTime, ForeignKey, Integer, Numeric, String, Text
+from sqlalchemy import Boolean, Column, Date, DateTime, ForeignKey, Integer, Numeric, String, Text, JSON
 from sqlalchemy.sql import func
 from app.db.base_class import Base
 
@@ -22,6 +22,8 @@ class EngagementSurvey(Base):
     id = Column(Integer, primary_key=True, index=True)
     title = Column(String(220), nullable=False)
     survey_type = Column(String(40), default="Pulse")
+    question = Column(Text)
+    options_json = Column(JSON)
     start_date = Column(Date)
     end_date = Column(Date)
     status = Column(String(30), default="Draft", index=True)
@@ -51,4 +53,14 @@ class Recognition(Base):
     badge = Column(String(80))
     points = Column(Integer, default=0)
     is_public = Column(Boolean, default=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class RecognitionReaction(Base):
+    __tablename__ = "recognition_reactions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    recognition_id = Column(Integer, ForeignKey("recognitions.id", ondelete="CASCADE"), nullable=False, index=True)
+    employee_id = Column(Integer, ForeignKey("employees.id", ondelete="CASCADE"), nullable=False, index=True)
+    emoji = Column(String(20), default="clap")
     created_at = Column(DateTime(timezone=True), server_default=func.now())

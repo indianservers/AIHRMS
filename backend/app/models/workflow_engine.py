@@ -1,4 +1,4 @@
-from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String, Text, JSON
 from sqlalchemy.sql import func
 from app.db.base_class import Base
 
@@ -40,6 +40,7 @@ class WorkflowInstance(Base):
     entity_type = Column(String(80), nullable=False)
     entity_id = Column(Integer, nullable=False, index=True)
     requester_user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    context_json = Column(JSON)
     status = Column(String(30), default="Pending", index=True)
     current_step_order = Column(Integer, default=1)
     started_at = Column(DateTime(timezone=True), server_default=func.now())
@@ -56,6 +57,9 @@ class WorkflowTask(Base):
     assigned_role = Column(String(120), index=True)
     status = Column(String(30), default="Pending", index=True)
     due_at = Column(DateTime(timezone=True))
+    reminder_sent_at = Column(DateTime(timezone=True))
+    escalated_at = Column(DateTime(timezone=True))
+    escalated_to_user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     decision = Column(String(30))
     decision_reason = Column(Text)
     decided_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)

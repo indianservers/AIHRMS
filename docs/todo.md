@@ -7,7 +7,7 @@ This is the current backlog after re-checking `docs/competitor_gap_analysis.md` 
 
 ## Current Completed Foundation
 
-- Core HR: companies, branches, departments, designations, employees, lifecycle events, documents, certificates, import/export, sensitive masking.
+- Core HR: companies, branches, departments, designations, business units, cost centers, work locations, grade bands, job families/profiles, positions, headcount plans, org chart/hierarchy validation, employees, lifecycle events, change requests, documents, certificates, import/export, sensitive masking.
 - Roles: admin/HR/manager/employee permission foundation and admin-only user/role creation.
 - Leave: types, balances, ledger, requests, overlap/balance checks, HR/manager approval, leave calendar.
 - Attendance: shifts, weekly offs, rosters, holidays, check-in/out, raw punches, regularization, monthly locks, summaries, logging.
@@ -16,15 +16,20 @@ This is the current backlog after re-checking `docs/competitor_gap_analysis.md` 
 - Payroll tax: tax regimes, slabs, sections, limits, regime elections, previous employment tax, tax worksheets, declarations, proofs, Form 16 and 24Q tracking.
 - Payroll statutory: PF/ESI/PT/LWF/gratuity rules, employee statutory profile, contribution lines, challans, return-file validation, statutory compliance calendar, EPFO/ESIC submission tracking.
 - Payroll calculation depth: salary formula dependency ordering, circular dependency detection, formula trace, tax regime comparison, rebate/surcharge/cess-aware tax projection.
+- Database scale controls: high-frequency attendance/leave/payroll/notification/audit indexes, employee/leave/payroll soft-delete fields, salary effective-date proration foundation, employee salary currency, salary-component currency flag, and proxy-aware audit IP/user-agent capture exist.
 - Workflow/notifications: workflow inbox, workflow engine foundation, notification inbox and delivery logs.
 - Helpdesk: tickets, replies, SLA dates, escalation rules, knowledge base.
 - Recruitment/onboarding: requisitions, jobs, candidates, interviews, feedback, offers, candidate conversion, onboarding templates/tasks.
 - LMS/engagement: course catalog, assignments, certifications, announcements, surveys, recognitions.
 - Benefits/BGV/WhatsApp ESS: backend foundations exist; WhatsApp templates, opt-in/out, outbound queue, and delivery callbacks exist.
 - Attendance devices/mobile: biometric devices/import batches, punch dedupe, geo/selfie/QR proof and geofence exception foundation exist.
-- Platform configurability: custom field definitions/values and report builder definitions/runs exist.
+- Platform configurability: custom field definitions/values, dynamic custom forms/submissions/reviews, and report builder definitions/runs exist.
+- Enterprise platform: session/device records, MFA method records, password policy records, login attempt logs, integration credentials, webhooks, integration events, consent records, privacy requests, retention policies, legal holds, and governed metric definitions exist.
+- Talent and benefits next-10 foundation: OKR check-ins, review templates, 360 feedback requests/submissions, competency library, role-skill requirements, employee competency assessments, skill gap report, compensation cycles, pay bands, merit recommendations, benefits claims, and ESOP vesting schedules now exist.
+- Frontend shell/product polish: manager dashboard route, ESS portal route, org chart route, Cmd/Ctrl+K global search, breadcrumbs, keyboard shortcut help, back-to-top, session timeout countdown, profile completeness/change-request UI, employee/company logo/photo upload UX, print-friendly payslip styling, and confirmation guards for destructive frontend actions exist.
+- Daily experience UI depth: real-time org chart with filters/zoom/export/vacancy markers, manager dashboard with team attendance/pending approvals/calendar/moments, ESS portal with payslips/documents/goals/assets, and engagement UI for announcements/polls/recognitions exists.
 - Deployment: split frontend/backend routing and DigitalOcean MySQL configuration.
-- Verification: backend full suite passed at 66 tests before the latest next-10 patch; latest targeted next-10 suite passed at 2 tests. Frontend production build should be rerun after service bindings.
+- Verification: backend full suite passed at 66 tests before the latest next-10 patch; targeted core-concepts suite passed at 1 test after the latest org/security/privacy/integration patch. Frontend production build should be rerun after service bindings.
 
 ## Highest Gaps Now
 
@@ -33,7 +38,7 @@ This is the current backlog after re-checking `docs/competitor_gap_analysis.md` 
 3. India statutory output still needs real format validation: PF ECR, ESIC, PT/LWF, TDS 24Q/26Q, Form 16 Part A/B, challans, XLSX/portal-ready templates.
 4. WhatsApp ESS now has connector metadata and outbound/callback foundations; real Meta Cloud API dispatch, cryptographic signature verification against stored secrets, and CTA approval templates remain.
 5. Biometric/geo attendance now has import and proof foundations; vendor SDK sync, mobile camera capture, QR rotation, and manager exception UI remain.
-6. Enterprise platform gaps remain: webhooks, MFA/session management, SSO/SAML, DPDP/privacy workflows, and frontend renderers for custom reports/forms.
+6. Enterprise platform foundation now exists for webhooks, sessions/MFA records, login attempts, DPDP/privacy requests, retention, legal holds, and governed metrics. Remaining: real SSO/SAML/OIDC, MFA verification flow, lockout/IP policy enforcement, retry workers, and frontend admin screens.
 7. Talent suite is shallow: OKR check-ins, 360 reviews, calibration, skill framework, career paths, compensation planning.
 8. Analytics is basic: scheduled exports, governed metrics, DE&I, pay equity, span-of-control, manager effectiveness.
 9. Benefits needs claims, limits, tax treatment, payroll worksheet integration, ESOP/vesting.
@@ -107,6 +112,30 @@ This is the current backlog after re-checking `docs/competitor_gap_analysis.md` 
 - [x] Add tax depth tests.
   - Old vs new regime, previous employment, monthly TDS spread, section caps.
 
+### P1 Database Scale And Audit Controls
+
+- [x] Add high-frequency composite indexes.
+  - Attendance employee/date, leave status/employee, payroll period/company, notifications user/unread/date, audit entity/date, employee active status, and salary effective history.
+- [x] Add soft-delete protection for critical HR/payroll records.
+  - Employee, leave request, and payroll run now carry `deleted_at`/`deleted_by`; core employee, leave, and payroll-run queries exclude deleted rows.
+- [x] Add salary effective-date support and mid-month proration.
+  - Employee salary stores `effective_date`; payroll run traces calendar-day salary proration across revisions.
+- [x] Add multi-currency payroll master data.
+  - Employee salary currency defaults to INR; salary components now declare whether amounts are fixed in currency.
+- [x] Enhance audit context for compliance.
+  - Audit log indexes entity lookup and captures user-agent plus proxy-aware client IP.
+
+### P1 Daily Experience Screens
+
+- [x] Upgrade real-time org chart.
+  - Interactive SVG chart, zoom controls, employee profile drill-down, department/location/grade-band filters, PDF/PNG/SVG export, and dashed vacant-position boxes.
+- [x] Upgrade manager dashboard.
+  - Team attendance split, pending leave/regularization/change-request counts, birthdays/anniversaries, direct reports, open tickets, and color-coded team leave/holiday calendar.
+- [x] Upgrade ESS portal.
+  - Last 12 payslips with PDF links, leave balances, attendance/leave/helpdesk shortcuts, generated documents, goals/appraisal status, and IT asset assignments.
+- [x] Add engagement frontend.
+  - Published announcement banner, HR announcement form, poll creation/voting/results chart, recognition wall, reactions, and people moments list.
+
 ### P1 Connectors And Daily-Use Differentiators
 
 - [x] WhatsApp Business production connector.
@@ -117,17 +146,17 @@ This is the current backlog after re-checking `docs/competitor_gap_analysis.md` 
   - ZKTeco/eSSL flat file import, device sync table, punch dedupe, error rows.
 - [x] Geo/selfie/QR attendance.
   - Mobile punch proof, geofence validation, exception approval.
-- [ ] Background verification production connector.
-  - Consent capture, AuthBridge/IDfy/HireRight connector, webhook sync, report parsing.
+- [x] Background verification production connector foundation.
+  - Consent capture, provider code/API secret refs, vendor submission reference, webhook sync, report URL/result mapping, and connector event audit exist. Remaining: real AuthBridge/IDfy/HireRight SDK calls, webhook signature verification against secret manager, document/report parser.
 
 ### P1 HRMS Product Depth
 
 - [x] Custom fields and forms.
-  - Field definitions, module sections, validation, permissions, frontend renderer.
-- [ ] Workflow designer depth.
-  - Conditions, reminders, escalations, delegation, field updates, visual editor.
-- [ ] Webhooks and integrations framework.
-  - Subscriptions, event log, retry queue, connector credentials.
+  - Field definitions, module sections, validation, permissions, dynamic form definitions, ordered form fields, submissions, review flow, and value persistence exist. Remaining: visual drag/drop renderer inside each module page.
+- [x] Workflow designer backend depth.
+  - Condition expressions, context-based step skipping, multi-step progression, due reminders, and escalation processing exist. Remaining: delegation, cross-module field updates, visual editor.
+- [x] Webhooks and integrations framework.
+  - Subscriptions, event log, and connector credentials foundation exist; retry worker and connector SDKs remain.
 - [x] Report builder.
   - Field catalog, saved filters, scheduled exports, XLSX/PDF.
 - [ ] Manager dashboard.
@@ -138,23 +167,34 @@ This is the current backlog after re-checking `docs/competitor_gap_analysis.md` 
 ### P1 Talent, Learning, Engagement, Benefits
 
 - [ ] OKR check-ins and review templates.
-- [ ] 360 feedback workflow and calibration.
-- [ ] Competency framework and role-skill mapping.
-- [ ] Skills gap report and upskilling recommendations.
-- [ ] Compensation cycles, pay bands, merit planning, pay equity analytics.
+- [x] OKR check-ins and review templates.
+  - Goal progress check-ins and configurable review templates/questions are database-backed.
+- [x] 360 feedback workflow foundation.
+  - Request/submission tracking with relationship type, due date, response JSON, rating, comments, and status exists. Remaining: calibration sessions and UI.
+- [x] Competency framework and role-skill mapping.
+  - Competency library, role skill requirements, and employee competency assessments exist.
+- [x] Skills gap report and upskilling recommendations.
+  - Employee skill gap API compares required role levels against assessments and returns recommendations. Remaining: LMS-linked recommendation engine.
+- [x] Compensation cycles, pay bands, and merit planning foundation.
+  - Compensation cycles, pay bands, and merit recommendations with increase percentage/review status exist. Remaining: manager worksheet UI and controlled pay-equity model.
 - [ ] LMS SCORM/xAPI support and renewal workflows.
 - [ ] Engagement eNPS scoring, anonymity controls, recognition points, dashboards.
-- [ ] Benefits claims, limits, tax treatment, payroll worksheet integration.
-- [ ] ESOP/RSU vesting schedule and benefit cost report.
+- [x] Benefits claims, limits/tax treatment, payroll worksheet integration foundation.
+  - Benefit claims include approval, taxable/exempt split, receipts, and payroll record link; flexi allocation claimed/taxable fallback updates on approval. Remaining: payroll worksheet auto-pull and richer limits by family/dependent.
+- [x] ESOP/RSU vesting schedule foundation.
+  - ESOP plans, grants, and generated vesting schedules exist. Remaining: exercise workflow, RSU taxation, and cost report.
 
 ### P2 Enterprise, Privacy, And Industry Packs
 
-- [ ] MFA, trusted devices, sessions, password policy, lockout.
+- [x] MFA, trusted devices, sessions, password policy, lockout foundation.
+  - Session/device, MFA method, password policy, and login attempt APIs exist. Remaining: real OTP/TOTP verification, lockout enforcement, IP allowlist, recovery codes.
 - [ ] SSO/SAML/OIDC enterprise login.
-- [ ] DPDP consent, privacy requests, data retention, legal hold.
+- [x] DPDP consent, privacy requests, data retention, legal hold foundation.
+  - Consent capture/revoke, privacy request review, retention policies, and legal hold/release APIs exist. Remaining: retention job, export/delete processor, employee-facing portal.
 - [ ] Payroll/employee field audit viewer for salary, bank, PAN, Aadhaar, manager, designation.
 - [ ] Aadhaar e-KYC and DigiLocker connector.
-- [ ] DE&I analytics, pay equity, span-of-control, manager effectiveness.
+- [x] DE&I analytics foundation.
+  - Representation by gender identity, legal gender, disability, veteran status, department, grade band, and latest payroll average-gross pay equity view exist. Remaining: pay-equity controls by role/grade/tenure/location, span-of-control, manager effectiveness.
 - [ ] Manufacturing pack: contract labor, safety incidents, PPE, medical fitness, advanced shifts.
 - [ ] BFSI pack: certification tracking, policy attestations, evidence retention, maker-checker depth.
 - [ ] Retail/field pack: store hierarchy, staffing plan, field visits, offline tasks.
@@ -162,13 +202,13 @@ This is the current backlog after re-checking `docs/competitor_gap_analysis.md` 
 
 ## Recommended Next 10
 
-1. Background verification production connector
-2. Workflow designer conditions/reminders/escalations UI
-3. Report builder frontend screen with saved reports and exports
-4. Custom field renderer inside employee/profile/payroll forms
-5. Mobile ESS offline drafts for leave, attendance, documents
-6. Benefits claims, limits, tax treatment, payroll worksheet integration
-7. Skills/competency framework and role-skill mapping
-8. Manager dashboard with team attendance/leave/approvals
-9. MFA, trusted devices, active sessions, lockout policy
-10. SSO/SAML/OIDC enterprise login
+1. Workflow designer visual UI, delegation, and field-update actions
+2. Organization admin frontend for business units, positions, and headcount plans
+3. Employee profile change request approval inbox integration
+4. Report builder frontend screen with saved reports and exports
+5. Custom form visual renderer inside employee/profile/payroll forms
+6. Mobile ESS offline drafts for leave, attendance, documents
+7. LMS SCORM/xAPI support and certification renewal workflows
+8. Engagement eNPS scoring, anonymity controls, recognition points, dashboards
+9. SSO/SAML/OIDC enterprise login plus real MFA/lockout enforcement
+10. BGV real vendor SDK and signed webhook verification

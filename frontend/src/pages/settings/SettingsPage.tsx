@@ -309,7 +309,14 @@ export default function SettingsPage() {
                           <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openEdit(active, row)}>
                             <Pencil className="h-4 w-4" />
                           </Button>
-                          <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={() => deleteMutation.mutate({ type: active, id: row.id })}>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 text-destructive"
+                            title="Delete"
+                            aria-label="Delete"
+                            onClick={() => window.confirm("Delete this setting?") && deleteMutation.mutate({ type: active, id: row.id })}
+                          >
                             <Trash2 className="h-4 w-4" />
                           </Button>
                         </td>

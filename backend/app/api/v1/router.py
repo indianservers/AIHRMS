@@ -10,6 +10,7 @@ from app.api.v1 import (
     custom_fields,
     documents,
     engagement,
+    enterprise,
     employees,
     exit,
     helpdesk,
@@ -58,3 +59,4 @@ api_router.include_router(onboarding.router)
 api_router.include_router(exit.router)
 api_router.include_router(lms.router)
 api_router.include_router(engagement.router)
+api_router.include_router(enterprise.router)

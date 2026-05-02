@@ -245,6 +245,7 @@ def leave_calendar(
         db.query(LeaveRequest)
         .options(joinedload(LeaveRequest.employee), joinedload(LeaveRequest.leave_type))
         .filter(
+            LeaveRequest.deleted_at.is_(None),
             LeaveRequest.status.in_(["Pending", "Approved"]),
             LeaveRequest.from_date <= to_date,
             LeaveRequest.to_date >= from_date,
@@ -336,7 +337,10 @@ def cancel_leave(
     current_user: User = Depends(get_current_user),
 ):
     from app.models.leave import LeaveRequest
-    req = db.query(LeaveRequest).filter(LeaveRequest.id == request_id).first()
+    req = db.query(LeaveRequest).filter(
+        LeaveRequest.id == request_id,
+        LeaveRequest.deleted_at.is_(None),
+    ).first()
     if not req:
         raise HTTPException(status_code=404, detail="Leave request not found")
     if current_user.employee and req.employee_id != current_user.employee.id:

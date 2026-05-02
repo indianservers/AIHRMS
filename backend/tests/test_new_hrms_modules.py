@@ -142,7 +142,15 @@ def test_whatsapp_ess_benefits_statutory_and_bgv_modules_work(client, db):
 
     vendor = client.post(
         "/api/v1/background-verification/vendors",
-        json={"name": "Demo BGV Vendor", "contact_email": "ops@bgv.example"},
+        json={
+            "name": "Demo BGV Vendor",
+            "contact_email": "ops@bgv.example",
+            "provider_code": "IDFY",
+            "api_base_url": "https://bgv.example/api",
+            "api_key_ref": "secret://bgv/idfy",
+            "webhook_secret_ref": "secret://bgv/webhook",
+            "supports_api_submission": "Yes",
+        },
         headers=admin,
     )
     assert vendor.status_code == 201
@@ -157,6 +165,19 @@ def test_whatsapp_ess_benefits_statutory_and_bgv_modules_work(client, db):
         headers=admin,
     )
     assert bgv.status_code == 201
+    consent = client.put(
+        f"/api/v1/background-verification/requests/{bgv.json()['id']}/consent",
+        json={"consent_status": "Captured", "consent_url": "/uploads/bgv/consent.pdf"},
+        headers=admin,
+    )
+    assert consent.status_code == 200
+    assert consent.json()["consent_status"] == "Captured"
+    submitted = client.post(
+        f"/api/v1/background-verification/requests/{bgv.json()['id']}/submit",
+        headers=admin,
+    )
+    assert submitted.status_code == 200
+    assert submitted.json()["vendor_reference"].startswith("IDFY-")
     check_id = bgv.json()["checks"][0]["id"]
     updated = client.put(
         f"/api/v1/background-verification/checks/{check_id}",
@@ -165,3 +186,28 @@ def test_whatsapp_ess_benefits_statutory_and_bgv_modules_work(client, db):
     )
     assert updated.status_code == 200
     assert updated.json()["checks"][0]["result"] == "Clear"
+    callback = client.post(
+        f"/api/v1/background-verification/webhooks/{vendor.json()['id']}",
+        json={
+            "vendor_reference": submitted.json()["vendor_reference"],
+            "event_type": "verification.completed",
+            "status": "Completed",
+            "vendor_status": "closed",
+            "overall_result": "Clear",
+            "report_url": "https://bgv.example/reports/123.pdf",
+            "checks": [
+                {"check_type": "Identity", "status": "Completed", "result": "Clear", "verified_by": "IDfy"},
+                {"check_type": "Address", "status": "Completed", "result": "Clear", "verified_by": "IDfy"},
+            ],
+        },
+    )
+    assert callback.status_code == 200
+    assert callback.json()["overall_result"] == "Clear"
+    assert callback.json()["report_url"].endswith("123.pdf")
+    assert any(item["check_type"] == "Address" for item in callback.json()["checks"])
+    events = client.get(
+        f"/api/v1/background-verification/requests/{bgv.json()['id']}/events",
+        headers=admin,
+    )
+    assert events.status_code == 200
+    assert len(events.json()) >= 2
