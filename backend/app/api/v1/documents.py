@@ -6,9 +6,11 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Upload
 from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.core.deps import get_current_user, get_db, RequirePermission
+from app.core.masking import user_has_permission
 from app.models.document import (
     CertificateImportExportBatch,
     CompanyPolicy,
+    CompanyPolicyVersion,
     DocumentTemplate,
     EmployeeCertificate,
     GeneratedDocument,
@@ -20,6 +22,8 @@ from app.schemas.document import (
     CertificateVerificationUpdate,
     CompanyPolicyCreate,
     CompanyPolicySchema,
+    CompanyPolicyVersionCreate,
+    CompanyPolicyVersionSchema,
     DocumentTemplateCreate,
     DocumentTemplateSchema,
     EmployeeCertificateSchema,
@@ -86,9 +90,53 @@ def list_policies(db: Session = Depends(get_db), current_user: User = Depends(Re
 def create_policy(data: CompanyPolicyCreate, db: Session = Depends(get_db), current_user: User = Depends(RequirePermission("company_manage"))):
     policy = CompanyPolicy(**data.model_dump())
     db.add(policy)
+    db.flush()
+    version = CompanyPolicyVersion(
+        policy_id=policy.id,
+        version=policy.version,
+        content=policy.content,
+        document_url=policy.document_url,
+        effective_date=policy.effective_date,
+        change_summary="Initial policy version",
+        published_by=current_user.id,
+    )
+    db.add(version)
     db.commit()
     db.refresh(policy)
     return policy
+
+
+@router.get("/policies/{policy_id}/versions", response_model=list[CompanyPolicyVersionSchema])
+def list_policy_versions(
+    policy_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(RequirePermission("company_view")),
+):
+    return db.query(CompanyPolicyVersion).filter(
+        CompanyPolicyVersion.policy_id == policy_id
+    ).order_by(CompanyPolicyVersion.published_at.desc()).all()
+
+
+@router.post("/policies/{policy_id}/versions", response_model=CompanyPolicyVersionSchema, status_code=status.HTTP_201_CREATED)
+def publish_policy_version(
+    policy_id: int,
+    data: CompanyPolicyVersionCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(RequirePermission("company_manage")),
+):
+    policy = db.query(CompanyPolicy).filter(CompanyPolicy.id == policy_id).first()
+    if not policy:
+        raise HTTPException(status_code=404, detail="Policy not found")
+    version = CompanyPolicyVersion(policy_id=policy_id, published_by=current_user.id, **data.model_dump())
+    policy.version = data.version
+    policy.content = data.content
+    policy.document_url = data.document_url
+    policy.effective_date = data.effective_date
+    policy.is_published = True
+    db.add(version)
+    db.commit()
+    db.refresh(version)
+    return version
 
 
 @router.get("/generated", response_model=list[GeneratedDocumentSchema])
@@ -114,9 +162,15 @@ def list_certificates(
     category: str | None = Query(None),
     verification_status: str | None = Query(None),
     db: Session = Depends(get_db),
-    current_user: User = Depends(RequirePermission("employee_view")),
+    current_user: User = Depends(get_current_user),
 ):
     query = db.query(EmployeeCertificate)
+    if not user_has_permission(current_user, "employee_view"):
+        if not current_user.employee:
+            raise HTTPException(status_code=400, detail="No employee profile linked to this user")
+        if employee_id and employee_id != current_user.employee.id:
+            raise HTTPException(status_code=403, detail="Not authorized to view this employee's certificates")
+        employee_id = current_user.employee.id
     if employee_id:
         query = query.filter(EmployeeCertificate.employee_id == employee_id)
     if category:
@@ -141,8 +195,13 @@ async def upload_certificate(
     expiry_date: str | None = Form(None),
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
-    current_user: User = Depends(RequirePermission("employee_update")),
+    current_user: User = Depends(get_current_user),
 ):
+    if not user_has_permission(current_user, "employee_update"):
+        if not current_user.employee:
+            raise HTTPException(status_code=400, detail="No employee profile linked to this user")
+        if employee_id != current_user.employee.id:
+            raise HTTPException(status_code=403, detail="Employees can upload only their own certificates")
     employee = db.query(Employee).filter(Employee.id == employee_id).first()
     if not employee:
         raise HTTPException(status_code=404, detail="Employee not found")

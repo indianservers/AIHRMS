@@ -6,7 +6,8 @@ from sqlalchemy import and_
 from app.models.payroll import (
     SalaryComponent, SalaryStructure, SalaryStructureComponent,
     EmployeeSalary, PayrollRun, PayrollRecord, PayrollComponent, Reimbursement,
-    PayrollVarianceItem
+    PayrollVarianceItem, PayrollPeriod, PayrollAttendanceInput,
+    OvertimePayLine, LeaveEncashmentLine
 )
 
 
@@ -58,7 +59,14 @@ def run_payroll(db: Session, month: int, year: int, run_by_user_id: int) -> Payr
             continue
 
         # Count attendance
-        present_days = db.query(Attendance).filter(
+        attendance_input = db.query(PayrollAttendanceInput).join(PayrollPeriod).filter(
+            PayrollPeriod.month == month,
+            PayrollPeriod.year == year,
+            PayrollAttendanceInput.employee_id == emp.id,
+            PayrollAttendanceInput.source_status.in_(["Approved", "Locked"]),
+        ).order_by(PayrollAttendanceInput.id.desc()).first()
+
+        raw_present_days = db.query(Attendance).filter(
             and_(
                 Attendance.employee_id == emp.id,
                 Attendance.status.in_(["Present", "WFH", "Half-day"]),
@@ -67,9 +75,16 @@ def run_payroll(db: Session, month: int, year: int, run_by_user_id: int) -> Payr
             )
         ).count()
 
-        # Simple payroll calculation
-        paid_days = min(Decimal(str(present_days)), Decimal(str(total_working_days)))
-        lop_days = max(Decimal("0"), Decimal(str(total_working_days)) - paid_days)
+        if attendance_input:
+            total_working_days = int(attendance_input.working_days or total_working_days)
+            paid_days = Decimal(attendance_input.payable_days or 0)
+            lop_days = Decimal(attendance_input.lop_days or 0)
+            present_days = Decimal(attendance_input.present_days or 0)
+        else:
+            # Simple payroll calculation
+            present_days = Decimal(str(raw_present_days))
+            paid_days = min(present_days, Decimal(str(total_working_days)))
+            lop_days = max(Decimal("0"), Decimal(str(total_working_days)) - paid_days)
 
         ctc = salary.ctc
         monthly_ctc = ctc / Decimal("12")
@@ -77,7 +92,7 @@ def run_payroll(db: Session, month: int, year: int, run_by_user_id: int) -> Payr
         hra = salary.hra or (basic * Decimal("0.5"))
         other_allowances = monthly_ctc - basic - hra
 
-        per_day_salary = monthly_ctc / Decimal(str(total_working_days))
+        per_day_salary = monthly_ctc / Decimal(str(total_working_days or 1))
         lop_deduction = per_day_salary * lop_days
 
         gross = monthly_ctc - lop_deduction
@@ -103,8 +118,32 @@ def run_payroll(db: Session, month: int, year: int, run_by_user_id: int) -> Payr
             )
         ).all()
         reimbursement_total = sum((item.amount or Decimal("0")) for item in approved_reimbursements)
+        period = attendance_input.period if attendance_input else db.query(PayrollPeriod).filter(
+            PayrollPeriod.month == month,
+            PayrollPeriod.year == year,
+        ).order_by(PayrollPeriod.id.desc()).first()
+        overtime_lines = []
+        encashment_lines = []
+        overtime_total = Decimal("0")
+        encashment_total = Decimal("0")
+        if period:
+            overtime_lines = db.query(OvertimePayLine).filter(
+                OvertimePayLine.period_id == period.id,
+                OvertimePayLine.employee_id == emp.id,
+                OvertimePayLine.status == "Approved",
+                OvertimePayLine.payroll_record_id.is_(None),
+            ).all()
+            encashment_lines = db.query(LeaveEncashmentLine).filter(
+                LeaveEncashmentLine.period_id == period.id,
+                LeaveEncashmentLine.employee_id == emp.id,
+                LeaveEncashmentLine.status == "Approved",
+                LeaveEncashmentLine.payroll_record_id.is_(None),
+            ).all()
+            overtime_total = sum((item.amount or Decimal("0")) for item in overtime_lines)
+            encashment_total = sum((item.amount or Decimal("0")) for item in encashment_lines)
 
         total_ded = pf_employee + esi_employee + pt
+        gross = gross + overtime_total + encashment_total
         net = gross - total_ded + reimbursement_total
 
         # AI anomaly detection placeholder
@@ -164,21 +203,37 @@ def run_payroll(db: Session, month: int, year: int, run_by_user_id: int) -> Payr
             ("PF Employer", "Employer Contribution", pf_employer),
             ("ESI Employer", "Employer Contribution", esi_employer),
         ]
+        if overtime_total > 0:
+            payroll_lines.append(("Overtime Pay", "Earning", overtime_total))
+        if encashment_total > 0:
+            payroll_lines.append(("Leave Encashment", "Earning", encashment_total))
         if reimbursement_total > 0:
             payroll_lines.append(("Approved Reimbursements", "Reimbursement", reimbursement_total))
 
-        for component_name, component_type, amount in payroll_lines:
+        for order, (component_name, component_type, amount) in enumerate(payroll_lines, start=1):
             if amount and amount != Decimal("0"):
                 db.add(PayrollComponent(
                     record_id=record.id,
                     component_name=component_name,
                     component_type=component_type,
                     amount=_money(amount),
+                    source_type="payroll_engine",
+                    taxable_amount=_money(amount) if component_type == "Earning" else Decimal("0"),
+                    exempt_amount=Decimal("0"),
+                    wage_base_flags={"pf": component_name == "Basic", "esi": component_type == "Earning"},
+                    calculation_order=order,
+                    formula_trace_json={"engine": "legacy-run-v1", "attendance_input_id": attendance_input.id if attendance_input else None},
                 ))
 
         for reimbursement in approved_reimbursements:
             reimbursement.payroll_record_id = record.id
             reimbursement.status = "Paid"
+        for line in overtime_lines:
+            line.payroll_record_id = record.id
+            line.status = "Paid"
+        for line in encashment_lines:
+            line.payroll_record_id = record.id
+            line.status = "Paid"
 
         total_gross += gross
         total_deductions += total_ded

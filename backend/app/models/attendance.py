@@ -97,6 +97,99 @@ class Attendance(Base):
     regularization = relationship("AttendanceRegularization", back_populates="attendance", uselist=False)
 
 
+class AttendancePunch(Base):
+    __tablename__ = "attendance_punches"
+
+    id = Column(Integer, primary_key=True, index=True)
+    employee_id = Column(Integer, ForeignKey("employees.id", ondelete="CASCADE"), nullable=False, index=True)
+    punch_time = Column(DateTime(timezone=True), nullable=False, index=True)
+    punch_type = Column(String(20), nullable=False)  # IN, OUT, BREAK_IN, BREAK_OUT
+    source = Column(String(30), default="Web")
+    device_id = Column(String(120))
+    ip_address = Column(String(50))
+    latitude = Column(Numeric(10, 7))
+    longitude = Column(Numeric(10, 7))
+    location_text = Column(String(250))
+    raw_payload = Column(Text)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class BiometricDevice(Base):
+    __tablename__ = "biometric_devices"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(120), nullable=False)
+    vendor = Column(String(80), nullable=False)
+    device_code = Column(String(80), nullable=False, unique=True, index=True)
+    location = Column(String(150))
+    sync_mode = Column(String(40), default="File Import")
+    last_sync_at = Column(DateTime(timezone=True))
+    is_active = Column(Boolean, default=True, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class BiometricImportBatch(Base):
+    __tablename__ = "biometric_import_batches"
+
+    id = Column(Integer, primary_key=True, index=True)
+    device_id = Column(Integer, ForeignKey("biometric_devices.id", ondelete="SET NULL"), nullable=True, index=True)
+    source_filename = Column(String(250))
+    imported_rows = Column(Integer, default=0)
+    skipped_rows = Column(Integer, default=0)
+    error_rows = Column(Integer, default=0)
+    status = Column(String(30), default="Imported", index=True)
+    error_report_json = Column(Text)
+    imported_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    device = relationship("BiometricDevice")
+
+
+class GeoAttendancePolicy(Base):
+    __tablename__ = "geo_attendance_policies"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(120), nullable=False)
+    latitude = Column(Numeric(10, 7), nullable=False)
+    longitude = Column(Numeric(10, 7), nullable=False)
+    radius_meters = Column(Integer, default=200)
+    require_selfie = Column(Boolean, default=False)
+    require_qr = Column(Boolean, default=False)
+    is_active = Column(Boolean, default=True, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class AttendancePunchProof(Base):
+    __tablename__ = "attendance_punch_proofs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    punch_id = Column(Integer, ForeignKey("attendance_punches.id", ondelete="CASCADE"), nullable=False, index=True)
+    proof_type = Column(String(30), nullable=False)  # Geo, Selfie, QR
+    proof_url = Column(String(500))
+    latitude = Column(Numeric(10, 7))
+    longitude = Column(Numeric(10, 7))
+    qr_code = Column(String(120))
+    validation_status = Column(String(30), default="Pending", index=True)
+    validation_message = Column(Text)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    punch = relationship("AttendancePunch")
+
+
+class AttendanceMonthLock(Base):
+    __tablename__ = "attendance_month_locks"
+
+    id = Column(Integer, primary_key=True, index=True)
+    month = Column(Integer, nullable=False, index=True)
+    year = Column(Integer, nullable=False, index=True)
+    status = Column(String(20), default="Locked", index=True)
+    reason = Column(Text)
+    locked_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    locked_at = Column(DateTime(timezone=True), server_default=func.now())
+    unlocked_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    unlocked_at = Column(DateTime(timezone=True))
+
+
 class AttendanceRegularization(Base):
     __tablename__ = "attendance_regularizations"
 

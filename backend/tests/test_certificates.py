@@ -1,6 +1,8 @@
 from datetime import date
 from io import BytesIO
 
+from app.db.init_db import init_db
+
 
 def _create_employee(db):
     from app.models.employee import Employee
@@ -86,3 +88,49 @@ def test_certificate_import_and_export_logs(client, superuser_headers, db):
     batches = client.get("/api/v1/documents/certificates/import-export", headers=superuser_headers)
     assert batches.status_code == 200
     assert len(batches.json()) >= 2
+
+
+def test_employee_can_upload_and_list_own_certificate_only(client, db):
+    init_db(db)
+    from app.models.employee import Employee
+
+    employee = db.query(Employee).filter(Employee.employee_id == "DEMO-EMP-001").first()
+    login = client.post(
+        "/api/v1/auth/login",
+        json={"email": "employee@aihrms.com", "password": "Employee@123456"},
+    )
+    assert login.status_code == 200
+    assert login.json()["employee_id"] == employee.id
+    headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
+
+    upload = client.post(
+        "/api/v1/documents/certificates",
+        data={
+            "employee_id": str(employee.id),
+            "category": "Study",
+            "certificate_type": "Degree",
+            "title": "Degree Certificate",
+        },
+        files={"file": ("degree.pdf", BytesIO(b"%PDF-1.4 certificate"), "application/pdf")},
+        headers=headers,
+    )
+    assert upload.status_code == 201
+    assert upload.json()["employee_id"] == employee.id
+
+    own_list = client.get("/api/v1/documents/certificates", headers=headers)
+    assert own_list.status_code == 200
+    assert own_list.json()[0]["employee_id"] == employee.id
+
+    other_emp = _create_employee(db)
+    denied = client.post(
+        "/api/v1/documents/certificates",
+        data={
+            "employee_id": str(other_emp.id),
+            "category": "Study",
+            "certificate_type": "Degree",
+            "title": "Other Degree",
+        },
+        files={"file": ("other.pdf", BytesIO(b"%PDF-1.4 certificate"), "application/pdf")},
+        headers=headers,
+    )
+    assert denied.status_code == 403

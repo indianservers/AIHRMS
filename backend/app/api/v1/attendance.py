@@ -1,17 +1,27 @@
-from datetime import date
+from datetime import date, datetime, timezone
+from decimal import Decimal
+import json
+import math
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from app.core.deps import get_db, get_current_user, RequirePermission
 from app.crud.crud_attendance import crud_attendance, crud_holiday
 from app.models.user import User
-from app.models.attendance import Shift, ShiftRosterAssignment, ShiftWeeklyOff, AttendanceRegularization, Holiday, OvertimeRequest
+from app.models.attendance import (
+    Shift, ShiftRosterAssignment, ShiftWeeklyOff, AttendanceRegularization, Holiday,
+    OvertimeRequest, AttendancePunch, AttendanceMonthLock, BiometricDevice,
+    BiometricImportBatch, GeoAttendancePolicy, AttendancePunchProof,
+)
 from app.schemas.attendance import (
     ShiftCreate, ShiftSchema,
     ShiftRosterAssignmentCreate, ShiftRosterAssignmentSchema,
     ShiftWeeklyOffCreate, ShiftWeeklyOffSchema,
     HolidayCreate, HolidaySchema,
     CheckInRequest, CheckOutRequest,
+    AttendancePunchCreate, AttendancePunchSchema, AttendanceMonthLockCreate, AttendanceMonthLockSchema,
+    BiometricDeviceCreate, BiometricDeviceSchema, BiometricImportRequest, BiometricImportBatchSchema,
+    GeoAttendancePolicyCreate, GeoAttendancePolicySchema, GeoPunchRequest, AttendancePunchProofSchema,
     AttendanceSchema, RegularizationRequest,
     RegularizationApproval, RegularizationSchema,
 )
@@ -19,6 +29,24 @@ from app.schemas.attendance import ShiftCreate as ShiftUpdate
 from app.schemas.attendance import HolidayCreate as HolidayUpdate
 
 router = APIRouter(prefix="/attendance", tags=["Attendance"])
+
+
+def _locked_month(db: Session, value: date) -> bool:
+    return db.query(AttendanceMonthLock).filter(
+        AttendanceMonthLock.month == value.month,
+        AttendanceMonthLock.year == value.year,
+        AttendanceMonthLock.status == "Locked",
+    ).first() is not None
+
+
+def _distance_meters(lat1: Decimal, lon1: Decimal, lat2: Decimal, lon2: Decimal) -> float:
+    radius = 6371000
+    phi1 = math.radians(float(lat1))
+    phi2 = math.radians(float(lat2))
+    delta_phi = math.radians(float(lat2 - lat1))
+    delta_lambda = math.radians(float(lon2 - lon1))
+    a = math.sin(delta_phi / 2) ** 2 + math.cos(phi1) * math.cos(phi2) * math.sin(delta_lambda / 2) ** 2
+    return radius * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
 
 
 # ── Shifts ───────────────────────────────────────────────────────────────────
@@ -195,6 +223,8 @@ def check_in(
 ):
     if not current_user.employee:
         raise HTTPException(status_code=400, detail="No employee profile linked to this user")
+    if _locked_month(db, date.today()):
+        raise HTTPException(status_code=400, detail="Attendance month is locked")
     return crud_attendance.check_in(
         db,
         current_user.employee.id,
@@ -212,6 +242,8 @@ def check_out(
 ):
     if not current_user.employee:
         raise HTTPException(status_code=400, detail="No employee profile linked to this user")
+    if _locked_month(db, date.today()):
+        raise HTTPException(status_code=400, detail="Attendance month is locked")
     record = crud_attendance.check_out(
         db,
         current_user.employee.id,
@@ -221,6 +253,236 @@ def check_out(
     if not record:
         raise HTTPException(status_code=400, detail="No check-in found for today")
     return record
+
+
+@router.post("/punches", response_model=AttendancePunchSchema, status_code=201)
+def create_raw_punch(
+    data: AttendancePunchCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    employee_id = data.employee_id
+    if employee_id and not current_user.is_superuser:
+        if not current_user.employee or current_user.employee.id != employee_id:
+            raise HTTPException(status_code=403, detail="Not authorized to punch for another employee")
+    if not employee_id:
+        if not current_user.employee:
+            raise HTTPException(status_code=400, detail="No employee profile")
+        employee_id = current_user.employee.id
+    if _locked_month(db, data.punch_time.date()):
+        raise HTTPException(status_code=400, detail="Attendance month is locked")
+    punch = AttendancePunch(**data.model_dump(exclude={"employee_id"}), employee_id=employee_id)
+    db.add(punch)
+    db.commit()
+    db.refresh(punch)
+    return punch
+
+
+@router.post("/biometric/devices", response_model=BiometricDeviceSchema, status_code=201)
+def create_biometric_device(
+    data: BiometricDeviceCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(RequirePermission("attendance_manage")),
+):
+    device = BiometricDevice(**data.model_dump())
+    db.add(device)
+    db.commit()
+    db.refresh(device)
+    return device
+
+
+@router.get("/biometric/devices", response_model=List[BiometricDeviceSchema])
+def list_biometric_devices(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(RequirePermission("attendance_manage")),
+):
+    return db.query(BiometricDevice).order_by(BiometricDevice.name).all()
+
+
+@router.post("/biometric/import", response_model=BiometricImportBatchSchema, status_code=201)
+def import_biometric_punches(
+    data: BiometricImportRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(RequirePermission("attendance_manage")),
+):
+    errors = []
+    imported = 0
+    skipped = 0
+    for index, row in enumerate(data.rows, start=1):
+        if _locked_month(db, row.punch_time.date()):
+            errors.append({"row": index, "error": "Attendance month is locked"})
+            continue
+        existing = db.query(AttendancePunch).filter(
+            AttendancePunch.employee_id == row.employee_id,
+            AttendancePunch.punch_time == row.punch_time,
+            AttendancePunch.punch_type == row.punch_type,
+            AttendancePunch.device_id == str(data.device_id or ""),
+        ).first()
+        if existing:
+            skipped += 1
+            continue
+        db.add(AttendancePunch(
+            employee_id=row.employee_id,
+            punch_time=row.punch_time,
+            punch_type=row.punch_type,
+            source="Biometric",
+            device_id=str(data.device_id or row.device_user_id or ""),
+            raw_payload=json.dumps(row.model_dump(), default=str),
+        ))
+        imported += 1
+    batch = BiometricImportBatch(
+        device_id=data.device_id,
+        source_filename=data.source_filename,
+        imported_rows=imported,
+        skipped_rows=skipped,
+        error_rows=len(errors),
+        status="Imported With Errors" if errors else "Imported",
+        error_report_json=json.dumps(errors),
+        imported_by=current_user.id,
+    )
+    if data.device_id:
+        device = db.query(BiometricDevice).filter(BiometricDevice.id == data.device_id).first()
+        if device:
+            device.last_sync_at = datetime.now(timezone.utc)
+    db.add(batch)
+    db.commit()
+    db.refresh(batch)
+    return batch
+
+
+@router.post("/geo/policies", response_model=GeoAttendancePolicySchema, status_code=201)
+def create_geo_policy(
+    data: GeoAttendancePolicyCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(RequirePermission("attendance_manage")),
+):
+    policy = GeoAttendancePolicy(**data.model_dump())
+    db.add(policy)
+    db.commit()
+    db.refresh(policy)
+    return policy
+
+
+@router.get("/geo/policies", response_model=List[GeoAttendancePolicySchema])
+def list_geo_policies(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(RequirePermission("attendance_manage")),
+):
+    return db.query(GeoAttendancePolicy).filter(GeoAttendancePolicy.is_active == True).order_by(GeoAttendancePolicy.name).all()
+
+
+@router.post("/geo/punch", response_model=AttendancePunchProofSchema, status_code=201)
+def create_geo_punch(
+    data: GeoPunchRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    if not current_user.employee:
+        raise HTTPException(status_code=400, detail="No employee profile linked to this user")
+    if _locked_month(db, data.punch_time.date()):
+        raise HTTPException(status_code=400, detail="Attendance month is locked")
+    status = "Verified"
+    message = "Geo punch accepted"
+    policy = db.query(GeoAttendancePolicy).filter(GeoAttendancePolicy.id == data.policy_id).first() if data.policy_id else None
+    if policy:
+        distance = _distance_meters(data.latitude, data.longitude, policy.latitude, policy.longitude)
+        if distance > (policy.radius_meters or 0):
+            status = "Exception"
+            message = f"Outside geofence by {round(distance - (policy.radius_meters or 0), 2)} meters"
+        if policy.require_selfie and not data.selfie_url:
+            status = "Exception"
+            message = "Selfie proof is required"
+        if policy.require_qr and not data.qr_code:
+            status = "Exception"
+            message = "QR proof is required"
+    punch = AttendancePunch(
+        employee_id=current_user.employee.id,
+        punch_time=data.punch_time,
+        punch_type=data.punch_type,
+        source="Mobile",
+        latitude=data.latitude,
+        longitude=data.longitude,
+        location_text=data.location_text,
+        raw_payload=json.dumps(data.model_dump(), default=str),
+    )
+    db.add(punch)
+    db.flush()
+    proof = AttendancePunchProof(
+        punch_id=punch.id,
+        proof_type="Geo",
+        proof_url=data.selfie_url,
+        latitude=data.latitude,
+        longitude=data.longitude,
+        qr_code=data.qr_code,
+        validation_status=status,
+        validation_message=message,
+    )
+    db.add(proof)
+    db.commit()
+    db.refresh(proof)
+    return proof
+
+
+@router.get("/punches", response_model=List[AttendancePunchSchema])
+def list_raw_punches(
+    employee_id: Optional[int] = Query(None),
+    from_date: Optional[date] = Query(None),
+    to_date: Optional[date] = Query(None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(RequirePermission("attendance_manage")),
+):
+    query = db.query(AttendancePunch)
+    if employee_id:
+        query = query.filter(AttendancePunch.employee_id == employee_id)
+    if from_date:
+        query = query.filter(AttendancePunch.punch_time >= datetime.combine(from_date, datetime.min.time(), tzinfo=timezone.utc))
+    if to_date:
+        query = query.filter(AttendancePunch.punch_time <= datetime.combine(to_date, datetime.max.time(), tzinfo=timezone.utc))
+    return query.order_by(AttendancePunch.punch_time.desc()).limit(500).all()
+
+
+@router.post("/locks", response_model=AttendanceMonthLockSchema, status_code=201)
+def lock_attendance_month(
+    data: AttendanceMonthLockCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(RequirePermission("attendance_manage")),
+):
+    existing = db.query(AttendanceMonthLock).filter(
+        AttendanceMonthLock.month == data.month,
+        AttendanceMonthLock.year == data.year,
+    ).first()
+    if existing:
+        existing.status = "Locked"
+        existing.reason = data.reason
+        existing.locked_by = current_user.id
+        existing.locked_at = datetime.now(timezone.utc)
+        db.commit()
+        db.refresh(existing)
+        return existing
+    lock = AttendanceMonthLock(**data.model_dump(), locked_by=current_user.id)
+    db.add(lock)
+    db.commit()
+    db.refresh(lock)
+    return lock
+
+
+@router.put("/locks/{lock_id}/unlock", response_model=AttendanceMonthLockSchema)
+def unlock_attendance_month(
+    lock_id: int,
+    reason: Optional[str] = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(RequirePermission("attendance_manage")),
+):
+    lock = db.query(AttendanceMonthLock).filter(AttendanceMonthLock.id == lock_id).first()
+    if not lock:
+        raise HTTPException(status_code=404, detail="Attendance lock not found")
+    lock.status = "Unlocked"
+    lock.reason = reason or lock.reason
+    lock.unlocked_by = current_user.id
+    lock.unlocked_at = datetime.now(timezone.utc)
+    db.commit()
+    db.refresh(lock)
+    return lock
 
 
 @router.get("/today")

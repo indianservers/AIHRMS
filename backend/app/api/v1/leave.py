@@ -1,15 +1,27 @@
 from typing import List, Optional
+from datetime import date, timedelta
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
+from sqlalchemy.orm import joinedload
 from app.core.deps import get_db, get_current_user, RequirePermission
 from app.crud import crud_leave
 from app.models.user import User
+from app.models.employee import Employee
+from app.models.attendance import Holiday
+from app.models.leave import LeaveRequest
 from app.schemas.leave import (
     LeaveTypeCreate, LeaveTypeUpdate, LeaveTypeSchema,
     LeaveBalanceLedgerSchema, LeaveBalanceSchema, LeaveRequestCreate, LeaveApprovalRequest, LeaveRequestSchema,
+    LeaveCalendarDay, LeaveCalendarResponse,
 )
 
 router = APIRouter(prefix="/leave", tags=["Leave Management"])
+
+
+def _role_name(user: User) -> str:
+    if user.is_superuser:
+        return "super_admin"
+    return (user.role.name if user.role else "").lower()
 
 
 # ── Leave Types ───────────────────────────────────────────────────────────────
@@ -204,6 +216,102 @@ def all_leave_requests(
         skip=(page-1)*per_page, limit=per_page
     )
     return items
+
+
+@router.get("/calendar", response_model=LeaveCalendarResponse)
+def leave_calendar(
+    from_date: date = Query(...),
+    to_date: date = Query(...),
+    scope: str = Query("team", pattern="^(mine|team|all)$"),
+    department_id: Optional[int] = Query(None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    if to_date < from_date:
+        raise HTTPException(status_code=400, detail="to_date cannot be before from_date")
+    if (to_date - from_date).days > 92:
+        raise HTTPException(status_code=400, detail="Calendar range cannot exceed 93 days")
+
+    role_name = _role_name(current_user)
+    can_view_all = current_user.is_superuser or role_name in {"super_admin", "hr_manager", "hr_admin", "hr"}
+    can_view_team = can_view_all or role_name in {"manager", "team_lead", "department_head"}
+
+    if scope == "all" and not can_view_all:
+        scope = "team"
+    if scope == "team" and not can_view_team:
+        scope = "mine"
+
+    query = (
+        db.query(LeaveRequest)
+        .options(joinedload(LeaveRequest.employee), joinedload(LeaveRequest.leave_type))
+        .filter(
+            LeaveRequest.status.in_(["Pending", "Approved"]),
+            LeaveRequest.from_date <= to_date,
+            LeaveRequest.to_date >= from_date,
+        )
+    )
+
+    if department_id:
+        query = query.join(Employee, LeaveRequest.employee_id == Employee.id).filter(Employee.department_id == department_id)
+
+    if scope == "mine":
+        if not current_user.employee:
+            raise HTTPException(status_code=400, detail="No employee profile")
+        query = query.filter(LeaveRequest.employee_id == current_user.employee.id)
+    elif scope == "team" and not can_view_all:
+        if not current_user.employee:
+            raise HTTPException(status_code=400, detail="No employee profile")
+        direct_report_ids = [
+            row.id for row in db.query(Employee.id).filter(Employee.reporting_manager_id == current_user.employee.id).all()
+        ]
+        allowed_ids = direct_report_ids + [current_user.employee.id]
+        query = query.filter(LeaveRequest.employee_id.in_(allowed_ids))
+
+    requests = query.order_by(LeaveRequest.from_date, LeaveRequest.id).all()
+    holidays = (
+        db.query(Holiday)
+        .filter(Holiday.is_active == True, Holiday.holiday_date >= from_date, Holiday.holiday_date <= to_date)
+        .order_by(Holiday.holiday_date)
+        .all()
+    )
+
+    day_map = {}
+    current = from_date
+    while current <= to_date:
+        day_map[current] = {
+            "date": current,
+            "leave_count": 0,
+            "pending_count": 0,
+            "approved_count": 0,
+            "employees_on_leave": [],
+            "holidays": [],
+        }
+        current += timedelta(days=1)
+
+    for holiday in holidays:
+        day_map[holiday.holiday_date]["holidays"].append(holiday)
+
+    for request in requests:
+        current = max(request.from_date, from_date)
+        end = min(request.to_date, to_date)
+        while current <= end:
+            day = day_map[current]
+            day["employees_on_leave"].append(request)
+            day["leave_count"] += 1
+            if request.status == "Pending":
+                day["pending_count"] += 1
+            elif request.status == "Approved":
+                day["approved_count"] += 1
+            current += timedelta(days=1)
+
+    days = [LeaveCalendarDay(**day_map[key]) for key in sorted(day_map)]
+    return {
+        "from_date": from_date,
+        "to_date": to_date,
+        "scope": scope,
+        "total_leave_days": sum(day.leave_count for day in days),
+        "days": days,
+    }
 
 
 @router.put("/requests/{request_id}/approve")

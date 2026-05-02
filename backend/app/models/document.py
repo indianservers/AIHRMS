@@ -53,6 +53,22 @@ class CompanyPolicy(Base):
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
 
+class CompanyPolicyVersion(Base):
+    __tablename__ = "company_policy_versions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    policy_id = Column(Integer, ForeignKey("company_policies.id", ondelete="CASCADE"), nullable=False, index=True)
+    version = Column(String(20), nullable=False)
+    content = Column(Text)
+    document_url = Column(String(500))
+    effective_date = Column(DateTime(timezone=True))
+    change_summary = Column(Text)
+    published_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    published_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    policy = relationship("CompanyPolicy")
+
+
 class EmployeeCertificate(Base):
     __tablename__ = "employee_certificates"
 

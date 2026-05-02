@@ -54,6 +54,7 @@ class CRUDAttendance(CRUDBase):
             record = Attendance(employee_id=employee_id, attendance_date=work_date, status="Absent")
             db.add(record)
             db.flush()
+        self._ensure_defaults(record)
 
         shift = self.get_shift_for_day(db, employee_id, work_date)
         record.shift_id = shift.id if shift else None
@@ -129,6 +130,26 @@ class CRUDAttendance(CRUDBase):
         db.refresh(record)
         return record
 
+    def _ensure_defaults(self, record: Attendance) -> None:
+        if record.source is None:
+            record.source = "Web"
+        if record.is_regularized is None:
+            record.is_regularized = False
+        if record.overtime_hours is None:
+            record.overtime_hours = Decimal("0")
+        if record.late_minutes is None:
+            record.late_minutes = 0
+        if record.early_exit_minutes is None:
+            record.early_exit_minutes = 0
+        if record.short_minutes is None:
+            record.short_minutes = 0
+        if record.is_late is None:
+            record.is_late = False
+        if record.is_early_exit is None:
+            record.is_early_exit = False
+        if record.is_short_hours is None:
+            record.is_short_hours = False
+
     def get_today(self, db: Session, employee_id: int) -> Optional[Attendance]:
         today = date.today()
         return (
@@ -143,10 +164,12 @@ class CRUDAttendance(CRUDBase):
         now = datetime.now(timezone.utc)
 
         if existing:
+            self._ensure_defaults(existing)
             if not existing.check_in:
                 existing.check_in = now
                 existing.check_in_location = location
                 existing.check_in_ip = ip
+                existing.source = source or existing.source or "Web"
                 existing.status = "Present"
                 db.commit()
                 db.refresh(existing)
@@ -165,6 +188,7 @@ class CRUDAttendance(CRUDBase):
         db.commit()
         self.compute_day(db, employee_id, today)
         db.refresh(record)
+        self._ensure_defaults(record)
         return record
 
     def check_out(self, db: Session, employee_id: int, location: str = None, ip: str = None) -> Optional[Attendance]:
@@ -173,6 +197,7 @@ class CRUDAttendance(CRUDBase):
             return None
 
         now = datetime.now(timezone.utc)
+        self._ensure_defaults(record)
         record.check_out = now
         record.check_out_location = location
         record.check_out_ip = ip

@@ -1,16 +1,84 @@
+from datetime import datetime, timezone
 from typing import List, Optional
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from sqlalchemy.orm import Session
 from app.core.deps import get_db, get_current_user, RequirePermission
 from app.models.user import User
-from app.models.recruitment import Job, Candidate, Interview, InterviewFeedback, OfferLetter
+from app.crud.crud_employee import crud_employee
+from app.models.recruitment import Job, RecruitmentRequisition, Candidate, Interview, InterviewFeedback, OfferLetter
+from app.schemas.employee import EmployeeCreate, EmployeeSchema
 from app.schemas.recruitment import (
     JobCreate, JobUpdate, JobSchema,
+    RecruitmentRequisitionCreate, RecruitmentRequisitionReview, RecruitmentRequisitionSchema,
     CandidateCreate, CandidateUpdate, CandidateSchema,
-    InterviewCreate, InterviewFeedbackCreate, OfferLetterCreate,
+    InterviewCreate, InterviewFeedbackCreate, OfferLetterCreate, CandidateConversionCreate,
 )
 
 router = APIRouter(prefix="/recruitment", tags=["Recruitment ATS"])
+
+
+@router.post("/requisitions", response_model=RecruitmentRequisitionSchema, status_code=201)
+def create_requisition(
+    data: RecruitmentRequisitionCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(RequirePermission("recruitment_manage")),
+):
+    number = f"REQ{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}"
+    req = RecruitmentRequisition(requisition_number=number, requested_by=current_user.id, **data.model_dump())
+    db.add(req)
+    db.commit()
+    db.refresh(req)
+    return req
+
+
+@router.get("/requisitions", response_model=List[RecruitmentRequisitionSchema])
+def list_requisitions(
+    status: Optional[str] = Query(None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(RequirePermission("recruitment_view")),
+):
+    query = db.query(RecruitmentRequisition)
+    if status:
+        query = query.filter(RecruitmentRequisition.status == status)
+    return query.order_by(RecruitmentRequisition.id.desc()).limit(200).all()
+
+
+@router.put("/requisitions/{requisition_id}/review", response_model=RecruitmentRequisitionSchema)
+def review_requisition(
+    requisition_id: int,
+    data: RecruitmentRequisitionReview,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(RequirePermission("recruitment_manage")),
+):
+    req = db.query(RecruitmentRequisition).filter(RecruitmentRequisition.id == requisition_id).first()
+    if not req:
+        raise HTTPException(status_code=404, detail="Requisition not found")
+    action = data.action.lower()
+    if action == "approve":
+        job = Job(
+            title=req.title,
+            code=f"JOB-{req.requisition_number}",
+            department_id=req.department_id,
+            designation_id=req.designation_id,
+            branch_id=req.branch_id,
+            openings=req.openings,
+            description=req.justification,
+            status="Open",
+            posted_date=datetime.now(timezone.utc).date(),
+        )
+        db.add(job)
+        db.flush()
+        req.status = "Approved"
+        req.approved_by = current_user.id
+        req.approved_at = datetime.now(timezone.utc)
+        req.job_id = job.id
+    elif action == "reject":
+        req.status = "Rejected"
+    else:
+        raise HTTPException(status_code=400, detail="action must be approve or reject")
+    db.commit()
+    db.refresh(req)
+    return req
 
 
 # ── Jobs ──────────────────────────────────────────────────────────────────────
@@ -138,6 +206,35 @@ def update_candidate_status(
     candidate.status = status
     db.commit()
     return {"message": f"Status updated to {status}"}
+
+
+@router.post("/candidates/{candidate_id}/convert", response_model=EmployeeSchema, status_code=201)
+def convert_candidate_to_employee(
+    candidate_id: int,
+    data: CandidateConversionCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(RequirePermission("employee_create")),
+):
+    candidate = db.query(Candidate).filter(Candidate.id == candidate_id).first()
+    if not candidate:
+        raise HTTPException(status_code=404, detail="Candidate not found")
+    employee = crud_employee.create_with_user(db, obj_in=EmployeeCreate(
+        employee_id=data.employee_id,
+        first_name=candidate.first_name,
+        last_name=candidate.last_name,
+        personal_email=candidate.email,
+        phone_number=candidate.phone,
+        date_of_joining=data.date_of_joining,
+        branch_id=candidate.job.branch_id if candidate.job else None,
+        department_id=candidate.job.department_id if candidate.job else None,
+        designation_id=candidate.job.designation_id if candidate.job else None,
+        employment_type=data.employment_type,
+        create_user_account=data.create_user_account,
+        user_email=candidate.email if data.create_user_account else None,
+    ))
+    candidate.status = "Hired"
+    db.commit()
+    return employee
 
 
 @router.post("/candidates/{candidate_id}/resume")

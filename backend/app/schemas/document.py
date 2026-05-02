@@ -37,6 +37,22 @@ class CompanyPolicySchema(CompanyPolicyCreate):
     model_config = ConfigDict(from_attributes=True)
 
 
+class CompanyPolicyVersionCreate(BaseModel):
+    version: str
+    content: Optional[str] = None
+    document_url: Optional[str] = None
+    effective_date: Optional[datetime] = None
+    change_summary: Optional[str] = None
+
+
+class CompanyPolicyVersionSchema(CompanyPolicyVersionCreate):
+    id: int
+    policy_id: int
+    published_by: Optional[int] = None
+    published_at: Optional[datetime] = None
+    model_config = ConfigDict(from_attributes=True)
+
+
 class GeneratedDocumentCreate(BaseModel):
     template_id: Optional[int] = None
     employee_id: int

@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
 from typing import List, Optional
 from pydantic import BaseModel, EmailStr
@@ -81,10 +81,23 @@ class EmployeeDocumentCreate(EmployeeDocumentBase):
 class EmployeeDocumentSchema(EmployeeDocumentBase):
     id: int
     employee_id: int
+    verification_status: str = "Pending"
     is_verified: bool
+    verified_by: Optional[int] = None
+    verified_at: Optional[datetime] = None
+    verifier_name: Optional[str] = None
+    verifier_company: Optional[str] = None
+    verification_notes: Optional[str] = None
 
     class Config:
         from_attributes = True
+
+
+class EmployeeDocumentVerificationUpdate(BaseModel):
+    verification_status: str
+    verifier_name: Optional[str] = None
+    verifier_company: Optional[str] = None
+    verification_notes: Optional[str] = None
 
 
 class EmployeeLifecycleEventBase(BaseModel):

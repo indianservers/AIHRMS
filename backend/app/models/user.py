@@ -57,3 +57,4 @@ class User(Base):
     role = relationship("Role", back_populates="users")
     employee = relationship("Employee", back_populates="user", uselist=False)
     audit_logs = relationship("AuditLog", back_populates="user")
+    notifications = relationship("Notification", back_populates="user", cascade="all, delete-orphan")

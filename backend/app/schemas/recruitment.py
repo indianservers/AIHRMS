@@ -41,6 +41,34 @@ class JobSchema(JobCreate):
         from_attributes = True
 
 
+class RecruitmentRequisitionCreate(BaseModel):
+    title: str
+    department_id: Optional[int] = None
+    designation_id: Optional[int] = None
+    branch_id: Optional[int] = None
+    openings: int = 1
+    justification: Optional[str] = None
+    target_joining_date: Optional[date] = None
+
+
+class RecruitmentRequisitionReview(BaseModel):
+    action: str
+    remarks: Optional[str] = None
+
+
+class RecruitmentRequisitionSchema(RecruitmentRequisitionCreate):
+    id: int
+    requisition_number: str
+    status: str
+    requested_by: Optional[int] = None
+    approved_by: Optional[int] = None
+    approved_at: Optional[datetime] = None
+    job_id: Optional[int] = None
+
+    class Config:
+        from_attributes = True
+
+
 class CandidateCreate(BaseModel):
     job_id: int
     first_name: str
@@ -120,3 +148,10 @@ class OfferLetterCreate(BaseModel):
     basic: Optional[Decimal] = None
     template_id: Optional[int] = None
     expiry_date: Optional[date] = None
+
+
+class CandidateConversionCreate(BaseModel):
+    employee_id: Optional[str] = None
+    date_of_joining: date
+    employment_type: str = "Full-time"
+    create_user_account: bool = False

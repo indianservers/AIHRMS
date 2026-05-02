@@ -4,35 +4,57 @@ from app.api.v1 import (
     assets,
     attendance,
     auth,
+    background_verification,
+    benefits,
     company,
+    custom_fields,
     documents,
+    engagement,
     employees,
     exit,
     helpdesk,
     leave,
+    logs,
+    lms,
+    notifications,
     onboarding,
     payroll,
     performance,
     recruitment,
     reports,
+    statutory_compliance,
     timesheets,
+    whatsapp_ess,
+    workflow,
+    workflow_engine,
 )
 
 api_router = APIRouter()
 
 api_router.include_router(auth.router)
 api_router.include_router(company.router)
+api_router.include_router(custom_fields.router)
 api_router.include_router(employees.router)
+api_router.include_router(whatsapp_ess.router)
+api_router.include_router(statutory_compliance.router)
+api_router.include_router(benefits.router)
+api_router.include_router(background_verification.router)
 api_router.include_router(attendance.router)
 api_router.include_router(leave.router)
+api_router.include_router(logs.router)
+api_router.include_router(notifications.router)
 api_router.include_router(payroll.router)
 api_router.include_router(recruitment.router)
 api_router.include_router(performance.router)
 api_router.include_router(helpdesk.router)
 api_router.include_router(reports.router)
 api_router.include_router(timesheets.router)
+api_router.include_router(workflow.router)
+api_router.include_router(workflow_engine.router)
 api_router.include_router(ai.router)
 api_router.include_router(assets.router)
 api_router.include_router(documents.router)
 api_router.include_router(onboarding.router)
 api_router.include_router(exit.router)
+api_router.include_router(lms.router)
+api_router.include_router(engagement.router)

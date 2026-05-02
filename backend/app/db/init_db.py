@@ -41,6 +41,18 @@ SYSTEM_PERMISSIONS = [
     ("helpdesk_manage", "Manage helpdesk tickets", "helpdesk"),
     # Reports
     ("reports_view", "View reports", "reports"),
+    ("reports_manage", "Manage report builder definitions", "reports"),
+    # Settings / platform
+    ("settings_view", "View platform settings", "settings"),
+    ("settings_manage", "Manage platform settings", "settings"),
+    # Workflow
+    ("workflow_view", "View workflow inbox", "workflow"),
+    # Notifications
+    ("notification_view", "View notification inbox", "notification"),
+    ("notification_manage", "Manage notifications and delivery hooks", "notification"),
+    # Employee import/export
+    ("employee_import", "Import employees in bulk", "employee"),
+    ("employee_export", "Export employees", "employee"),
     # Timesheets
     ("timesheet_view", "View projects and timesheets", "timesheet"),
     ("timesheet_manage", "Manage project master data", "timesheet"),
@@ -69,13 +81,14 @@ SYSTEM_ROLES = [
         "description": "HR Manager with full HR access",
         "permissions": [
             "company_view", "employee_view", "employee_create", "employee_update",
-            "employee_sensitive_view",
+            "employee_sensitive_view", "employee_import", "employee_export",
             "attendance_view", "attendance_manage", "leave_view", "leave_approve", "leave_manage",
             "payroll_view", "payroll_run", "recruitment_view", "recruitment_manage",
             "performance_view", "performance_manage", "helpdesk_view", "helpdesk_manage",
-            "reports_view", "asset_view", "asset_manage", "exit_view", "exit_manage", "ai_assistant",
+            "reports_view", "reports_manage", "settings_view", "settings_manage",
+            "asset_view", "asset_manage", "exit_view", "exit_manage", "ai_assistant",
             "timesheet_view", "timesheet_manage", "timesheet_approve",
-            "targets_view", "targets_manage",
+            "targets_view", "targets_manage", "workflow_view", "notification_view", "notification_manage",
         ],
     },
     {
@@ -85,7 +98,7 @@ SYSTEM_ROLES = [
             "company_view", "employee_view", "attendance_view", "leave_view",
             "payroll_view", "recruitment_view", "performance_view", "reports_view",
             "timesheet_view",
-            "targets_view", "ai_assistant",
+            "targets_view", "workflow_view", "notification_view", "ai_assistant",
         ],
     },
     {
@@ -96,7 +109,8 @@ SYSTEM_ROLES = [
             "payroll_view", "performance_view", "performance_manage", "helpdesk_view",
             "reports_view", "ai_assistant",
             "timesheet_view", "timesheet_approve",
-            "targets_view",
+            "targets_view", "workflow_view",
+            "notification_view",
         ],
     },
     {
@@ -106,7 +120,8 @@ SYSTEM_ROLES = [
             "attendance_view", "leave_view", "leave_apply", "payroll_view",
             "performance_view", "helpdesk_view", "ai_assistant",
             "timesheet_view",
-            "targets_view",
+            "targets_view", "workflow_view",
+            "notification_view",
         ],
     },
 ]

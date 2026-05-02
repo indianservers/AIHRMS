@@ -1,9 +1,18 @@
-from typing import List, Optional
+from datetime import datetime, timedelta, timezone
+from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from app.core.deps import get_db, get_current_user, RequirePermission
 from app.models.user import User
-from app.models.helpdesk import HelpdeskCategory, HelpdeskTicket, HelpdeskReply
+from app.models.helpdesk import (
+    HelpdeskCategory, HelpdeskTicket, HelpdeskReply,
+    HelpdeskKnowledgeArticle, HelpdeskEscalationRule,
+)
+from app.schemas.helpdesk import (
+    HelpdeskEscalationRuleCreate, HelpdeskEscalationRuleSchema,
+    HelpdeskKnowledgeArticleCreate, HelpdeskKnowledgeArticleSchema,
+    HelpdeskTicketEscalation,
+)
 
 router = APIRouter(prefix="/helpdesk", tags=["HR Helpdesk"])
 
@@ -40,9 +49,10 @@ def create_ticket(
     if not current_user.employee:
         raise HTTPException(status_code=400, detail="No employee profile")
 
-    # Generate ticket number
-    from datetime import datetime
-    ticket_number = f"TKT{datetime.now().strftime('%Y%m%d')}{current_user.employee.id:04d}"
+    ticket_number = f"TKT{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}{current_user.employee.id:04d}"
+    category = db.query(HelpdeskCategory).filter(HelpdeskCategory.id == category_id).first() if category_id else None
+    sla_hours = category.sla_hours if category else 24
+    now = datetime.now(timezone.utc)
 
     ticket = HelpdeskTicket(
         ticket_number=ticket_number,
@@ -51,6 +61,8 @@ def create_ticket(
         subject=subject,
         description=description,
         priority=priority,
+        first_response_due_at=now + timedelta(hours=min(4, sla_hours)),
+        resolution_due_at=now + timedelta(hours=sla_hours),
     )
     db.add(ticket)
     db.commit()
@@ -129,6 +141,88 @@ def assign_ticket(
     ticket.status = "In Progress"
     db.commit()
     return {"message": "Ticket assigned"}
+
+
+@router.put("/tickets/{ticket_id}/escalate")
+def escalate_ticket(
+    ticket_id: int,
+    data: HelpdeskTicketEscalation,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(RequirePermission("helpdesk_manage")),
+):
+    ticket = db.query(HelpdeskTicket).filter(HelpdeskTicket.id == ticket_id).first()
+    if not ticket:
+        raise HTTPException(status_code=404, detail="Ticket not found")
+    ticket.escalated_at = datetime.now(timezone.utc)
+    ticket.escalated_to = data.escalated_to
+    ticket.escalation_reason = data.escalation_reason
+    ticket.priority = "Critical" if ticket.priority != "Critical" else ticket.priority
+    db.commit()
+    return {"message": "Ticket escalated"}
+
+
+@router.get("/sla/breaches")
+def list_sla_breaches(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(RequirePermission("helpdesk_manage")),
+):
+    now = datetime.now(timezone.utc)
+    return db.query(HelpdeskTicket).filter(
+        HelpdeskTicket.status.notin_(["Resolved", "Closed"]),
+        HelpdeskTicket.resolution_due_at.isnot(None),
+        HelpdeskTicket.resolution_due_at < now,
+    ).order_by(HelpdeskTicket.resolution_due_at.asc()).limit(200).all()
+
+
+@router.get("/escalation-rules", response_model=list[HelpdeskEscalationRuleSchema])
+def list_escalation_rules(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(RequirePermission("helpdesk_manage")),
+):
+    return db.query(HelpdeskEscalationRule).filter(HelpdeskEscalationRule.is_active == True).order_by(HelpdeskEscalationRule.priority).all()
+
+
+@router.post("/escalation-rules", response_model=HelpdeskEscalationRuleSchema, status_code=201)
+def create_escalation_rule(
+    data: HelpdeskEscalationRuleCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(RequirePermission("helpdesk_manage")),
+):
+    rule = HelpdeskEscalationRule(**data.model_dump())
+    db.add(rule)
+    db.commit()
+    db.refresh(rule)
+    return rule
+
+
+@router.get("/knowledge", response_model=list[HelpdeskKnowledgeArticleSchema])
+def list_knowledge_articles(
+    category_id: Optional[int] = Query(None),
+    published_only: bool = Query(True),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    query = db.query(HelpdeskKnowledgeArticle)
+    if category_id:
+        query = query.filter(HelpdeskKnowledgeArticle.category_id == category_id)
+    if published_only:
+        query = query.filter(HelpdeskKnowledgeArticle.is_published == True)
+    return query.order_by(HelpdeskKnowledgeArticle.updated_at.desc().nullslast(), HelpdeskKnowledgeArticle.created_at.desc()).limit(200).all()
+
+
+@router.post("/knowledge", response_model=HelpdeskKnowledgeArticleSchema, status_code=201)
+def create_knowledge_article(
+    data: HelpdeskKnowledgeArticleCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(RequirePermission("helpdesk_manage")),
+):
+    article = HelpdeskKnowledgeArticle(**data.model_dump(), created_by=current_user.id)
+    if data.is_published:
+        article.published_at = datetime.now(timezone.utc)
+    db.add(article)
+    db.commit()
+    db.refresh(article)
+    return article
 
 
 @router.post("/tickets/{ticket_id}/reply", status_code=201)

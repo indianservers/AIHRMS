@@ -1,6 +1,6 @@
 from datetime import date, datetime, time
 from decimal import Decimal
-from typing import Optional
+from typing import Optional, List
 from pydantic import BaseModel
 
 
@@ -83,6 +83,134 @@ class CheckInRequest(BaseModel):
 class CheckOutRequest(BaseModel):
     check_out_location: Optional[str] = None
     check_out_ip: Optional[str] = None
+
+
+class AttendancePunchCreate(BaseModel):
+    employee_id: Optional[int] = None
+    punch_time: datetime
+    punch_type: str
+    source: str = "Web"
+    device_id: Optional[str] = None
+    ip_address: Optional[str] = None
+    latitude: Optional[Decimal] = None
+    longitude: Optional[Decimal] = None
+    location_text: Optional[str] = None
+    raw_payload: Optional[str] = None
+
+
+class AttendancePunchSchema(AttendancePunchCreate):
+    id: int
+    employee_id: int
+    created_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
+class BiometricDeviceCreate(BaseModel):
+    name: str
+    vendor: str
+    device_code: str
+    location: Optional[str] = None
+    sync_mode: str = "File Import"
+    is_active: bool = True
+
+
+class BiometricDeviceSchema(BiometricDeviceCreate):
+    id: int
+    last_sync_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
+class BiometricImportRow(BaseModel):
+    employee_id: int
+    punch_time: datetime
+    punch_type: str = "IN"
+    device_user_id: Optional[str] = None
+
+
+class BiometricImportRequest(BaseModel):
+    device_id: Optional[int] = None
+    source_filename: Optional[str] = None
+    rows: List[BiometricImportRow]
+
+
+class BiometricImportBatchSchema(BaseModel):
+    id: int
+    device_id: Optional[int] = None
+    source_filename: Optional[str] = None
+    imported_rows: int
+    skipped_rows: int
+    error_rows: int
+    status: str
+    error_report_json: Optional[str] = None
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class GeoAttendancePolicyCreate(BaseModel):
+    name: str
+    latitude: Decimal
+    longitude: Decimal
+    radius_meters: int = 200
+    require_selfie: bool = False
+    require_qr: bool = False
+    is_active: bool = True
+
+
+class GeoAttendancePolicySchema(GeoAttendancePolicyCreate):
+    id: int
+
+    class Config:
+        from_attributes = True
+
+
+class GeoPunchRequest(BaseModel):
+    punch_time: datetime
+    punch_type: str = "IN"
+    latitude: Decimal
+    longitude: Decimal
+    policy_id: Optional[int] = None
+    selfie_url: Optional[str] = None
+    qr_code: Optional[str] = None
+    location_text: Optional[str] = None
+
+
+class AttendancePunchProofSchema(BaseModel):
+    id: int
+    punch_id: int
+    proof_type: str
+    proof_url: Optional[str] = None
+    latitude: Optional[Decimal] = None
+    longitude: Optional[Decimal] = None
+    qr_code: Optional[str] = None
+    validation_status: str
+    validation_message: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+
+class AttendanceMonthLockCreate(BaseModel):
+    month: int
+    year: int
+    reason: Optional[str] = None
+
+
+class AttendanceMonthLockSchema(AttendanceMonthLockCreate):
+    id: int
+    status: str
+    locked_by: Optional[int] = None
+    locked_at: Optional[datetime] = None
+    unlocked_by: Optional[int] = None
+    unlocked_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
 
 
 class AttendanceSchema(BaseModel):

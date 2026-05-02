@@ -61,10 +61,10 @@ export default function LoginPage() {
   const onSubmit = async (data: LoginForm) => {
     try {
       const res = await authApi.login(data.email, data.password);
-      const { access_token, refresh_token, user_id, email, role, is_superuser } = res.data;
+      const { access_token, refresh_token, user_id, email, role, is_superuser, employee_id } = res.data;
 
       setTokens(access_token, refresh_token);
-      setUser({ id: user_id, email, role, is_superuser });
+      setUser({ id: user_id, email, role, is_superuser, employee_id });
 
       toast({ title: "Welcome back!", variant: "default" });
       navigate("/dashboard");

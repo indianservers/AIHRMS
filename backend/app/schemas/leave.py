@@ -1,7 +1,8 @@
 from datetime import date, datetime
 from decimal import Decimal
-from typing import Optional
+from typing import List, Optional
 from pydantic import BaseModel
+from app.schemas.employee import EmployeeListSchema
 
 
 class LeaveTypeBase(BaseModel):
@@ -91,6 +92,7 @@ class LeaveApprovalRequest(BaseModel):
 class LeaveRequestSchema(BaseModel):
     id: int
     employee_id: int
+    employee: Optional[EmployeeListSchema] = None
     leave_type_id: int
     leave_type: Optional[LeaveTypeSchema] = None
     from_date: date
@@ -106,3 +108,56 @@ class LeaveRequestSchema(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class LeaveCalendarEmployee(BaseModel):
+    id: int
+    employee_id: str
+    first_name: str
+    last_name: str
+    department_id: Optional[int] = None
+
+    class Config:
+        from_attributes = True
+
+
+class LeaveCalendarItem(BaseModel):
+    id: int
+    employee_id: int
+    employee: Optional[LeaveCalendarEmployee] = None
+    leave_type: Optional[LeaveTypeSchema] = None
+    from_date: date
+    to_date: date
+    status: str
+    days_count: Decimal
+    reason: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+
+class LeaveCalendarHoliday(BaseModel):
+    id: int
+    name: str
+    holiday_date: date
+    holiday_type: str
+
+    class Config:
+        from_attributes = True
+
+
+class LeaveCalendarDay(BaseModel):
+    date: date
+    leave_count: int
+    pending_count: int
+    approved_count: int
+    employees_on_leave: List[LeaveCalendarItem] = []
+    holidays: List[LeaveCalendarHoliday] = []
+
+
+class LeaveCalendarResponse(BaseModel):
+    from_date: date
+    to_date: date
+    scope: str
+    total_leave_days: int
+    days: List[LeaveCalendarDay]

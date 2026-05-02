@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   DollarSign, FileText, Play, CheckCircle2, RefreshCw,
-  ChevronLeft, ChevronRight, Download
+  ChevronLeft, ChevronRight, Download, ShieldCheck
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -63,12 +63,32 @@ const MONTHS = [
 export default function PayrollPage() {
   const qc = useQueryClient();
   const today = new Date();
-  const [activeTab, setActiveTab] = useState<"payslip" | "runs" | "casebook">("payslip");
+  const [activeTab, setActiveTab] = useState<"payslip" | "runs" | "inputs" | "setup" | "statutory" | "tax" | "casebook">("payslip");
   const [slipMonth, setSlipMonth] = useState(today.getMonth() + 1);
   const [slipYear, setSlipYear] = useState(today.getFullYear());
   const [runMonth, setRunMonth] = useState(today.getMonth() + 1);
   const [runYear, setRunYear] = useState(today.getFullYear());
   const [selectedRun, setSelectedRun] = useState<PayrollRun | null>(null);
+  const [payGroupName, setPayGroupName] = useState("India Monthly");
+  const [payGroupCode, setPayGroupCode] = useState("IN-MONTHLY");
+  const [taxSection, setTaxSection] = useState("80C");
+  const [taxAmount, setTaxAmount] = useState("150000");
+  const [taxProofUrl, setTaxProofUrl] = useState("");
+  const [inputPeriodId, setInputPeriodId] = useState("");
+  const [lopEmployeeId, setLopEmployeeId] = useState("");
+  const [lopDays, setLopDays] = useState("1");
+  const [otEmployeeId, setOtEmployeeId] = useState("");
+  const [otHours, setOtHours] = useState("2");
+  const [encashEmployeeId, setEncashEmployeeId] = useState("");
+  const [encashDays, setEncashDays] = useState("1");
+  const [statutoryState, setStatutoryState] = useState("Telangana");
+  const [ruleEffectiveFrom, setRuleEffectiveFrom] = useState(`${today.getFullYear()}-04-01`);
+  const [ptAmount, setPtAmount] = useState("200");
+  const [lwfEmployeeAmount, setLwfEmployeeAmount] = useState("10");
+  const [lwfEmployerAmount, setLwfEmployerAmount] = useState("20");
+  const [paymentBatchId, setPaymentBatchId] = useState("");
+  const [templateName, setTemplateName] = useState("Default Salary Template");
+  const [templateCode, setTemplateCode] = useState("DEFAULT-SALARY");
 
   const { data: payslip, isLoading: loadingSlip } = useQuery({
     queryKey: ["payslip", slipMonth, slipYear],
@@ -94,6 +114,115 @@ export default function PayrollPage() {
     enabled: !!selectedRun,
   });
 
+  const { data: payGroups } = useQuery({
+    queryKey: ["payroll-pay-groups"],
+    queryFn: () => payrollApi.payGroups().then((r) => r.data),
+  });
+
+  const { data: salaryTemplates } = useQuery({
+    queryKey: ["salary-templates"],
+    queryFn: () => payrollApi.salaryTemplates().then((r) => r.data),
+  });
+
+  const { data: payrollPeriods } = useQuery({
+    queryKey: ["payroll-periods", runYear],
+    queryFn: () => payrollApi.payrollPeriods({ year: runYear }).then((r) => r.data),
+  });
+
+  const selectedInputPeriod = Number(inputPeriodId || ((payrollPeriods as { id: number }[] | undefined)?.[0]?.id || 0));
+
+  const { data: payrollInputs } = useQuery({
+    queryKey: ["payroll-inputs", selectedInputPeriod],
+    queryFn: () => payrollApi.payrollAttendanceInputs({ period_id: selectedInputPeriod }).then((r) => r.data),
+    enabled: !!selectedInputPeriod,
+  });
+
+  const { data: lopAdjustments } = useQuery({
+    queryKey: ["lop-adjustments", selectedInputPeriod],
+    queryFn: () => payrollApi.lopAdjustments({ period_id: selectedInputPeriod }).then((r) => r.data),
+    enabled: !!selectedInputPeriod,
+  });
+
+  const { data: overtimeLines } = useQuery({
+    queryKey: ["overtime-lines", selectedInputPeriod],
+    queryFn: () => payrollApi.overtimeLines({ period_id: selectedInputPeriod }).then((r) => r.data),
+    enabled: !!selectedInputPeriod,
+  });
+
+  const { data: encashmentLines } = useQuery({
+    queryKey: ["encashment-lines", selectedInputPeriod],
+    queryFn: () => payrollApi.leaveEncashmentLines({ period_id: selectedInputPeriod }).then((r) => r.data),
+    enabled: !!selectedInputPeriod,
+  });
+
+  const { data: worksheetRows } = useQuery({
+    queryKey: ["payroll-worksheet", selectedRun?.id],
+    queryFn: () => payrollApi.runWorksheet(selectedRun!.id).then((r) => r.data),
+    enabled: !!selectedRun,
+  });
+
+  const { data: paymentBatches } = useQuery({
+    queryKey: ["payment-batches", selectedRun?.id],
+    queryFn: () => payrollApi.paymentBatches({ payroll_run_id: selectedRun!.id }).then((r) => r.data),
+    enabled: !!selectedRun,
+  });
+
+  const { data: accountingJournals } = useQuery({
+    queryKey: ["accounting-journals", selectedRun?.id],
+    queryFn: () => payrollApi.accountingJournals(selectedRun!.id).then((r) => r.data),
+    enabled: !!selectedRun,
+  });
+
+  const { data: taxCycles } = useQuery({
+    queryKey: ["tax-cycles"],
+    queryFn: () => payrollApi.taxCycles().then((r) => r.data),
+  });
+
+  const { data: pfRules } = useQuery({
+    queryKey: ["payroll-pf-rules"],
+    queryFn: () => payrollApi.pfRules().then((r) => r.data),
+  });
+
+  const { data: esiRules } = useQuery({
+    queryKey: ["payroll-esi-rules"],
+    queryFn: () => payrollApi.esiRules().then((r) => r.data),
+  });
+
+  const { data: ptSlabs } = useQuery({
+    queryKey: ["payroll-pt-slabs"],
+    queryFn: () => payrollApi.ptSlabs().then((r) => r.data),
+  });
+
+  const { data: lwfSlabs } = useQuery({
+    queryKey: ["payroll-lwf-slabs"],
+    queryFn: () => payrollApi.lwfSlabs().then((r) => r.data),
+  });
+
+  const { data: gratuityRules } = useQuery({
+    queryKey: ["payroll-gratuity-rules"],
+    queryFn: () => payrollApi.gratuityRules().then((r) => r.data),
+  });
+
+  const { data: challans } = useQuery({
+    queryKey: ["payroll-statutory-challans"],
+    queryFn: () => payrollApi.statutoryChallans().then((r) => r.data),
+  });
+
+  const activeTaxCycle = Array.isArray(taxCycles) ? taxCycles[0] : null;
+
+  const { data: taxDeclarations } = useQuery({
+    queryKey: ["tax-declarations", activeTaxCycle?.id],
+    queryFn: () => payrollApi.taxDeclarations({ cycle_id: activeTaxCycle.id }).then((r) => r.data),
+    enabled: !!activeTaxCycle,
+  });
+
+  const { data: taxProjection } = useQuery({
+    queryKey: ["tax-projection", activeTaxCycle?.id],
+    queryFn: () => payrollApi.taxProjection({ cycle_id: activeTaxCycle.id }).then((r) => r.data),
+    enabled: !!activeTaxCycle,
+    retry: false,
+  });
+
   const runMutation = useMutation({
     mutationFn: () => payrollApi.runPayroll({ month: runMonth, year: runYear }),
     onSuccess: () => {
@@ -113,6 +242,71 @@ export default function PayrollPage() {
       refetchRuns();
       setSelectedRun(null);
     },
+    onError: (e: unknown) => {
+      const detail = (e as { response?: { data?: { detail?: unknown } } })?.response?.data?.detail;
+      const msg = typeof detail === "string" ? detail : "Approve blocked until payroll inputs are approved and locked";
+      toast({ title: "Payroll approval blocked", description: msg, variant: "destructive" });
+    },
+  });
+
+  const reconcileMutation = useMutation({
+    mutationFn: () => payrollApi.reconcilePayrollAttendance({ period_id: selectedInputPeriod, approve_inputs: true }),
+    onSuccess: () => {
+      toast({ title: "Attendance inputs reconciled" });
+      qc.invalidateQueries({ queryKey: ["payroll-inputs"] });
+      qc.invalidateQueries({ queryKey: ["overtime-lines"] });
+    },
+    onError: () => toast({ title: "Could not reconcile attendance", variant: "destructive" }),
+  });
+
+  const worksheetMutation = useMutation({
+    mutationFn: (runId: number) => payrollApi.processRunWorksheet(runId),
+    onSuccess: () => {
+      toast({ title: "Payroll worksheet processed" });
+      qc.invalidateQueries({ queryKey: ["payroll-worksheet"] });
+    },
+    onError: () => toast({ title: "Could not process worksheet", variant: "destructive" }),
+  });
+
+  const lopMutation = useMutation({
+    mutationFn: () => payrollApi.createLopAdjustment({
+      period_id: selectedInputPeriod,
+      employee_id: Number(lopEmployeeId),
+      adjustment_days: lopDays,
+      reason: "Payroll input adjustment",
+      status: "Approved",
+    }),
+    onSuccess: () => {
+      toast({ title: "LOP adjustment added" });
+      qc.invalidateQueries({ queryKey: ["lop-adjustments"] });
+    },
+  });
+
+  const otMutation = useMutation({
+    mutationFn: () => payrollApi.createOvertimeLine({
+      period_id: selectedInputPeriod,
+      employee_id: Number(otEmployeeId),
+      hours: otHours,
+      multiplier: "1.5",
+      status: "Approved",
+    }),
+    onSuccess: () => {
+      toast({ title: "Overtime line added" });
+      qc.invalidateQueries({ queryKey: ["overtime-lines"] });
+    },
+  });
+
+  const encashMutation = useMutation({
+    mutationFn: () => payrollApi.createLeaveEncashmentLine({
+      period_id: selectedInputPeriod,
+      employee_id: Number(encashEmployeeId),
+      days: encashDays,
+      status: "Approved",
+    }),
+    onSuccess: () => {
+      toast({ title: "Leave encashment line added" });
+      qc.invalidateQueries({ queryKey: ["encashment-lines"] });
+    },
   });
 
   const exportMutation = useMutation({
@@ -123,6 +317,148 @@ export default function PayrollPage() {
     onError: (e: unknown) => {
       const msg = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail || "Export failed";
       toast({ title: "Error", description: msg, variant: "destructive" });
+    },
+  });
+
+  const payGroupMutation = useMutation({
+    mutationFn: () =>
+      payrollApi.createPayGroup({
+        name: payGroupName,
+        code: payGroupCode,
+        description: "Default payroll group",
+        pay_frequency: "Monthly",
+      }),
+    onSuccess: () => {
+      toast({ title: "Pay group created" });
+      qc.invalidateQueries({ queryKey: ["payroll-pay-groups"] });
+    },
+    onError: () => toast({ title: "Could not create pay group", variant: "destructive" }),
+  });
+
+  const salaryTemplateMutation = useMutation({
+    mutationFn: () =>
+      payrollApi.createSalaryTemplate({
+        name: templateName,
+        code: templateCode,
+        pay_group_id: (payGroups as { id: number }[] | undefined)?.[0]?.id,
+        components: [],
+      }),
+    onSuccess: () => {
+      toast({ title: "Salary template created" });
+      qc.invalidateQueries({ queryKey: ["salary-templates"] });
+    },
+    onError: (e: unknown) => {
+      const msg = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail || "Could not create salary template";
+      toast({ title: "Template failed", description: msg, variant: "destructive" });
+    },
+  });
+
+  const taxCycleMutation = useMutation({
+    mutationFn: () =>
+      payrollApi.createTaxCycle({
+        name: `FY ${today.getFullYear()}-${String(today.getFullYear() + 1).slice(-2)}`,
+        financial_year: `${today.getFullYear()}-${String(today.getFullYear() + 1).slice(-2)}`,
+        start_date: `${today.getFullYear()}-04-01`,
+        end_date: `${today.getFullYear() + 1}-03-31`,
+        proof_due_date: `${today.getFullYear() + 1}-01-31`,
+      }),
+    onSuccess: () => {
+      toast({ title: "Tax cycle opened" });
+      qc.invalidateQueries({ queryKey: ["tax-cycles"] });
+    },
+    onError: () => toast({ title: "Could not open tax cycle", variant: "destructive" }),
+  });
+
+  const taxDeclarationMutation = useMutation({
+    mutationFn: () =>
+      payrollApi.createTaxDeclaration({
+        cycle_id: activeTaxCycle.id,
+        section: taxSection,
+        declared_amount: taxAmount,
+        description: "Employee tax declaration",
+      }),
+    onSuccess: () => {
+      toast({ title: "Tax declaration submitted" });
+      qc.invalidateQueries({ queryKey: ["tax-declarations"] });
+      qc.invalidateQueries({ queryKey: ["tax-projection"] });
+    },
+    onError: () => toast({ title: "Could not submit declaration", variant: "destructive" }),
+  });
+
+  const taxProofMutation = useMutation({
+    mutationFn: (declarationId: number) =>
+      payrollApi.submitTaxProof({
+        declaration_id: declarationId,
+        file_url: taxProofUrl || "/uploads/tax/proof-placeholder.pdf",
+        original_filename: taxProofUrl.split("/").pop() || "proof-placeholder.pdf",
+      }),
+    onSuccess: () => {
+      toast({ title: "Tax proof submitted" });
+      setTaxProofUrl("");
+      qc.invalidateQueries({ queryKey: ["tax-declarations"] });
+    },
+    onError: () => toast({ title: "Could not submit proof", variant: "destructive" }),
+  });
+
+  const seedStatutoryMutation = useMutation({
+    mutationFn: async () => {
+      await payrollApi.createPfRule({ name: `PF ${today.getFullYear()}`, wage_ceiling: "15000", employee_rate: "12", employer_rate: "12", effective_from: ruleEffectiveFrom });
+      await payrollApi.createEsiRule({ name: `ESI ${today.getFullYear()}`, wage_threshold: "21000", employee_rate: "0.75", employer_rate: "3.25", effective_from: ruleEffectiveFrom });
+      await payrollApi.createPtSlab({ state: statutoryState, salary_from: "20000", employee_amount: ptAmount, effective_from: ruleEffectiveFrom });
+      await payrollApi.createLwfSlab({ state: statutoryState, salary_from: "0", employee_amount: lwfEmployeeAmount, employer_amount: lwfEmployerAmount, deduction_month: 12, effective_from: ruleEffectiveFrom });
+      await payrollApi.createGratuityRule({ name: `Gratuity ${today.getFullYear()}`, days_per_year: "15", wage_days_divisor: "26", min_service_years: "5", effective_from: ruleEffectiveFrom });
+    },
+    onSuccess: () => {
+      toast({ title: "Statutory rules created" });
+      ["payroll-pf-rules", "payroll-esi-rules", "payroll-pt-slabs", "payroll-lwf-slabs", "payroll-gratuity-rules"].forEach((key) =>
+        qc.invalidateQueries({ queryKey: [key] })
+      );
+    },
+    onError: (e: unknown) => {
+      const msg = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail || "Could not create statutory rules";
+      toast({ title: "Rule creation failed", description: msg, variant: "destructive" });
+    },
+  });
+
+  const paymentBatchMutation = useMutation({
+    mutationFn: (runId: number) => payrollApi.createPaymentBatch({ payroll_run_id: runId }),
+    onSuccess: () => {
+      toast({ title: "Payment batch generated" });
+      qc.invalidateQueries({ queryKey: ["payment-batches"] });
+    },
+    onError: (e: unknown) => {
+      const msg = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail || "Could not generate payment batch";
+      toast({ title: "Payment batch failed", description: msg, variant: "destructive" });
+    },
+  });
+
+  const paymentStatusMutation = useMutation({
+    mutationFn: () => payrollApi.importPaymentStatus(Number(paymentBatchId), { lines: [] }),
+    onSuccess: () => {
+      toast({ title: "Payment status import checked" });
+      qc.invalidateQueries({ queryKey: ["payment-batches"] });
+    },
+  });
+
+  const journalMutation = useMutation({
+    mutationFn: (runId: number) => payrollApi.generateAccountingJournal(runId),
+    onSuccess: () => {
+      toast({ title: "Accounting journal generated" });
+      qc.invalidateQueries({ queryKey: ["accounting-journals"] });
+    },
+  });
+
+  const statutoryValidationMutation = useMutation({
+    mutationFn: (fileType: string) => payrollApi.validateStatutoryFile({ payroll_run_id: selectedRun!.id, file_type: fileType }),
+    onSuccess: (response) => {
+      toast({ title: "Statutory validation complete", description: `${response.data.status}: ${response.data.error_count} errors` });
+    },
+  });
+
+  const statutoryTemplateMutation = useMutation({
+    mutationFn: (templateType: string) => payrollApi.generateStatutoryTemplate(templateType),
+    onSuccess: (response) => {
+      toast({ title: "Template generated", description: response.data.file_url });
     },
   });
 
@@ -144,7 +480,7 @@ export default function PayrollPage() {
 
       {/* Tabs */}
       <div className="flex gap-2 border-b">
-        {(["payslip", "runs", "casebook"] as const).map((tab) => (
+        {(["payslip", "runs", "inputs", "setup", "statutory", "tax", "casebook"] as const).map((tab) => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
@@ -154,7 +490,7 @@ export default function PayrollPage() {
                 : "border-transparent text-muted-foreground hover:text-foreground"
             }`}
           >
-            {tab === "payslip" ? "My Payslip" : tab === "runs" ? "Payroll Runs" : "Real Cases"}
+            {tab === "payslip" ? "My Payslip" : tab === "runs" ? "Payroll Runs" : tab === "inputs" ? "Inputs" : tab === "setup" ? "Setup" : tab === "statutory" ? "Statutory" : tab === "tax" ? "Tax" : "Real Cases"}
           </button>
         ))}
       </div>
@@ -524,6 +860,117 @@ export default function PayrollPage() {
           )}
 
           {/* Run detail */}
+          {selectedRun && (
+            <Card>
+              <CardHeader>
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <CardTitle className="text-base">Payroll Worksheet</CardTitle>
+                    <CardDescription>Per-employee calculation status, input status, and approval readiness.</CardDescription>
+                  </div>
+                  <Button variant="outline" size="sm" onClick={() => worksheetMutation.mutate(selectedRun.id)} disabled={worksheetMutation.isPending}>
+                    <RefreshCw className="h-4 w-4 mr-2" />
+                    Process worksheet
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent className="p-0">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead className="border-b bg-muted/50">
+                      <tr>
+                        {["Employee", "Input", "Calculation", "Approval", "Net", "Hold"].map((h) => (
+                          <th key={h} className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wide">{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(worksheetRows as { id: number; employee_id: number; input_status: string; calculation_status: string; approval_status: string; net_salary: number; hold_reason?: string }[] | undefined || []).map((row) => (
+                        <tr key={row.id} className="border-b">
+                          <td className="px-4 py-3">#{row.employee_id}</td>
+                          <td className="px-4 py-3"><Badge variant="outline">{row.input_status}</Badge></td>
+                          <td className="px-4 py-3">{row.calculation_status}</td>
+                          <td className="px-4 py-3">{row.approval_status}</td>
+                          <td className="px-4 py-3">{formatCurrency(row.net_salary)}</td>
+                          <td className="px-4 py-3 text-muted-foreground">{row.hold_reason || "-"}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {selectedRun && (
+            <div className="grid gap-4 lg:grid-cols-2">
+              <Card>
+                <CardHeader>
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <CardTitle className="text-base">Payments</CardTitle>
+                      <CardDescription>Generate bank advice, track UTR status, and failed payouts.</CardDescription>
+                    </div>
+                    <Button variant="outline" size="sm" onClick={() => paymentBatchMutation.mutate(selectedRun.id)} disabled={paymentBatchMutation.isPending}>
+                      Generate batch
+                    </Button>
+                  </div>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  {(paymentBatches as { id: number; total_amount: number; status: string; generated_file_url?: string }[] | undefined || []).map((batch) => (
+                    <div key={batch.id} className="flex items-center justify-between rounded-md border p-3 text-sm">
+                      <div>
+                        <p className="font-medium">Batch #{batch.id} - {formatCurrency(batch.total_amount)}</p>
+                        <p className="text-muted-foreground">{batch.generated_file_url || "File pending"}</p>
+                      </div>
+                      <Badge variant="outline">{batch.status}</Badge>
+                    </div>
+                  ))}
+                  <div className="flex gap-2">
+                    <Input placeholder="Batch ID for status import" value={paymentBatchId} onChange={(event) => setPaymentBatchId(event.target.value)} />
+                    <Button variant="outline" onClick={() => paymentStatusMutation.mutate()} disabled={!paymentBatchId}>
+                      Check import
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <CardTitle className="text-base">Accounting</CardTitle>
+                      <CardDescription>Generate balanced payroll GL journals for finance posting.</CardDescription>
+                    </div>
+                    <Button variant="outline" size="sm" onClick={() => journalMutation.mutate(selectedRun.id)} disabled={journalMutation.isPending}>
+                      Generate journal
+                    </Button>
+                  </div>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  {(accountingJournals as { id: number; total_debit: number; total_credit: number; status: string }[] | undefined || []).map((journal) => (
+                    <div key={journal.id} className="flex items-center justify-between rounded-md border p-3 text-sm">
+                      <div>
+                        <p className="font-medium">Journal #{journal.id}</p>
+                        <p className="text-muted-foreground">
+                          Dr {formatCurrency(journal.total_debit)} / Cr {formatCurrency(journal.total_credit)}
+                        </p>
+                      </div>
+                      <Badge variant="outline">{journal.status}</Badge>
+                    </div>
+                  ))}
+                  <div className="flex flex-wrap gap-2">
+                    {["pf_ecr", "esi", "pt", "tds_24q", "form_16"].map((type) => (
+                      <Button key={type} variant="outline" size="sm" onClick={() => statutoryValidationMutation.mutate(type)}>
+                        Validate {type}
+                      </Button>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          )}
+
           {selectedRun && runRecords && (
             <Card>
               <CardHeader>
@@ -566,6 +1013,427 @@ export default function PayrollPage() {
               </CardContent>
             </Card>
           )}
+        </div>
+      )}
+
+      {activeTab === "inputs" && (
+        <div className="space-y-4">
+          <Card>
+            <CardHeader>
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+                <div>
+                  <CardTitle className="text-base">Payroll Inputs</CardTitle>
+                  <CardDescription>Reconcile attendance, LOP, overtime, and leave encashment before payroll approval.</CardDescription>
+                </div>
+                <div className="flex flex-wrap items-end gap-2">
+                  <div className="space-y-1.5">
+                    <Label>Period</Label>
+                    <select
+                      className="h-10 rounded-md border bg-background px-3 text-sm"
+                      value={inputPeriodId || selectedInputPeriod || ""}
+                      onChange={(event) => setInputPeriodId(event.target.value)}
+                    >
+                      {(payrollPeriods as { id: number; month: number; year: number; status: string }[] | undefined || []).map((period) => (
+                        <option key={period.id} value={period.id}>
+                          {MONTHS[period.month - 1]} {period.year} - {period.status}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <Button onClick={() => reconcileMutation.mutate()} disabled={!selectedInputPeriod || reconcileMutation.isPending}>
+                    <RefreshCw className="h-4 w-4 mr-2" />
+                    Reconcile and lock
+                  </Button>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="grid gap-3 md:grid-cols-4">
+                {[
+                  ["Inputs", (payrollInputs as unknown[] | undefined)?.length || 0],
+                  ["LOP Adjustments", (lopAdjustments as unknown[] | undefined)?.length || 0],
+                  ["OT Lines", (overtimeLines as unknown[] | undefined)?.length || 0],
+                  ["Encashment", (encashmentLines as unknown[] | undefined)?.length || 0],
+                ].map(([label, count]) => (
+                  <div key={label} className="rounded-md border p-3 text-sm">
+                    <p className="text-muted-foreground">{label}</p>
+                    <p className="text-2xl font-semibold">{count}</p>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+
+          <div className="grid gap-4 lg:grid-cols-3">
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">LOP Adjustment</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <Input placeholder="Employee ID" value={lopEmployeeId} onChange={(event) => setLopEmployeeId(event.target.value)} />
+                <Input placeholder="Days" value={lopDays} onChange={(event) => setLopDays(event.target.value)} />
+                <Button onClick={() => lopMutation.mutate()} disabled={!selectedInputPeriod || !lopEmployeeId}>
+                  Add LOP
+                </Button>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Overtime Pay</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <Input placeholder="Employee ID" value={otEmployeeId} onChange={(event) => setOtEmployeeId(event.target.value)} />
+                <Input placeholder="Hours" value={otHours} onChange={(event) => setOtHours(event.target.value)} />
+                <Button onClick={() => otMutation.mutate()} disabled={!selectedInputPeriod || !otEmployeeId}>
+                  Add OT
+                </Button>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Leave Encashment</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <Input placeholder="Employee ID" value={encashEmployeeId} onChange={(event) => setEncashEmployeeId(event.target.value)} />
+                <Input placeholder="Days" value={encashDays} onChange={(event) => setEncashDays(event.target.value)} />
+                <Button onClick={() => encashMutation.mutate()} disabled={!selectedInputPeriod || !encashEmployeeId}>
+                  Add Encashment
+                </Button>
+              </CardContent>
+            </Card>
+          </div>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Attendance Inputs</CardTitle>
+            </CardHeader>
+            <CardContent className="p-0">
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="border-b bg-muted/50">
+                    <tr>
+                      {["Employee", "Working", "Payable", "Paid Leave", "LOP", "OT", "Status"].map((h) => (
+                        <th key={h} className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wide">{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(payrollInputs as { id: number; employee_id: number; working_days: number; payable_days: number; paid_leave_days: number; lop_days: number; ot_hours: number; source_status: string }[] | undefined || []).map((item) => (
+                      <tr key={item.id} className="border-b">
+                        <td className="px-4 py-3">#{item.employee_id}</td>
+                        <td className="px-4 py-3">{item.working_days}</td>
+                        <td className="px-4 py-3">{item.payable_days}</td>
+                        <td className="px-4 py-3">{item.paid_leave_days}</td>
+                        <td className="px-4 py-3">{item.lop_days}</td>
+                        <td className="px-4 py-3">{item.ot_hours}</td>
+                        <td className="px-4 py-3"><Badge variant="outline">{item.source_status}</Badge></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {activeTab === "setup" && (
+        <div className="grid gap-4 lg:grid-cols-2">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Pay Groups and Calendar</CardTitle>
+              <CardDescription>Set up monthly payroll groups before running payroll.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="space-y-1.5">
+                  <Label>Pay group name</Label>
+                  <Input value={payGroupName} onChange={(event) => setPayGroupName(event.target.value)} />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Code</Label>
+                  <Input value={payGroupCode} onChange={(event) => setPayGroupCode(event.target.value)} />
+                </div>
+              </div>
+              <Button onClick={() => payGroupMutation.mutate()} disabled={payGroupMutation.isPending}>
+                Create pay group
+              </Button>
+              <div className="space-y-2">
+                {(payGroups as { id: number; name: string; code: string; pay_frequency: string }[] | undefined)?.map((item) => (
+                  <div key={item.id} className="flex items-center justify-between rounded-md border p-3 text-sm">
+                    <span className="font-medium">{item.name}</span>
+                    <Badge variant="outline">{item.code} - {item.pay_frequency}</Badge>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Salary Templates</CardTitle>
+              <CardDescription>Create salary structure shells and assign components from backend setup.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="space-y-1.5">
+                  <Label>Template name</Label>
+                  <Input value={templateName} onChange={(event) => setTemplateName(event.target.value)} />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Code</Label>
+                  <Input value={templateCode} onChange={(event) => setTemplateCode(event.target.value)} />
+                </div>
+              </div>
+              <Button onClick={() => salaryTemplateMutation.mutate()} disabled={salaryTemplateMutation.isPending}>
+                Create template
+              </Button>
+              <div className="space-y-2">
+                {(salaryTemplates as { id: number; name: string; code: string; components?: unknown[] }[] | undefined || []).map((item) => (
+                  <div key={item.id} className="flex items-center justify-between rounded-md border p-3 text-sm">
+                    <span className="font-medium">{item.name}</span>
+                    <Badge variant="outline">{item.code} - {item.components?.length || 0} components</Badge>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="lg:col-span-2">
+            <CardHeader>
+              <CardTitle className="text-base">Periods and Accounting Setup</CardTitle>
+              <CardDescription>Pay periods, bank advice, payment batches, and GL journals are now available through payroll setup flows.</CardDescription>
+            </CardHeader>
+            <CardContent className="grid gap-3 md:grid-cols-4">
+              {[
+                ["Periods", (payrollPeriods as unknown[] | undefined)?.length || 0],
+                ["Pay Groups", (payGroups as unknown[] | undefined)?.length || 0],
+                ["Templates", (salaryTemplates as unknown[] | undefined)?.length || 0],
+                ["Current Year", runYear],
+              ].map(([label, count]) => (
+                <div key={label} className="rounded-md border p-3 text-sm">
+                  <p className="text-muted-foreground">{label}</p>
+                  <p className="text-2xl font-semibold">{count}</p>
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {activeTab === "statutory" && (
+        <div className="space-y-4">
+          <Card>
+            <CardHeader>
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <CardTitle className="text-base">Statutory Engine</CardTitle>
+                  <CardDescription>PF, ESI, PT, LWF, gratuity rules, challans, and return validation.</CardDescription>
+                </div>
+                <Button onClick={() => seedStatutoryMutation.mutate()} disabled={seedStatutoryMutation.isPending}>
+                  <ShieldCheck className="h-4 w-4 mr-2" />
+                  Create rules
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid gap-3 md:grid-cols-5">
+                {[
+                  ["PF Rules", (pfRules as unknown[] | undefined)?.length || 0],
+                  ["ESI Rules", (esiRules as unknown[] | undefined)?.length || 0],
+                  ["PT Slabs", (ptSlabs as unknown[] | undefined)?.length || 0],
+                  ["LWF Slabs", (lwfSlabs as unknown[] | undefined)?.length || 0],
+                  ["Gratuity", (gratuityRules as unknown[] | undefined)?.length || 0],
+                ].map(([label, count]) => (
+                  <div key={label} className="rounded-md border p-3 text-sm">
+                    <p className="text-muted-foreground">{label}</p>
+                    <p className="text-2xl font-semibold">{count}</p>
+                  </div>
+                ))}
+              </div>
+              <div className="grid gap-3 md:grid-cols-5">
+                <div className="space-y-1.5">
+                  <Label>State</Label>
+                  <Input value={statutoryState} onChange={(event) => setStatutoryState(event.target.value)} />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Effective from</Label>
+                  <Input type="date" value={ruleEffectiveFrom} onChange={(event) => setRuleEffectiveFrom(event.target.value)} />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>PT amount</Label>
+                  <Input value={ptAmount} onChange={(event) => setPtAmount(event.target.value)} />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>LWF employee</Label>
+                  <Input value={lwfEmployeeAmount} onChange={(event) => setLwfEmployeeAmount(event.target.value)} />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>LWF employer</Label>
+                  <Input value={lwfEmployerAmount} onChange={(event) => setLwfEmployerAmount(event.target.value)} />
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {["pf_ecr", "esi", "pt", "tds_24q", "form_16"].map((type) => (
+                  <Button key={type} variant="outline" size="sm" onClick={() => statutoryTemplateMutation.mutate(type)}>
+                    Template {type}
+                  </Button>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+
+          <div className="grid gap-4 lg:grid-cols-2">
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Active Rules</CardTitle>
+                <CardDescription>Current statutory setup used by payroll calculations.</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {[
+                  ...(pfRules as { id: number; name: string; wage_ceiling?: number; employee_rate?: number }[] | undefined || []).map((item) => ({
+                    id: `pf-${item.id}`,
+                    title: item.name,
+                    detail: `PF ceiling ${formatCurrency(item.wage_ceiling || 0)} at ${item.employee_rate}%`,
+                    type: "PF",
+                  })),
+                  ...(esiRules as { id: number; name: string; wage_threshold?: number; employee_rate?: number }[] | undefined || []).map((item) => ({
+                    id: `esi-${item.id}`,
+                    title: item.name,
+                    detail: `ESI threshold ${formatCurrency(item.wage_threshold || 0)} at ${item.employee_rate}%`,
+                    type: "ESI",
+                  })),
+                  ...(ptSlabs as { id: number; state: string; salary_from?: number; employee_amount?: number }[] | undefined || []).map((item) => ({
+                    id: `pt-${item.id}`,
+                    title: `${item.state} PT`,
+                    detail: `From ${formatCurrency(item.salary_from || 0)} deduct ${formatCurrency(item.employee_amount || 0)}`,
+                    type: "PT",
+                  })),
+                  ...(lwfSlabs as { id: number; state: string; employee_amount?: number; employer_amount?: number }[] | undefined || []).map((item) => ({
+                    id: `lwf-${item.id}`,
+                    title: `${item.state} LWF`,
+                    detail: `Employee ${formatCurrency(item.employee_amount || 0)}, employer ${formatCurrency(item.employer_amount || 0)}`,
+                    type: "LWF",
+                  })),
+                  ...(gratuityRules as { id: number; name: string; days_per_year?: number; min_service_years?: number }[] | undefined || []).map((item) => ({
+                    id: `gratuity-${item.id}`,
+                    title: item.name,
+                    detail: `${item.days_per_year} days after ${item.min_service_years} years`,
+                    type: "Gratuity",
+                  })),
+                ].slice(0, 12).map((item) => (
+                  <div key={item.id} className="flex items-center justify-between rounded-md border p-3 text-sm">
+                    <div>
+                      <p className="font-medium">{item.title}</p>
+                      <p className="text-muted-foreground">{item.detail}</p>
+                    </div>
+                    <Badge variant="outline">{item.type}</Badge>
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Challans</CardTitle>
+                <CardDescription>Generated statutory payment records and validation status.</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {(challans as { id: number; challan_type: string; amount: number; due_date: string; status: string }[] | undefined)?.length ? (
+                  (challans as { id: number; challan_type: string; amount: number; due_date: string; status: string }[]).map((item) => (
+                    <div key={item.id} className="flex items-center justify-between rounded-md border p-3 text-sm">
+                      <div>
+                        <p className="font-medium">{item.challan_type} - {formatCurrency(item.amount)}</p>
+                        <p className="text-muted-foreground">Due {formatDate(item.due_date)}</p>
+                      </div>
+                      <Badge variant="outline">{item.status}</Badge>
+                    </div>
+                  ))
+                ) : (
+                  <div className="rounded-md border p-6 text-center text-sm text-muted-foreground">
+                    No challans generated yet
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+      )}
+
+      {activeTab === "tax" && (
+        <div className="grid gap-4 lg:grid-cols-[0.8fr_1.2fr]">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Tax Declarations</CardTitle>
+              <CardDescription>Declare investments and submit proof links for payroll verification.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {!activeTaxCycle ? (
+                <Button onClick={() => taxCycleMutation.mutate()} disabled={taxCycleMutation.isPending}>
+                  Open current FY cycle
+                </Button>
+              ) : (
+                <>
+                  <div className="rounded-md border p-3 text-sm">
+                    <p className="font-medium">{activeTaxCycle.name}</p>
+                    <p className="text-muted-foreground">Proof due {formatDate(activeTaxCycle.proof_due_date)}</p>
+                  </div>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div className="space-y-1.5">
+                      <Label>Section</Label>
+                      <Input value={taxSection} onChange={(event) => setTaxSection(event.target.value)} />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label>Amount</Label>
+                      <Input value={taxAmount} onChange={(event) => setTaxAmount(event.target.value)} />
+                    </div>
+                  </div>
+                  <Button onClick={() => taxDeclarationMutation.mutate()} disabled={taxDeclarationMutation.isPending}>
+                    Submit declaration
+                  </Button>
+                </>
+              )}
+
+              {taxProjection && (
+                <div className="grid grid-cols-2 gap-3 text-sm">
+                  <div className="rounded-md border p-3">
+                    <p className="text-muted-foreground">Declared</p>
+                    <p className="font-semibold">{formatCurrency(taxProjection.declared_amount)}</p>
+                  </div>
+                  <div className="rounded-md border p-3">
+                    <p className="text-muted-foreground">Projected TDS</p>
+                    <p className="font-semibold">{formatCurrency(taxProjection.projected_tds)}</p>
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Proof Workflow</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <Input
+                value={taxProofUrl}
+                onChange={(event) => setTaxProofUrl(event.target.value)}
+                placeholder="/uploads/tax/80c-proof.pdf"
+              />
+              {(taxDeclarations as { id: number; section: string; declared_amount: number; status: string; proofs?: unknown[] }[] | undefined)?.map((item) => (
+                <div key={item.id} className="flex flex-col gap-3 rounded-md border p-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <p className="font-medium">{item.section} - {formatCurrency(item.declared_amount)}</p>
+                    <p className="text-sm text-muted-foreground">{item.status} - {item.proofs?.length || 0} proof(s)</p>
+                  </div>
+                  <Button variant="outline" size="sm" onClick={() => taxProofMutation.mutate(item.id)}>
+                    Submit proof
+                  </Button>
+                </div>
+              ))}
+            </CardContent>
+          </Card>
         </div>
       )}
 

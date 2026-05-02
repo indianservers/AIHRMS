@@ -1,10 +1,12 @@
 import {
   BarChart3,
+  Bell,
   Briefcase,
   Building2,
   CalendarDays,
   ClipboardCheck,
   Clock,
+  Inbox,
   Timer,
   DollarSign,
   FileText,
@@ -12,6 +14,7 @@ import {
   LayoutDashboard,
   LogOut,
   Package,
+  ScrollText,
   Settings,
   Sparkles,
   Target,
@@ -51,6 +54,8 @@ export function getRoleLabel(role?: string | null, isSuperuser = false) {
 const hrNav: RoleNavItem[] = [
   { label: "Dashboard", icon: LayoutDashboard, to: "/dashboard" },
   { label: "Employees", icon: Users, to: "/employees" },
+  { label: "Inbox", icon: Inbox, to: "/workflow" },
+  { label: "Notifications", icon: Bell, to: "/notifications" },
   { label: "Attendance", icon: Clock, to: "/attendance" },
   { label: "Timesheets", icon: Timer, to: "/timesheets" },
   { label: "Leave", icon: CalendarDays, to: "/leave" },
@@ -71,6 +76,9 @@ const adminNav: RoleNavItem[] = [
   { label: "Dashboard", icon: LayoutDashboard, to: "/dashboard" },
   { label: "Company", icon: Building2, to: "/company" },
   { label: "Settings", icon: Settings, to: "/settings" },
+  { label: "Logs", icon: ScrollText, to: "/logs" },
+  { label: "Inbox", icon: Inbox, to: "/workflow" },
+  { label: "Notifications", icon: Bell, to: "/notifications" },
   { label: "Employees", icon: Users, to: "/employees" },
   { label: "Attendance", icon: Clock, to: "/attendance" },
   { label: "Timesheets", icon: Timer, to: "/timesheets" },
@@ -89,6 +97,8 @@ const adminNav: RoleNavItem[] = [
 
 const ceoNav: RoleNavItem[] = [
   { label: "Executive Dashboard", icon: LayoutDashboard, to: "/dashboard" },
+  { label: "Inbox", icon: Inbox, to: "/workflow" },
+  { label: "Notifications", icon: Bell, to: "/notifications" },
   { label: "Reports", icon: BarChart3, to: "/reports" },
   { label: "Payroll", icon: DollarSign, to: "/payroll" },
   { label: "Performance", icon: Target, to: "/performance" },
@@ -99,6 +109,8 @@ const ceoNav: RoleNavItem[] = [
 
 const managerNav: RoleNavItem[] = [
   { label: "Team Dashboard", icon: LayoutDashboard, to: "/dashboard" },
+  { label: "Inbox", icon: Inbox, to: "/workflow" },
+  { label: "Notifications", icon: Bell, to: "/notifications" },
   { label: "Employees", icon: Users, to: "/employees" },
   { label: "Attendance", icon: Clock, to: "/attendance" },
   { label: "Timesheets", icon: Timer, to: "/timesheets" },
@@ -111,6 +123,8 @@ const managerNav: RoleNavItem[] = [
 
 const employeeNav: RoleNavItem[] = [
   { label: "My Home", icon: LayoutDashboard, to: "/dashboard" },
+  { label: "My Requests", icon: Inbox, to: "/workflow" },
+  { label: "Notifications", icon: Bell, to: "/notifications" },
   { label: "Attendance", icon: Clock, to: "/attendance" },
   { label: "Timesheets", icon: Timer, to: "/timesheets" },
   { label: "Leave", icon: CalendarDays, to: "/leave" },
@@ -133,6 +147,8 @@ export function getRoleNav(role?: string | null, isSuperuser = false) {
 const routeAccess: Record<string, RoleKey[]> = {
   "/dashboard": ["admin", "ceo", "hr", "manager", "employee"],
   "/profile": ["admin", "ceo", "hr", "manager", "employee"],
+  "/workflow": ["admin", "ceo", "hr", "manager", "employee"],
+  "/notifications": ["admin", "ceo", "hr", "manager", "employee"],
   "/attendance": ["admin", "hr", "manager", "employee"],
   "/timesheets": ["admin", "ceo", "hr", "manager", "employee"],
   "/leave": ["admin", "hr", "manager", "employee"],
@@ -142,6 +158,7 @@ const routeAccess: Record<string, RoleKey[]> = {
   "/documents": ["admin", "hr", "employee"],
   "/employees": ["admin", "ceo", "hr", "manager"],
   "/reports": ["admin", "ceo", "hr", "manager"],
+  "/logs": ["admin"],
   "/recruitment": ["admin", "hr"],
   "/company": ["admin", "ceo", "hr"],
   "/settings": ["admin"],

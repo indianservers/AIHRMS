@@ -15,6 +15,7 @@ class TokenResponse(BaseModel):
     email: str
     role: Optional[str] = None
     is_superuser: bool = False
+    employee_id: Optional[int] = None
 
 
 class RefreshTokenRequest(BaseModel):
@@ -87,6 +88,7 @@ class UserSchema(BaseModel):
     is_active: bool
     is_superuser: bool
     role: Optional[RoleSchema] = None
+    employee_id: Optional[int] = None
 
     class Config:
         from_attributes = True

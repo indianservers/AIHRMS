@@ -37,6 +37,26 @@ class Job(Base):
     candidates = relationship("Candidate", back_populates="job")
 
 
+class RecruitmentRequisition(Base):
+    __tablename__ = "recruitment_requisitions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    requisition_number = Column(String(50), unique=True, nullable=False, index=True)
+    title = Column(String(200), nullable=False)
+    department_id = Column(Integer, ForeignKey("departments.id", ondelete="SET NULL"), nullable=True)
+    designation_id = Column(Integer, ForeignKey("designations.id", ondelete="SET NULL"), nullable=True)
+    branch_id = Column(Integer, ForeignKey("branches.id", ondelete="SET NULL"), nullable=True)
+    openings = Column(Integer, default=1)
+    justification = Column(Text)
+    target_joining_date = Column(Date)
+    status = Column(String(30), default="Pending", index=True)
+    requested_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    approved_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    approved_at = Column(DateTime(timezone=True))
+    job_id = Column(Integer, ForeignKey("jobs.id", ondelete="SET NULL"), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
 class Candidate(Base):
     __tablename__ = "candidates"
 

@@ -6,6 +6,7 @@ export interface AuthUser {
   email: string;
   role: string | null;
   is_superuser: boolean;
+  employee_id?: number | null;
 }
 
 interface AuthState {

@@ -120,6 +120,128 @@ def test_leave_request_workflow(client, db):
     assert apply_resp.json()["status"] == "Pending"
 
 
+def test_hr_can_review_leave_with_reason(client, db, superuser_headers):
+    """HR/Admin approval flow records the decision reason and exposes employee details."""
+    from app.models.leave import LeaveRequest
+
+    emp, lt, user = _create_employee_with_leave(db, client, {})
+
+    login_resp = client.post("/api/v1/auth/login", json={"email": user.email, "password": "Test@123"})
+    emp_headers = {"Authorization": f"Bearer {login_resp.json()['access_token']}"}
+
+    apply_resp = client.post("/api/v1/leave/apply", json={
+        "leave_type_id": lt.id,
+        "from_date": (date.today() + timedelta(days=14)).isoformat(),
+        "to_date": (date.today() + timedelta(days=15)).isoformat(),
+        "reason": "Family function",
+    }, headers=emp_headers)
+    assert apply_resp.status_code == 201
+    request_id = apply_resp.json()["id"]
+
+    pending = client.get("/api/v1/leave/requests", params={"status": "Pending"}, headers=superuser_headers)
+    assert pending.status_code == 200
+    item = next(row for row in pending.json() if row["id"] == request_id)
+    assert item["employee"]["employee_id"] == emp.employee_id
+    assert item["days_count"] == "2.0"
+
+    review = client.put(
+        f"/api/v1/leave/requests/{request_id}/approve",
+        json={"status": "Rejected", "review_remarks": "Project handover is incomplete"},
+        headers=superuser_headers,
+    )
+    assert review.status_code == 200
+
+    stored = db.query(LeaveRequest).filter_by(id=request_id).first()
+    assert stored.status == "Rejected"
+    assert stored.review_remarks == "Project handover is incomplete"
+
+
+def test_leave_calendar_scopes_manager_team_and_holidays(client, db):
+    from app.core.security import get_password_hash
+    from app.models.attendance import Holiday
+    from app.models.employee import Employee
+    from app.models.leave import LeaveRequest
+    from app.models.user import Role, User
+
+    manager_role = Role(name="manager", description="Manager")
+    db.add(manager_role)
+    db.flush()
+    manager_user = User(
+        email=f"calendar_manager_{id(db)}@test.com",
+        hashed_password=get_password_hash("Test@123"),
+        is_active=True,
+        role_id=manager_role.id,
+    )
+    db.add(manager_user)
+    db.flush()
+    manager_emp = Employee(
+        employee_id=f"CALMGR{id(db)}",
+        first_name="Calendar",
+        last_name="Manager",
+        date_of_joining=date(2023, 1, 1),
+        user_id=manager_user.id,
+    )
+    db.add(manager_emp)
+    db.flush()
+
+    report_emp, leave_type, _ = _create_employee_with_leave(db, client, {})
+    report_emp.reporting_manager_id = manager_emp.id
+    outsider_user = User(
+        email=f"calendar_outsider_{id(db)}@test.com",
+        hashed_password=get_password_hash("Test@123"),
+        is_active=True,
+        role_id=manager_role.id,
+    )
+    db.add(outsider_user)
+    db.flush()
+    outsider_emp = Employee(
+        employee_id=f"CALOUT{id(db)}",
+        first_name="Outside",
+        last_name="Team",
+        date_of_joining=date(2023, 1, 1),
+        user_id=outsider_user.id,
+    )
+    db.add(outsider_emp)
+    db.flush()
+    start = date.today() + timedelta(days=30)
+    db.add(LeaveRequest(
+        employee_id=report_emp.id,
+        leave_type_id=leave_type.id,
+        from_date=start,
+        to_date=start + timedelta(days=1),
+        days_count=Decimal("2"),
+        status="Approved",
+        reason="Team leave",
+    ))
+    db.add(LeaveRequest(
+        employee_id=outsider_emp.id,
+        leave_type_id=leave_type.id,
+        from_date=start,
+        to_date=start,
+        days_count=Decimal("1"),
+        status="Approved",
+        reason="Outside team",
+    ))
+    db.add(Holiday(name="Calendar Holiday", holiday_date=start, holiday_type="National", is_active=True))
+    db.commit()
+
+    login = client.post("/api/v1/auth/login", json={"email": manager_user.email, "password": "Test@123"})
+    headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
+    response = client.get("/api/v1/leave/calendar", params={
+        "from_date": start.isoformat(),
+        "to_date": (start + timedelta(days=2)).isoformat(),
+        "scope": "team",
+    }, headers=headers)
+
+    assert response.status_code == 200
+    data = response.json()
+    first_day = data["days"][0]
+    assert first_day["leave_count"] == 1
+    assert first_day["approved_count"] == 1
+    assert first_day["holidays"][0]["name"] == "Calendar Holiday"
+    assert first_day["employees_on_leave"][0]["employee"]["employee_id"] == report_emp.employee_id
+
+
 def test_leave_request_blocks_overlap(client, db):
     emp, lt, user = _create_employee_with_leave(db, client, {})
 

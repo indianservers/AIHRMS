@@ -95,6 +95,31 @@ def test_employee_not_found(client, superuser_headers):
     assert response.status_code == 404
 
 
+def test_employee_csv_import_export_with_row_errors(client, superuser_headers):
+    csv_body = (
+        "employee_id,first_name,last_name,date_of_joining,personal_email,phone_number\n"
+        "BULK001,Bulk,Good,2024-01-15,bulk.good@test.com,9999999999\n"
+        "BULK002,,Missing,2024-01-16,missing@test.com,8888888888\n"
+        "BULK003,Bad,Date,15-01-2024,bad.date@test.com,7777777777\n"
+    )
+
+    response = client.post(
+        "/api/v1/employees/import",
+        files={"file": ("employees.csv", csv_body, "text/csv")},
+        headers=superuser_headers,
+    )
+    assert response.status_code == 201
+    data = response.json()
+    assert data["created"] == 1
+    assert data["failed"] == 2
+    assert data["errors"][0]["row"] == 3
+
+    exported = client.get("/api/v1/employees/export", headers=superuser_headers)
+    assert exported.status_code == 200
+    assert "BULK001" in exported.text
+    assert "bulk.good@test.com" in exported.text
+
+
 def test_create_employee_lifecycle_event(client, superuser_headers, db):
     from app.models.employee import Employee
 

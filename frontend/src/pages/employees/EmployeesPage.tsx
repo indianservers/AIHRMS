@@ -72,6 +72,33 @@ export default function EmployeesPage() {
     onError: () => toast({ title: "Could not update employee", variant: "destructive" }),
   });
 
+  const importMutation = useMutation({
+    mutationFn: (file: File) => {
+      const form = new FormData();
+      form.append("file", file);
+      return employeeApi.importCsv(form);
+    },
+    onSuccess: (response) => {
+      const { created, failed } = response.data;
+      toast({ title: "Import completed", description: `${created} created, ${failed} failed` });
+      qc.invalidateQueries({ queryKey: ["employees"] });
+    },
+    onError: (error: unknown) => {
+      const msg = (error as { response?: { data?: { detail?: string } } })?.response?.data?.detail || "Could not import employees";
+      toast({ title: "Import failed", description: msg, variant: "destructive" });
+    },
+  });
+
+  async function exportEmployees() {
+    const response = await employeeApi.exportCsv({ status: statusFilter || undefined });
+    const url = URL.createObjectURL(response.data);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "employees_export.csv";
+    link.click();
+    URL.revokeObjectURL(url);
+  }
+
   const columns = [
     columnHelper.display({
       id: "avatar",
@@ -196,7 +223,20 @@ export default function EmployeesPage() {
           <Button variant="outline" size="sm" onClick={() => refetch()}>
             <RefreshCw className="h-4 w-4" />
           </Button>
-          <Button variant="outline" size="sm">
+          <label className="inline-flex h-9 cursor-pointer items-center justify-center gap-2 rounded-md border border-input bg-background px-3 text-sm font-medium hover:bg-accent hover:text-accent-foreground">
+            Import CSV
+            <input
+              type="file"
+              accept=".csv,text/csv"
+              className="hidden"
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                if (file) importMutation.mutate(file);
+                event.currentTarget.value = "";
+              }}
+            />
+          </label>
+          <Button variant="outline" size="sm" onClick={exportEmployees}>
             <Download className="h-4 w-4 mr-2" />
             Export
           </Button>

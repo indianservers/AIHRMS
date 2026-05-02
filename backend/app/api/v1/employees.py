@@ -1,17 +1,23 @@
+from datetime import date, datetime, timedelta, timezone
+from io import StringIO
 from typing import List, Optional
-from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
+import csv
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from app.core.deps import get_db, get_current_user, RequirePermission
 from app.core.masking import mask_employee_detail, mask_employee_list_item
 from app.crud.crud_employee import crud_employee
 from app.models.user import User
-from app.models.employee import EmployeeDocument
+from app.models.employee import Employee, EmployeeDocument
+from app.api.v1.notifications import create_notification
+from app.schemas.notification import NotificationCreate
 from app.schemas.employee import (
     EmployeeCreate, EmployeeUpdate, EmployeeSchema, EmployeeListSchema,
     EmployeeEducationCreate, EmployeeEducationSchema,
     EmployeeExperienceCreate, EmployeeExperienceSchema,
     EmployeeSkillCreate, EmployeeSkillSchema,
-    EmployeeDocumentCreate, EmployeeDocumentSchema,
+    EmployeeDocumentCreate, EmployeeDocumentSchema, EmployeeDocumentVerificationUpdate,
     EmployeeLifecycleEventCreate, EmployeeLifecycleEventSchema,
 )
 from app.schemas.common import PaginatedResponse
@@ -19,6 +25,15 @@ import os, shutil
 from app.core.config import settings
 
 router = APIRouter(prefix="/employees", tags=["Employees"])
+
+
+def _parse_date(value: Optional[str], row_number: int, field_name: str):
+    if not value:
+        return None
+    try:
+        return datetime.strptime(value.strip(), "%Y-%m-%d").date()
+    except ValueError:
+        raise ValueError(f"{field_name} must be YYYY-MM-DD on row {row_number}")
 
 
 @router.get("/", response_model=PaginatedResponse[EmployeeListSchema])
@@ -75,6 +90,183 @@ def employee_stats(
     current_user: User = Depends(RequirePermission("employee_view")),
 ):
     return crud_employee.get_headcount_stats(db)
+
+
+@router.get("/documents/expiring", response_model=List[EmployeeDocumentSchema])
+def list_expiring_employee_documents(
+    days: int = Query(60, ge=0, le=365),
+    department_id: Optional[int] = Query(None),
+    document_type: Optional[str] = Query(None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(RequirePermission("employee_view")),
+):
+    today = date.today()
+    query = db.query(EmployeeDocument).join(Employee).filter(
+        EmployeeDocument.expiry_date.isnot(None),
+        EmployeeDocument.expiry_date <= today + timedelta(days=days),
+    )
+    if department_id:
+        query = query.filter(Employee.department_id == department_id)
+    if document_type:
+        query = query.filter(EmployeeDocument.document_type == document_type)
+    return query.order_by(EmployeeDocument.expiry_date.asc()).limit(500).all()
+
+
+@router.get("/export")
+def export_employees(
+    status_filter: Optional[str] = Query(None, alias="status"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(RequirePermission("employee_export")),
+):
+    output = StringIO()
+    writer = csv.writer(output)
+    writer.writerow([
+        "employee_id", "first_name", "last_name", "personal_email", "phone_number",
+        "date_of_joining", "employment_type", "status", "work_location",
+        "branch_id", "department_id", "designation_id", "reporting_manager_id",
+    ])
+
+    query = db.query(Employee)
+    if status_filter:
+        query = query.filter(Employee.status == status_filter)
+    for emp in query.order_by(Employee.employee_id).all():
+        writer.writerow([
+            emp.employee_id,
+            emp.first_name,
+            emp.last_name,
+            emp.personal_email or "",
+            emp.phone_number or "",
+            emp.date_of_joining.isoformat() if emp.date_of_joining else "",
+            emp.employment_type,
+            emp.status,
+            emp.work_location,
+            emp.branch_id or "",
+            emp.department_id or "",
+            emp.designation_id or "",
+            emp.reporting_manager_id or "",
+        ])
+
+    output.seek(0)
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=employees_export.csv"},
+    )
+
+
+@router.post("/import", status_code=201)
+async def import_employees(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(RequirePermission("employee_import")),
+):
+    if not file.filename.lower().endswith(".csv"):
+        raise HTTPException(status_code=400, detail="Only CSV import is supported")
+
+    raw = (await file.read()).decode("utf-8-sig")
+    reader = csv.DictReader(StringIO(raw))
+    required = {"first_name", "last_name", "date_of_joining"}
+    headers = set(reader.fieldnames or [])
+    missing = sorted(required - headers)
+    if missing:
+        raise HTTPException(status_code=400, detail=f"Missing columns: {', '.join(missing)}")
+
+    created = 0
+    errors = []
+    seen_employee_ids = set()
+    for row_number, row in enumerate(reader, start=2):
+        row_errors = []
+        first_name = (row.get("first_name") or "").strip()
+        last_name = (row.get("last_name") or "").strip()
+        employee_id = (row.get("employee_id") or "").strip() or f"EMPIMP{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}{row_number:04d}"
+        if not first_name:
+            row_errors.append("first_name is required")
+        if not last_name:
+            row_errors.append("last_name is required")
+        if crud_employee.get_by_employee_id(db, employee_id):
+            row_errors.append(f"employee_id {employee_id} already exists")
+        if employee_id in seen_employee_ids:
+            row_errors.append(f"employee_id {employee_id} is duplicated in this import")
+
+        try:
+            joining_date = _parse_date(row.get("date_of_joining"), row_number, "date_of_joining")
+            confirmation_date = _parse_date(row.get("date_of_confirmation"), row_number, "date_of_confirmation")
+        except ValueError as exc:
+            row_errors.append(str(exc))
+            joining_date = None
+            confirmation_date = None
+
+        if not joining_date:
+            row_errors.append("date_of_joining is required")
+
+        def optional_int(field: str):
+            value = (row.get(field) or "").strip()
+            if not value:
+                return None
+            try:
+                return int(value)
+            except ValueError:
+                row_errors.append(f"{field} must be a number")
+                return None
+
+        branch_id = optional_int("branch_id")
+        department_id = optional_int("department_id")
+        designation_id = optional_int("designation_id")
+        reporting_manager_id = optional_int("reporting_manager_id")
+
+        if row_errors:
+            errors.append({"row": row_number, "employee_id": employee_id, "errors": row_errors})
+            seen_employee_ids.add(employee_id)
+            continue
+
+        employee = Employee(
+            employee_id=employee_id,
+            first_name=first_name,
+            last_name=last_name,
+            personal_email=(row.get("personal_email") or "").strip() or None,
+            phone_number=(row.get("phone_number") or "").strip() or None,
+            date_of_joining=joining_date,
+            date_of_confirmation=confirmation_date,
+            employment_type=(row.get("employment_type") or "Full-time").strip() or "Full-time",
+            status=(row.get("status") or "Active").strip() or "Active",
+            work_location=(row.get("work_location") or "Office").strip() or "Office",
+            branch_id=branch_id,
+            department_id=department_id,
+            designation_id=designation_id,
+            reporting_manager_id=reporting_manager_id,
+        )
+        db.add(employee)
+        seen_employee_ids.add(employee_id)
+        created += 1
+
+    db.commit()
+    create_notification(
+        db,
+        NotificationCreate(
+            user_id=current_user.id,
+            title="Employee import completed",
+            message=f"{created} employees imported. {len(errors)} rows need correction.",
+            module="employee",
+            event_type="employee_import_completed",
+            action_url="/employees",
+            priority="high" if errors else "normal",
+            channels=["in_app", "email"],
+        ),
+    )
+    return {"created": created, "failed": len(errors), "errors": errors}
+
+
+@router.get("/me", response_model=EmployeeSchema)
+def get_my_employee_profile(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    if not current_user.employee:
+        raise HTTPException(status_code=404, detail="Employee profile not linked")
+    emp = crud_employee.get_with_details(db, current_user.employee.id)
+    if not emp:
+        raise HTTPException(status_code=404, detail="Employee profile not found")
+    return mask_employee_detail(emp, current_user)
 
 
 @router.get("/{employee_id}", response_model=EmployeeSchema)
@@ -203,9 +395,10 @@ def add_skill(
 @router.post("/{employee_id}/documents", response_model=EmployeeDocumentSchema, status_code=201)
 async def upload_document(
     employee_id: int,
-    document_type: str,
-    document_name: Optional[str] = None,
-    document_number: Optional[str] = None,
+    document_type: str = Form(...),
+    document_name: Optional[str] = Form(None),
+    document_number: Optional[str] = Form(None),
+    expiry_date: Optional[str] = Form(None),
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
     current_user: User = Depends(RequirePermission("employee_update")),
@@ -226,12 +419,43 @@ async def upload_document(
         shutil.copyfileobj(file.file, f)
 
     file_url = f"/uploads/employee_docs/{employee_id}/{filename}"
+    try:
+        parsed_expiry_date = _parse_date(expiry_date, 0, "expiry_date") if expiry_date else None
+    except ValueError:
+        raise HTTPException(status_code=400, detail="expiry_date must be YYYY-MM-DD")
+
     return crud_employee.add_document(db, employee_id, {
         "document_type": document_type,
         "document_name": document_name or file.filename,
         "document_number": document_number,
         "file_url": file_url,
+        "expiry_date": parsed_expiry_date,
     })
+
+
+@router.put("/{employee_id}/documents/{document_id}/verify", response_model=EmployeeDocumentSchema)
+def verify_employee_document(
+    employee_id: int,
+    document_id: int,
+    data: EmployeeDocumentVerificationUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(RequirePermission("employee_update")),
+):
+    if data.verification_status not in {"Pending", "Verified", "Rejected"}:
+        raise HTTPException(status_code=400, detail="verification_status must be Pending, Verified, or Rejected")
+    document = db.query(EmployeeDocument).filter_by(id=document_id, employee_id=employee_id).first()
+    if not document:
+        raise HTTPException(status_code=404, detail="Document not found")
+    document.verification_status = data.verification_status
+    document.is_verified = data.verification_status == "Verified"
+    document.verified_by = current_user.id
+    document.verified_at = datetime.now(timezone.utc)
+    document.verifier_name = data.verifier_name
+    document.verifier_company = data.verifier_company
+    document.verification_notes = data.verification_notes
+    db.commit()
+    db.refresh(document)
+    return document
 
 
 @router.post("/{employee_id}/photo")

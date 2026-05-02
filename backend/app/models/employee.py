@@ -165,9 +165,13 @@ class EmployeeDocument(Base):
     document_number = Column(String(100))
     file_url = Column(String(500))
     expiry_date = Column(Date)
+    verification_status = Column(String(30), default="Pending", index=True)
     is_verified = Column(Boolean, default=False)
     verified_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     verified_at = Column(DateTime(timezone=True))
+    verifier_name = Column(String(150))
+    verifier_company = Column(String(200))
+    verification_notes = Column(Text)
 
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     employee = relationship("Employee", back_populates="documents")

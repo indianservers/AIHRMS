@@ -41,6 +41,7 @@ def login(request: LoginRequest, db: Session = Depends(get_db)):
         email=user.email,
         role=user.role.name if user.role else None,
         is_superuser=user.is_superuser,
+        employee_id=user.employee.id if user.employee else None,
     )
 
 
@@ -64,12 +65,20 @@ def refresh_token(data: RefreshTokenRequest, db: Session = Depends(get_db)):
         email=user.email,
         role=user.role.name if user.role else None,
         is_superuser=user.is_superuser,
+        employee_id=user.employee.id if user.employee else None,
     )
 
 
 @router.get("/me", response_model=UserSchema)
 def get_me(current_user: User = Depends(get_current_user)):
-    return current_user
+    return {
+        "id": current_user.id,
+        "email": current_user.email,
+        "is_active": current_user.is_active,
+        "is_superuser": current_user.is_superuser,
+        "role": current_user.role,
+        "employee_id": current_user.employee.id if current_user.employee else None,
+    }
 
 
 @router.post("/change-password")
