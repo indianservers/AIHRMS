@@ -1,10 +1,20 @@
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from fastapi import APIRouter, Depends, HTTPException, status, Request
 from sqlalchemy.orm import Session
+from jose import JWTError, jwt
 from app.core.deps import get_current_active_superuser, get_db, get_current_user
+from app.core.config import settings
 from app.core.security import (
     verify_password, create_access_token, create_refresh_token,
     verify_refresh_token, get_password_hash
+)
+from app.core.mfa import (
+    generate_recovery_codes,
+    generate_totp_qr_base64,
+    generate_totp_secret,
+    hash_recovery_code,
+    verify_recovery_code,
+    verify_totp,
 )
 from app.models.user import User
 from app.models.user import Role, Permission, UserSession, MFAMethod, PasswordPolicy, LoginAttempt
@@ -14,42 +24,142 @@ from app.schemas.auth import (
     RoleCreate, RoleUpdate, RoleSchema, PermissionSchema,
     UserSessionCreate, UserSessionSchema, MFAMethodCreate, MFAMethodSchema,
     PasswordPolicyCreate, PasswordPolicySchema, LoginAttemptSchema,
+    MFAVerifyRequest, MFAConfirmRequest, MFACodeRequest,
 )
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
 
-@router.post("/login", response_model=TokenResponse)
-def login(request: LoginRequest, db: Session = Depends(get_db)):
-    user = db.query(User).filter(User.email == request.email).first()
-    if not user or not verify_password(request.password, user.hashed_password):
-        db.add(LoginAttempt(email=request.email, user_id=user.id if user else None, status="Failed", failure_reason="Incorrect credentials"))
-        db.commit()
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect email or password",
-        )
-    if not user.is_active:
-        db.add(LoginAttempt(email=request.email, user_id=user.id, status="Failed", failure_reason="Account disabled"))
-        db.commit()
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Account is disabled")
-
-    user.last_login = datetime.now(timezone.utc)
-    db.add(LoginAttempt(email=request.email, user_id=user.id, status="Success"))
-    db.commit()
-
-    access_token = create_access_token(user.id)
-    refresh_token = create_refresh_token(user.id)
-
+def _token_response(user: User) -> TokenResponse:
     return TokenResponse(
-        access_token=access_token,
-        refresh_token=refresh_token,
+        access_token=create_access_token(user.id),
+        refresh_token=create_refresh_token(user.id),
         user_id=user.id,
         email=user.email,
         role=user.role.name if user.role else None,
         is_superuser=user.is_superuser,
         employee_id=user.employee.id if user.employee else None,
     )
+
+
+def _log_attempt(db: Session, user: User | None, email: str, success: bool, failure_reason: str | None = None, request: Request | None = None, mfa_attempted: bool = False, mfa_success: bool | None = None) -> None:
+    db.add(LoginAttempt(
+        email=email,
+        user_id=user.id if user else None,
+        ip_address=request.client.host if request and request.client else None,
+        user_agent=request.headers.get("user-agent") if request else None,
+        status="Success" if success else "Failed",
+        success=success,
+        failure_reason=failure_reason,
+        mfa_attempted=mfa_attempted,
+        mfa_success=mfa_success,
+    ))
+
+
+def check_lockout(db: Session, user: User) -> dict | None:
+    """Returns lockout details when the account is temporarily locked."""
+    policy = db.query(PasswordPolicy).filter((PasswordPolicy.is_default == True) | (PasswordPolicy.is_active == True)).order_by(PasswordPolicy.is_default.desc(), PasswordPolicy.id.desc()).first()
+    attempts = policy.lockout_attempts if policy else 0
+    if not policy or not attempts:
+        return None
+    duration = policy.lockout_duration_minutes or policy.lockout_minutes or 30
+    cutoff = datetime.now(timezone.utc) - timedelta(minutes=duration)
+    recent_failures = db.query(LoginAttempt).filter(
+        LoginAttempt.user_id == user.id,
+        ((LoginAttempt.success == False) | (LoginAttempt.status == "Failed")),
+        LoginAttempt.created_at >= cutoff,
+    ).count()
+    if recent_failures >= attempts:
+        return {"locked": True, "attempts": recent_failures, "unlock_after_minutes": duration}
+    return None
+
+
+def _create_mfa_token(user: User) -> str:
+    expire = datetime.now(timezone.utc) + timedelta(minutes=5)
+    return jwt.encode({"sub": str(user.id), "scope": "mfa", "exp": expire}, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
+
+
+def _decode_mfa_token(token: str) -> dict:
+    try:
+        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+    except JWTError:
+        raise HTTPException(status_code=401, detail="Invalid MFA token")
+    if payload.get("scope") != "mfa":
+        raise HTTPException(status_code=401, detail="Invalid MFA token")
+    return payload
+
+
+def _active_totp(db: Session, user_id: int) -> MFAMethod | None:
+    return db.query(MFAMethod).filter(
+        MFAMethod.user_id == user_id,
+        MFAMethod.method_type.in_(["totp", "TOTP"]),
+        MFAMethod.is_verified == True,
+        MFAMethod.is_active == True,
+    ).order_by(MFAMethod.id.desc()).first()
+
+
+@router.post("/login")
+def login(request_data: LoginRequest, request: Request, db: Session = Depends(get_db)):
+    user = db.query(User).filter(User.email == request_data.email).first()
+    if user:
+        lockout = check_lockout(db, user)
+        if lockout:
+            raise HTTPException(status_code=423, detail=f"Account locked after {lockout['attempts']} failed attempts. Try again in {lockout['unlock_after_minutes']} minutes.")
+    if not user or not user.hashed_password or not verify_password(request_data.password, user.hashed_password):
+        _log_attempt(db, user, request_data.email, False, "Incorrect credentials", request)
+        db.commit()
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect email or password",
+        )
+    if not user.is_active:
+        _log_attempt(db, user, request_data.email, False, "Account disabled", request)
+        db.commit()
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Account is disabled")
+
+    user.last_login = datetime.now(timezone.utc)
+    _log_attempt(db, user, request_data.email, True, request=request)
+    db.commit()
+
+    if user.mfa_enabled:
+        return {"mfa_required": True, "mfa_token": _create_mfa_token(user), "mfa_methods": ["totp", "recovery"]}
+
+    return _token_response(user)
+
+
+@router.post("/mfa/verify")
+def verify_mfa_login(data: MFAVerifyRequest, request: Request, db: Session = Depends(get_db)):
+    """Complete the second login phase using TOTP or a recovery code."""
+    payload = _decode_mfa_token(data.mfa_token)
+    user = db.query(User).filter(User.id == int(payload["sub"])).first()
+    if not user or not user.is_active:
+        raise HTTPException(status_code=401, detail="User not found or inactive")
+    lockout = check_lockout(db, user)
+    if lockout:
+        raise HTTPException(status_code=423, detail=f"Account locked after {lockout['attempts']} failed attempts. Try again in {lockout['unlock_after_minutes']} minutes.")
+    method = _active_totp(db, user.id)
+    valid = False
+    if data.method == "totp" and method:
+        valid = verify_totp(method.secret or method.secret_ref or "", data.code)
+    elif data.method == "recovery" and method:
+        codes = method.recovery_codes_json or []
+        for item in codes:
+            if not item.get("used") and verify_recovery_code(data.code, item.get("hash", "")):
+                item["used"] = True
+                item["used_at"] = datetime.now(timezone.utc).isoformat()
+                method.recovery_codes_json = codes
+                valid = True
+                break
+    if not valid:
+        _log_attempt(db, user, user.email, False, "Invalid MFA code", request, True, False)
+        db.commit()
+        raise HTTPException(status_code=401, detail="Invalid MFA code")
+    if method:
+        method.last_used_at = datetime.now(timezone.utc)
+    user.last_login = datetime.now(timezone.utc)
+    _log_attempt(db, user, user.email, True, request=request, mfa_attempted=True, mfa_success=True)
+    db.commit()
+    return _token_response(user)
 
 
 @router.post("/refresh", response_model=TokenResponse)
@@ -109,6 +219,123 @@ def logout(current_user: User = Depends(get_current_user)):
     # In a stateless JWT setup, logout is client-side token removal
     # For production, implement token blacklisting with Redis
     return {"message": "Logged out successfully"}
+
+
+@router.post("/mfa/setup")
+def setup_mfa(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Start TOTP MFA setup and return one-time recovery codes."""
+    secret = generate_totp_secret()
+    qr_base64 = generate_totp_qr_base64(secret, current_user.email)
+    codes = generate_recovery_codes(10)
+    method = MFAMethod(
+        user_id=current_user.id,
+        method_type="totp",
+        secret=secret,
+        secret_ref=secret,
+        is_primary=True,
+        is_verified=False,
+        is_active=True,
+        recovery_codes_json=[{"hash": hash_recovery_code(code), "used": False} for code in codes],
+    )
+    try:
+        db.add(method)
+        db.commit()
+        db.refresh(method)
+    except Exception:
+        db.rollback()
+        raise
+    return {"secret": secret, "qr_base64": qr_base64, "recovery_codes": codes, "method_id": method.id}
+
+
+@router.post("/mfa/confirm")
+def confirm_mfa(
+    data: MFAConfirmRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Verify the setup code and enable TOTP MFA for the current user."""
+    method = db.query(MFAMethod).filter(MFAMethod.id == data.method_id, MFAMethod.user_id == current_user.id).first()
+    if not method:
+        raise HTTPException(status_code=404, detail="MFA method not found")
+    if not verify_totp(method.secret or method.secret_ref or "", data.code):
+        raise HTTPException(status_code=401, detail="Incorrect code. Please try again.")
+    try:
+        db.query(MFAMethod).filter(
+            MFAMethod.user_id == current_user.id,
+            MFAMethod.method_type.in_(["totp", "TOTP"]),
+            MFAMethod.id != method.id,
+        ).update({MFAMethod.is_active: False})
+        method.is_verified = True
+        method.verified_at = datetime.now(timezone.utc)
+        method.enabled_at = method.verified_at
+        method.is_active = True
+        current_user.mfa_enabled = True
+        current_user.mfa_enforced_at = datetime.now(timezone.utc)
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    return {"success": True, "recovery_code_count": len(method.recovery_codes_json or [])}
+
+
+@router.delete("/mfa/disable")
+def disable_mfa(
+    data: MFACodeRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Disable TOTP MFA after verifying the current code."""
+    method = _active_totp(db, current_user.id)
+    if not method or not verify_totp(method.secret or method.secret_ref or "", data.code):
+        raise HTTPException(status_code=401, detail="Invalid MFA code")
+    try:
+        method.is_active = False
+        current_user.mfa_enabled = False
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    return {"success": True}
+
+
+@router.get("/mfa/status")
+def mfa_status(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Return current MFA state for the logged-in user."""
+    method = _active_totp(db, current_user.id)
+    codes = method.recovery_codes_json if method else []
+    remaining = len([code for code in (codes or []) if not code.get("used")])
+    return {
+        "mfa_enabled": bool(current_user.mfa_enabled and method),
+        "method_type": method.method_type if method else None,
+        "verified_at": method.verified_at or method.enabled_at if method else None,
+        "recovery_codes_remaining": remaining,
+    }
+
+
+@router.post("/mfa/regenerate-recovery-codes")
+def regenerate_recovery_codes(
+    data: MFACodeRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Regenerate one-time recovery codes after TOTP verification."""
+    method = _active_totp(db, current_user.id)
+    if not method or not verify_totp(method.secret or method.secret_ref or "", data.code):
+        raise HTTPException(status_code=401, detail="Invalid MFA code")
+    codes = generate_recovery_codes(10)
+    try:
+        method.recovery_codes_json = [{"hash": hash_recovery_code(code), "used": False} for code in codes]
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    return {"recovery_codes": codes}
 
 
 @router.get("/users", response_model=list[UserSchema])
@@ -302,7 +529,12 @@ def create_password_policy(
 ):
     if data.is_active:
         db.query(PasswordPolicy).update({PasswordPolicy.is_active: False})
+    if data.is_default:
+        db.query(PasswordPolicy).update({PasswordPolicy.is_default: False})
     item = PasswordPolicy(**data.model_dump())
+    item.require_symbol = data.require_special or data.require_symbol
+    item.expiry_days = data.max_age_days or data.expiry_days
+    item.lockout_minutes = data.lockout_duration_minutes or data.lockout_minutes
     db.add(item)
     db.commit()
     db.refresh(item)
@@ -317,13 +549,63 @@ def list_password_policies(
     return db.query(PasswordPolicy).order_by(PasswordPolicy.id.desc()).all()
 
 
+@router.put("/password-policies/{policy_id}", response_model=PasswordPolicySchema)
+def update_password_policy(
+    policy_id: int,
+    data: PasswordPolicyCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_superuser),
+):
+    """Update password, lockout, and MFA policy settings."""
+    item = db.query(PasswordPolicy).filter(PasswordPolicy.id == policy_id).first()
+    if not item:
+        raise HTTPException(status_code=404, detail="Password policy not found")
+    try:
+        if data.is_default:
+            db.query(PasswordPolicy).filter(PasswordPolicy.id != policy_id).update({PasswordPolicy.is_default: False})
+        for key, value in data.model_dump().items():
+            if hasattr(item, key):
+                setattr(item, key, value)
+        item.require_symbol = data.require_special or data.require_symbol
+        item.expiry_days = data.max_age_days or data.expiry_days
+        item.lockout_minutes = data.lockout_duration_minutes or data.lockout_minutes
+        db.commit()
+        db.refresh(item)
+    except Exception:
+        db.rollback()
+        raise
+    return item
+
+
+@router.post("/password-policies/{policy_id}/enforce-mfa")
+def enforce_policy_mfa(
+    policy_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_superuser),
+):
+    """Enable MFA enforcement on a password policy and report remaining users."""
+    item = db.query(PasswordPolicy).filter(PasswordPolicy.id == policy_id).first()
+    if not item:
+        raise HTTPException(status_code=404, detail="Password policy not found")
+    try:
+        item.mfa_required = True
+        users_without_mfa = db.query(User).filter(User.is_active == True, (User.mfa_enabled == False) | (User.mfa_enabled.is_(None))).count()
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    return {"updated": True, "users_without_mfa": users_without_mfa}
+
+
 @router.get("/login-attempts", response_model=list[LoginAttemptSchema])
 def list_login_attempts(
     email: str | None = None,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_superuser),
+    current_user: User = Depends(get_current_user),
 ):
     query = db.query(LoginAttempt)
+    if not current_user.is_superuser:
+        query = query.filter(LoginAttempt.user_id == current_user.id)
     if email:
         query = query.filter(LoginAttempt.email == email)
     return query.order_by(LoginAttempt.id.desc()).limit(300).all()

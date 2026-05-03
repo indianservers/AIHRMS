@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { timesheetsApi } from "@/services/api";
 import { useAuthStore } from "@/store/authStore";
 import { getRoleKey } from "@/lib/roles";
+import { usePageTitle } from "@/hooks/use-page-title";
 import { toast } from "@/hooks/use-toast";
 
 type Project = {
@@ -58,6 +59,7 @@ function statusTone(status: string) {
 }
 
 export default function TimesheetsPage() {
+  usePageTitle("Timesheets");
   const qc = useQueryClient();
   const { user } = useAuthStore();
   const roleKey = getRoleKey(user?.role, user?.is_superuser);

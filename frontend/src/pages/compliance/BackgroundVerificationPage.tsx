@@ -1,7 +1,9 @@
 import { ShieldCheck } from "lucide-react";
+import { usePageTitle } from "@/hooks/use-page-title";
 import ModuleShell from "@/components/ModuleShell";
 
 export default function BackgroundVerificationPage() {
+  usePageTitle("Background Verification");
   return (
     <ModuleShell
       title="Background Verification"

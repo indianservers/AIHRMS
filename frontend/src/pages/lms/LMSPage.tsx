@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Award, BookOpenCheck, GraduationCap, Plus, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -6,6 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { lmsApi } from "@/services/api";
+import { usePageTitle } from "@/hooks/use-page-title";
 import { toast } from "@/hooks/use-toast";
 
 type Course = {
@@ -36,7 +37,7 @@ type Certification = {
 };
 
 export default function LMSPage() {
-  useEffect(() => { document.title = "Learning · AI HRMS"; }, []);
+  usePageTitle("Learning");
   const qc = useQueryClient();
   const [showCourseForm, setShowCourseForm] = useState(false);
   const [courseForm, setCourseForm] = useState({

@@ -1,4 +1,4 @@
-import { ChangeEvent, FormEvent, useEffect, useMemo, useState } from "react";
+import { ChangeEvent, FormEvent, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Banknote,
@@ -20,6 +20,7 @@ import { authApi, employeeApi } from "@/services/api";
 import { assetUrl, formatDate, formatDateTime } from "@/lib/utils";
 import { toast } from "@/hooks/use-toast";
 import { useAuthStore } from "@/store/authStore";
+import { usePageTitle } from "@/hooks/use-page-title";
 import { getRoleKey } from "@/lib/roles";
 
 const CHANGE_FIELDS = [
@@ -62,7 +63,7 @@ const emptyChangeDraft: ChangeDraft = {
 };
 
 export default function ProfilePage() {
-  useEffect(() => { document.title = "Profile · AI HRMS"; }, []);
+  usePageTitle("Profile");
   const qc = useQueryClient();
   const user = useAuthStore((state) => state.user);
   const roleKey = getRoleKey(user?.role, user?.is_superuser);
@@ -77,6 +78,10 @@ export default function ProfilePage() {
   });
   const [documentFile, setDocumentFile] = useState<File | null>(null);
   const [reviewRemarks, setReviewRemarks] = useState<Record<number, string>>({});
+  const [mfaDialog, setMfaDialog] = useState<"setup" | "disable" | "regenerate" | null>(null);
+  const [mfaStep, setMfaStep] = useState(1);
+  const [mfaCode, setMfaCode] = useState("");
+  const [savedRecoveryCodes, setSavedRecoveryCodes] = useState(false);
   const me = useQuery({ queryKey: ["me"], queryFn: () => authApi.me().then((r) => r.data) });
   const employee = useQuery({
     queryKey: ["my-employee-profile"],
@@ -88,6 +93,8 @@ export default function ProfilePage() {
     queryFn: () => employeeApi.profileCompleteness().then((r) => r.data),
     retry: false,
   });
+  const mfaStatus = useQuery({ queryKey: ["mfa-status"], queryFn: () => authApi.mfaStatus().then((r) => r.data) });
+  const loginAttempts = useQuery({ queryKey: ["my-login-attempts"], queryFn: () => authApi.loginAttempts().then((r) => r.data) });
   const employeeId = employee.data?.id || me.data?.employee_id;
 
   const fieldLabels = useMemo(() => ({
@@ -227,6 +234,45 @@ export default function ProfilePage() {
       qc.invalidateQueries({ queryKey: ["profile-completeness"] });
     },
   });
+  const mfaSetup = useMutation({
+    mutationFn: () => authApi.mfaSetup(),
+    onSuccess: () => setMfaStep(1),
+    onError: () => toast({ title: "Unable to start MFA setup", variant: "destructive" }),
+  });
+  const confirmMfa = useMutation({
+    mutationFn: () => authApi.mfaConfirm({ method_id: mfaSetup.data?.data.method_id, code: mfaCode }),
+    onSuccess: () => {
+      toast({ title: "2FA enabled" });
+      setMfaStep(3);
+      qc.invalidateQueries({ queryKey: ["mfa-status"] });
+    },
+    onError: () => toast({ title: "Incorrect code. Please try again.", variant: "destructive" }),
+  });
+  const disableMfa = useMutation({
+    mutationFn: () => authApi.mfaDisable({ code: mfaCode }),
+    onSuccess: () => {
+      toast({ title: "2FA disabled" });
+      setMfaDialog(null);
+      setMfaCode("");
+      qc.invalidateQueries({ queryKey: ["mfa-status"] });
+    },
+  });
+  const regenerateCodes = useMutation({
+    mutationFn: () => authApi.regenerateRecoveryCodes({ code: mfaCode }),
+    onSuccess: () => {
+      toast({ title: "Recovery codes regenerated" });
+      setMfaStep(3);
+      qc.invalidateQueries({ queryKey: ["mfa-status"] });
+    },
+  });
+
+  function openMfaSetup() {
+    setMfaDialog("setup");
+    setMfaStep(1);
+    setMfaCode("");
+    setSavedRecoveryCodes(false);
+    mfaSetup.mutate();
+  }
 
   function updateChange(field: keyof ChangeDraft, value: string) {
     setChangeDraft((current) => ({ ...current, [field]: value }));
@@ -477,6 +523,60 @@ export default function ProfilePage() {
         </Card>
       </div>
 
+      <div className="grid gap-5 lg:grid-cols-[0.8fr_1.2fr]">
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-base">
+              <ShieldCheck className="h-5 w-5 text-primary" />
+              Two-Factor Authentication
+            </CardTitle>
+            <CardDescription>Add an extra layer of security to your account</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {mfaStatus.isLoading ? <div className="h-24 animate-pulse rounded bg-muted" /> : mfaStatus.data?.mfa_enabled ? (
+              <>
+                <Badge className="bg-green-100 text-green-800"><CheckCircle2 className="mr-1 h-3 w-3" />2FA Enabled</Badge>
+                <p className="text-sm text-muted-foreground">Enabled {mfaStatus.data.verified_at ? formatDate(mfaStatus.data.verified_at) : "recently"}</p>
+                <p className="text-sm">Recovery codes remaining: {mfaStatus.data.recovery_codes_remaining}</p>
+                <div className="flex flex-wrap gap-2">
+                  <Button variant="outline" onClick={() => { setMfaDialog("regenerate"); setMfaCode(""); setMfaStep(2); }}>Regenerate Recovery Codes</Button>
+                  <Button variant="destructive" onClick={() => { setMfaDialog("disable"); setMfaCode(""); }}>Disable 2FA</Button>
+                </div>
+              </>
+            ) : (
+              <>
+                <p className="text-sm text-muted-foreground">Authenticator app verification is currently off.</p>
+                <Button onClick={openMfaSetup}>Enable 2FA</Button>
+              </>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Security Events</CardTitle>
+            <CardDescription>Recent login attempts for your account</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="overflow-x-auto rounded-md border">
+              <table className="w-full min-w-[560px] text-sm">
+                <thead className="bg-muted/60"><tr><th className="px-3 py-2 text-left">Date/Time</th><th className="px-3 py-2 text-left">IP Address</th><th className="px-3 py-2 text-left">Status</th><th className="px-3 py-2 text-left">MFA</th></tr></thead>
+                <tbody>
+                  {(loginAttempts.data || []).slice(0, 10).map((attempt: any) => (
+                    <tr key={attempt.id} className="border-t">
+                      <td className="px-3 py-2">{formatDateTime(attempt.created_at)}</td>
+                      <td className="px-3 py-2">{attempt.ip_address || "-"}</td>
+                      <td className="px-3 py-2"><Badge variant={attempt.success === false || attempt.status === "Failed" ? "destructive" : "secondary"}>{attempt.status}</Badge></td>
+                      <td className="px-3 py-2">{attempt.mfa_attempted ? <Badge variant="outline">{attempt.mfa_success ? "Passed" : "Failed"}</Badge> : "-"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
       {canReviewChanges && (
         <Card>
           <CardHeader>
@@ -528,6 +628,92 @@ export default function ProfilePage() {
           </CardContent>
         </Card>
       )}
+      {mfaDialog && (
+        <MfaDialog
+          mode={mfaDialog}
+          step={mfaStep}
+          setStep={setMfaStep}
+          setupData={mfaSetup.data?.data}
+          regenerateData={regenerateCodes.data?.data}
+          code={mfaCode}
+          setCode={setMfaCode}
+          saved={savedRecoveryCodes}
+          setSaved={setSavedRecoveryCodes}
+          onClose={() => { setMfaDialog(null); qc.invalidateQueries({ queryKey: ["mfa-status"] }); }}
+          onConfirm={() => confirmMfa.mutate()}
+          onDisable={() => disableMfa.mutate()}
+          onRegenerate={() => regenerateCodes.mutate()}
+          pending={confirmMfa.isPending || disableMfa.isPending || regenerateCodes.isPending}
+        />
+      )}
+    </div>
+  );
+}
+
+function MfaDialog({
+  mode, step, setStep, setupData, regenerateData, code, setCode, saved, setSaved, onClose, onConfirm, onDisable, onRegenerate, pending,
+}: {
+  mode: "setup" | "disable" | "regenerate";
+  step: number;
+  setStep: (step: number) => void;
+  setupData?: { qr_base64: string; secret: string; recovery_codes: string[] };
+  regenerateData?: { recovery_codes: string[] };
+  code: string;
+  setCode: (value: string) => void;
+  saved: boolean;
+  setSaved: (value: boolean) => void;
+  onClose: () => void;
+  onConfirm: () => void;
+  onDisable: () => void;
+  onRegenerate: () => void;
+  pending: boolean;
+}) {
+  const codes = regenerateData?.recovery_codes || setupData?.recovery_codes || [];
+  const copyCodes = () => navigator.clipboard.writeText(codes.join("\n"));
+  const downloadCodes = () => {
+    const url = URL.createObjectURL(new Blob([codes.join("\n")], { type: "text/plain" }));
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "ai-hrms-recovery-codes.txt";
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+      <div className="w-full max-w-lg rounded-lg bg-background p-5 shadow-lg">
+        <div className="mb-4 flex items-center justify-between">
+          <h2 className="font-semibold">{mode === "setup" ? "Set Up Authenticator App" : mode === "disable" ? "Disable 2FA" : "Regenerate Recovery Codes"}</h2>
+          <Button variant="ghost" size="sm" onClick={onClose}>Close</Button>
+        </div>
+        {mode === "disable" ? (
+          <div className="space-y-4">
+            <p className="text-sm text-muted-foreground">Enter your current authenticator code. Disabling 2FA reduces account protection.</p>
+            <Input value={code} maxLength={6} onChange={(e) => setCode(e.target.value)} placeholder="123456" />
+            <Button variant="destructive" disabled={!code || pending} onClick={onDisable}>Disable 2FA</Button>
+          </div>
+        ) : step === 1 && mode === "setup" ? (
+          <div className="space-y-4">
+            <p className="text-sm text-muted-foreground">Scan this QR code with Google Authenticator, Authy, or any TOTP app.</p>
+            {setupData?.qr_base64 ? <img src={`data:image/png;base64,${setupData.qr_base64}`} alt="MFA QR code" className="mx-auto h-48 w-48 rounded border bg-white p-2" /> : <div className="h-48 animate-pulse rounded bg-muted" />}
+            <details className="rounded border p-3 text-sm"><summary>Can't scan?</summary><code className="mt-2 block break-all">{setupData?.secret}</code></details>
+            <Button onClick={() => setStep(2)} disabled={!setupData}>Next</Button>
+          </div>
+        ) : step === 2 ? (
+          <div className="space-y-4">
+            <p className="text-sm text-muted-foreground">Enter the 6-digit code from your authenticator app.</p>
+            <Input value={code} maxLength={6} onChange={(e) => setCode(e.target.value)} placeholder="123456" />
+            <Button disabled={!code || pending} onClick={mode === "regenerate" ? onRegenerate : onConfirm}>{mode === "regenerate" ? "Regenerate" : "Verify"}</Button>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            <div className="rounded-md border border-yellow-200 bg-yellow-50 p-3 text-sm text-yellow-900">Save these codes somewhere safe. They can only be shown once and cannot be recovered.</div>
+            <div className="grid grid-cols-2 gap-2 rounded-md border p-3 font-mono text-sm">{codes.map((item) => <span key={item}>{item}</span>)}</div>
+            <div className="flex gap-2"><Button variant="outline" onClick={copyCodes}>Copy All</Button><Button variant="outline" onClick={downloadCodes}>Download as TXT</Button></div>
+            <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={saved} onChange={(e) => setSaved(e.target.checked)} />I have saved my recovery codes</label>
+            <Button disabled={!saved} onClick={onClose}>Done</Button>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

@@ -5,6 +5,7 @@ import { Download, FileImage, FileText, Minus, Plus, RotateCcw } from "lucide-re
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { usePageTitle } from "@/hooks/use-page-title";
 import { companyApi } from "@/services/api";
 
 type OrgNode = {
@@ -61,6 +62,7 @@ function layout(nodes: OrgNode[]) {
 }
 
 export default function OrgChartPage() {
+  usePageTitle("Org Chart");
   const navigate = useNavigate();
   const svgRef = useRef<SVGSVGElement | null>(null);
   const [departmentId, setDepartmentId] = useState("");
@@ -129,7 +131,7 @@ export default function OrgChartPage() {
       ctx.fillText(node.title.slice(0, 28), x + 14, y + 26);
       ctx.font = "12px Arial";
       ctx.fillText((node.employee_name || "Vacant").slice(0, 30), x + 14, y + 52);
-      ctx.fillText(`${node.department_name || "-"} • ${node.grade_band_name || "-"}`.slice(0, 34), x + 14, y + 76);
+      ctx.fillText(`${node.department_name || "-"} â€¢ ${node.grade_band_name || "-"}`.slice(0, 34), x + 14, y + 76);
     });
     const a = document.createElement("a");
     a.href = canvas.toDataURL("image/png");
@@ -187,7 +189,7 @@ export default function OrgChartPage() {
               <text x="14" y="24" fontSize="14" fontWeight="700" fill="#111827">{node.title.slice(0, 28)}</text>
               <text x="14" y="46" fontSize="12" fill="#334155">{(node.employee_name || "Vacant position").slice(0, 31)}</text>
               <text x="14" y="66" fontSize="11" fill="#64748b">{(node.department_name || "No department").slice(0, 26)}</text>
-              <text x="14" y="84" fontSize="11" fill="#64748b">{`${node.grade_band_name || "-"} • ${node.location_name || "-"}`.slice(0, 29)}</text>
+              <text x="14" y="84" fontSize="11" fill="#64748b">{`${node.grade_band_name || "-"} â€¢ ${node.location_name || "-"}`.slice(0, 29)}</text>
             </g>
           ))}
         </svg>

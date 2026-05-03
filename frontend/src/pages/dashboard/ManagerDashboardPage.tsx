@@ -3,6 +3,7 @@ import { CalendarDays, ClipboardCheck, HelpCircle, Users, UserCheck } from "luci
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { reportsApi } from "@/services/api";
+import { usePageTitle } from "@/hooks/use-page-title";
 import { formatDate } from "@/lib/utils";
 
 type TeamDay = {
@@ -13,6 +14,7 @@ type TeamDay = {
 };
 
 export default function ManagerDashboardPage() {
+  usePageTitle("Manager Hub");
   const { data } = useQuery({ queryKey: ["manager-dashboard"], queryFn: () => reportsApi.managerDashboard().then((r) => r.data) });
   const days: TeamDay[] = data?.team_calendar || [];
   return (
@@ -64,7 +66,7 @@ export default function ManagerDashboardPage() {
               <a key={`${item.type}-${item.employee_id}`} href={`/employees/${item.employee_id}`} className="flex items-center justify-between rounded-lg border p-3 hover:bg-muted/50">
                 <div>
                   <p className="text-sm font-medium">{item.name}</p>
-                  <p className="text-xs text-muted-foreground">{item.type}{item.years ? ` • ${item.years} years` : ""}</p>
+                  <p className="text-xs text-muted-foreground">{item.type}{item.years ? ` â€¢ ${item.years} years` : ""}</p>
                 </div>
                 <span className="text-xs text-muted-foreground">{formatDate(item.date)}</span>
               </a>
@@ -77,7 +79,7 @@ export default function ManagerDashboardPage() {
       </div>
 
       <Card>
-        <CardHeader><CardTitle className="text-base">Team Calendar — {data?.calendar_month || ""}</CardTitle></CardHeader>
+        <CardHeader><CardTitle className="text-base">Team Calendar â€” {data?.calendar_month || ""}</CardTitle></CardHeader>
         <CardContent>
           <div className="grid grid-cols-7 gap-2 text-xs">
             {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day) => <div key={day} className="px-2 font-medium text-muted-foreground">{day}</div>)}
@@ -90,7 +92,7 @@ export default function ManagerDashboardPage() {
                     {day.leave_count > 0 && <Badge variant="secondary">{day.leave_count}</Badge>}
                   </div>
                   {day.holidays.slice(0, 1).map((item) => <p key={item.name} className="truncate text-[11px] text-amber-700">{item.name}</p>)}
-                  {day.leaves.slice(0, 2).map((item, idx) => <p key={idx} className="truncate text-[11px] text-blue-700">{item.employee_name || "Team member"} • {item.status}</p>)}
+                  {day.leaves.slice(0, 2).map((item, idx) => <p key={idx} className="truncate text-[11px] text-blue-700">{item.employee_name || "Team member"} â€¢ {item.status}</p>)}
                 </div>
               );
             })}

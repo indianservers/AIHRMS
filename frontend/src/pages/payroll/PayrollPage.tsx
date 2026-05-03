@@ -13,6 +13,7 @@ import { Badge } from "@/components/ui/badge";
 import { payrollApi, statutoryComplianceApi } from "@/services/api";
 import { assetUrl, formatCurrency, formatDate, statusColor } from "@/lib/utils";
 import { toast } from "@/hooks/use-toast";
+import { usePageTitle } from "@/hooks/use-page-title";
 import { useAuthStore } from "@/store/authStore";
 
 interface PayrollRun {
@@ -33,6 +34,8 @@ interface PayslipRecord {
   net_salary: number;
   total_deductions: number;
   status: string;
+  earnings?: { component_name: string; amount: number }[];
+  deductions?: { component_name: string; amount: number }[];
   employer_contributions?: { component_name: string; amount: number }[];
   reimbursements?: { component_name: string; amount: number }[];
   ytd?: {
@@ -66,6 +69,21 @@ interface PayrollPreRunCheck {
   blocker: boolean;
 }
 
+interface PayrollWorksheetRow {
+  id: number;
+  employee_id: number;
+  input_status: string;
+  calculation_status: string;
+  approval_status: string;
+  status: string;
+  gross_salary: number;
+  total_deductions: number;
+  net_salary: number;
+  variance_status: string;
+  hold_reason?: string;
+  skip_reason?: string;
+}
+
 interface SalaryComponent {
   id: number;
   name: string;
@@ -97,10 +115,12 @@ const MONTHS = [
   "July","August","September","October","November","December"
 ];
 
+const normalizeRunStatus = (status?: string) => (status || "draft").toLowerCase().replace(/\s+/g, "_");
+
 type PayrollTab = "wizard" | "run" | "viewer" | "variance" | "inputs" | "setup" | "statutory" | "tax" | "casebook";
 
 export default function PayrollPage() {
-  useEffect(() => { document.title = "Payroll · AI HRMS"; }, []);
+  usePageTitle("Payroll");
   const qc = useQueryClient();
   const { user } = useAuthStore();
   const isEmployee = user?.role === "employee" && !user?.is_superuser;
@@ -323,12 +343,16 @@ export default function PayrollPage() {
     },
   });
 
-  const approveMutation = useMutation({
-    mutationFn: (id: number) => payrollApi.approveRun(id, { action: "approve", remarks: "Approved from payroll console" }),
-    onSuccess: () => {
-      toast({ title: "Payroll run approved!" });
-      refetchRuns();
-      setSelectedRun(null);
+  const runStatusMutation = useMutation({
+    mutationFn: ({ id, action, forceApprove }: { id: number; action: "approve" | "lock" | "paid"; forceApprove?: boolean }) =>
+      payrollApi.approveRun(id, { action, force_approve: Boolean(forceApprove), remarks: forceApprove ? "Force approved from payroll console" : `${action} from payroll console` }),
+    onSuccess: (response, variables) => {
+      const title = variables.action === "approve" ? "Payroll run approved" : variables.action === "lock" ? "Payroll run locked" : "Payroll run marked paid";
+      toast({ title });
+      qc.invalidateQueries({ queryKey: ["payroll-runs"] });
+      if (selectedRun?.id === variables.id) {
+        setSelectedRun({ ...selectedRun, status: response.data.status });
+      }
     },
     onError: (e: unknown) => {
       const detail = (e as { response?: { data?: { detail?: unknown } } })?.response?.data?.detail;
@@ -352,8 +376,22 @@ export default function PayrollPage() {
     onSuccess: () => {
       toast({ title: "Payroll worksheet processed" });
       qc.invalidateQueries({ queryKey: ["payroll-worksheet"] });
+      qc.invalidateQueries({ queryKey: ["payroll-runs"] });
     },
     onError: () => toast({ title: "Could not process worksheet", variant: "destructive" }),
+  });
+
+  const worksheetRowMutation = useMutation({
+    mutationFn: ({ runId, rowId, action, reason }: { runId: number; rowId: number; action: "hold" | "skip" | "clear" | "approve"; reason?: string }) =>
+      payrollApi.updateWorksheetRow(runId, rowId, { action, reason }),
+    onSuccess: () => {
+      toast({ title: "Worksheet row updated" });
+      qc.invalidateQueries({ queryKey: ["payroll-worksheet"] });
+    },
+    onError: (e: unknown) => {
+      const msg = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail || "Could not update worksheet row";
+      toast({ title: "Worksheet update failed", description: msg, variant: "destructive" });
+    },
   });
 
   const lopMutation = useMutation({
@@ -666,6 +704,14 @@ export default function PayrollPage() {
     else setSlipMonth((m) => m + 1);
   };
   const selectedPayslipRecord = (runRecords as PayslipRecord[] | undefined || []).find((record) => record.id === selectedRecordId);
+  const selectedRunStatus = normalizeRunStatus(selectedRun?.status);
+  const worksheetAction = (row: PayrollWorksheetRow, action: "hold" | "skip" | "clear" | "approve") => {
+    if (!selectedRun) return;
+    const needsReason = action === "hold" || action === "skip";
+    const reason = needsReason ? window.prompt(`${action === "hold" ? "Hold" : "Skip"} reason for employee #${row.employee_id}`) : undefined;
+    if (needsReason && !reason) return;
+    worksheetRowMutation.mutate({ runId: selectedRun.id, rowId: row.id, action, reason: reason || undefined });
+  };
 
   return (
     <div className="space-y-6">
@@ -795,8 +841,50 @@ export default function PayrollPage() {
                 </div>
                 <div className="grid gap-4 md:grid-cols-2">
                   <div className="rounded-md border p-4">
+                    <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground">Earnings</h3>
+                    {(selectedPayslipRecord.earnings || []).length === 0 ? (
+                      <p className="text-sm text-muted-foreground">No earning components</p>
+                    ) : (
+                      <div className="space-y-2">
+                        {(selectedPayslipRecord.earnings || []).map((item, index) => (
+                          <div key={`${item.component_name}-${index}`} className="flex justify-between text-sm">
+                            <span>{item.component_name}</span>
+                            <span>{formatCurrency(item.amount)}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  <div className="rounded-md border p-4">
                     <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground">Deductions</h3>
-                    <div className="flex justify-between text-sm"><span>Total deductions</span><span>{formatCurrency(selectedPayslipRecord.total_deductions)}</span></div>
+                    {(selectedPayslipRecord.deductions || []).length === 0 ? (
+                      <p className="text-sm text-muted-foreground">No deduction components</p>
+                    ) : (
+                      <div className="space-y-2">
+                        {(selectedPayslipRecord.deductions || []).map((item, index) => (
+                          <div key={`${item.component_name}-${index}`} className="flex justify-between text-sm">
+                            <span>{item.component_name}</span>
+                            <span>{formatCurrency(item.amount)}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    <div className="mt-3 flex justify-between border-t pt-3 text-sm font-medium"><span>Total deductions</span><span>{formatCurrency(selectedPayslipRecord.total_deductions)}</span></div>
+                  </div>
+                  <div className="rounded-md border p-4">
+                    <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground">Employer Contributions</h3>
+                    {(selectedPayslipRecord.employer_contributions || []).length === 0 ? (
+                      <p className="text-sm text-muted-foreground">No employer contribution components</p>
+                    ) : (
+                      <div className="space-y-2">
+                        {(selectedPayslipRecord.employer_contributions || []).map((item, index) => (
+                          <div key={`${item.component_name}-${index}`} className="flex justify-between text-sm">
+                            <span>{item.component_name}</span>
+                            <span>{formatCurrency(item.amount)}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                   <div className="rounded-md border p-4">
                     <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground">YTD</h3>
@@ -853,7 +941,7 @@ export default function PayrollPage() {
                     </div>
                     <div>
                       <p className="text-muted-foreground">Working Days</p>
-                      <p className="font-medium">{payslip.working_days ?? "—"}</p>
+                      <p className="font-medium">{payslip.working_days ?? "-"}</p>
                     </div>
                   </div>
                 )}
@@ -1033,9 +1121,18 @@ export default function PayrollPage() {
                       <RefreshCw className="mr-2 h-4 w-4" />
                       Reprocess
                     </Button>
-                    <Button size="sm" onClick={() => approveMutation.mutate(selectedRun.id)} disabled={approveMutation.isPending || selectedRun.status !== "Draft"}>
+                    <Button size="sm" onClick={() => runStatusMutation.mutate({ id: selectedRun.id, action: "approve" })} disabled={runStatusMutation.isPending || selectedRunStatus !== "calculated"}>
                       <CheckCircle2 className="mr-2 h-4 w-4" />
                       Approve run
+                    </Button>
+                    <Button variant="outline" size="sm" onClick={() => runStatusMutation.mutate({ id: selectedRun.id, action: "approve", forceApprove: true })} disabled={runStatusMutation.isPending || selectedRunStatus !== "calculated"}>
+                      Force approve
+                    </Button>
+                    <Button variant="outline" size="sm" onClick={() => runStatusMutation.mutate({ id: selectedRun.id, action: "lock" })} disabled={runStatusMutation.isPending || selectedRunStatus !== "approved"}>
+                      Lock
+                    </Button>
+                    <Button variant="outline" size="sm" onClick={() => runStatusMutation.mutate({ id: selectedRun.id, action: "paid" })} disabled={runStatusMutation.isPending || selectedRunStatus !== "locked"}>
+                      Mark paid
                     </Button>
                   </div>
                 </div>
@@ -1113,15 +1210,37 @@ export default function PayrollPage() {
                             </span>
                           </td>
                           <td className="px-4 py-3">
-                            {run.status === "Draft" && (
+                            {normalizeRunStatus(run.status) === "calculated" && (
                               <Button
                                 size="sm"
                                 className="bg-green-600 hover:bg-green-700 h-7 text-xs"
-                                onClick={(e) => { e.stopPropagation(); approveMutation.mutate(run.id); }}
-                                disabled={approveMutation.isPending}
+                                onClick={(e) => { e.stopPropagation(); runStatusMutation.mutate({ id: run.id, action: "approve" }); }}
+                                disabled={runStatusMutation.isPending}
                               >
                                 <CheckCircle2 className="h-3.5 w-3.5 mr-1" />
                                 Approve
+                              </Button>
+                            )}
+                            {normalizeRunStatus(run.status) === "approved" && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="h-7 text-xs"
+                                onClick={(e) => { e.stopPropagation(); runStatusMutation.mutate({ id: run.id, action: "lock" }); }}
+                                disabled={runStatusMutation.isPending}
+                              >
+                                Lock
+                              </Button>
+                            )}
+                            {normalizeRunStatus(run.status) === "locked" && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="h-7 text-xs"
+                                onClick={(e) => { e.stopPropagation(); runStatusMutation.mutate({ id: run.id, action: "paid" }); }}
+                                disabled={runStatusMutation.isPending}
+                              >
+                                Paid
                               </Button>
                             )}
                           </td>
@@ -1237,31 +1356,69 @@ export default function PayrollPage() {
                   <table className="w-full text-sm">
                     <thead className="border-b bg-muted/50">
                       <tr>
-                        {["Employee", "Input", "Calculation", "Approval", "Net", "Hold / Reprocess"].map((h) => (
+                        {["Employee", "Input", "Calculation", "Approval", "Net", "Worksheet Actions"].map((h) => (
                           <th key={h} className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wide">{h}</th>
                         ))}
                       </tr>
                     </thead>
                     <tbody>
-                      {(worksheetRows as { id: number; employee_id: number; input_status: string; calculation_status: string; approval_status: string; net_salary: number; hold_reason?: string }[] | undefined || []).map((row) => (
+                      {(worksheetRows as PayrollWorksheetRow[] | undefined || []).map((row) => (
                         <tr key={row.id} className="border-b">
-                          <td className="px-4 py-3">#{row.employee_id}</td>
+                          <td className="px-4 py-3">
+                            <span className="font-medium">#{row.employee_id}</span>
+                            <p className="text-xs text-muted-foreground">{row.status}</p>
+                          </td>
                           <td className="px-4 py-3"><Badge variant="outline">{row.input_status}</Badge></td>
                           <td className="px-4 py-3">{row.calculation_status}</td>
-                          <td className="px-4 py-3">{row.approval_status}</td>
+                          <td className="px-4 py-3"><Badge variant={row.approval_status === "Approved" ? "secondary" : row.approval_status === "On Hold" || row.approval_status === "Skipped" ? "destructive" : "outline"}>{row.approval_status}</Badge></td>
                           <td className="px-4 py-3">{formatCurrency(row.net_salary)}</td>
                           <td className="px-4 py-3">
                             <div className="flex flex-wrap items-center gap-2">
-                              {row.hold_reason ? (
-                                <Badge variant="destructive"><PauseCircle className="mr-1 h-3 w-3" /> Hold</Badge>
-                              ) : (
-                                <span className="text-muted-foreground">-</span>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="h-7 text-xs"
+                                onClick={() => worksheetAction(row, "approve")}
+                                disabled={worksheetRowMutation.isPending || !!row.hold_reason || !!row.skip_reason || row.approval_status === "Approved"}
+                              >
+                                Approve
+                              </Button>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="h-7 text-xs"
+                                onClick={() => worksheetAction(row, "hold")}
+                                disabled={worksheetRowMutation.isPending || row.approval_status === "Approved"}
+                              >
+                                <PauseCircle className="mr-1 h-3 w-3" />
+                                Hold
+                              </Button>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="h-7 text-xs"
+                                onClick={() => worksheetAction(row, "skip")}
+                                disabled={worksheetRowMutation.isPending || row.approval_status === "Approved"}
+                              >
+                                Skip
+                              </Button>
+                              {(row.hold_reason || row.skip_reason) && (
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-7 text-xs"
+                                  onClick={() => worksheetAction(row, "clear")}
+                                  disabled={worksheetRowMutation.isPending}
+                                >
+                                  Clear
+                                </Button>
                               )}
-                              <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => worksheetMutation.mutate(selectedRun.id)}>
+                              <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => worksheetMutation.mutate(selectedRun.id)} disabled={worksheetMutation.isPending}>
                                 Reprocess
                               </Button>
                             </div>
                             {row.hold_reason && <p className="mt-1 text-xs text-muted-foreground">{row.hold_reason}</p>}
+                            {row.skip_reason && <p className="mt-1 text-xs text-muted-foreground">{row.skip_reason}</p>}
                           </td>
                         </tr>
                       ))}
@@ -1345,7 +1502,7 @@ export default function PayrollPage() {
             <Card>
               <CardHeader>
                 <CardTitle className="text-base">
-                  {MONTHS[selectedRun.month - 1]} {selectedRun.year} — Employee Records
+                  {MONTHS[selectedRun.month - 1]} {selectedRun.year} - Employee Records
                 </CardTitle>
               </CardHeader>
               <CardContent className="p-0">

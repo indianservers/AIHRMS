@@ -10,6 +10,7 @@ from app.models.user import User
 from app.models.employee import Employee
 from app.models.attendance import Holiday
 from app.models.leave import LeaveRequest
+from app.schemas.notification import NotificationCreate
 from app.schemas.leave import (
     LeaveTypeCreate, LeaveTypeUpdate, LeaveTypeSchema,
     LeaveBalanceLedgerSchema, LeaveBalanceSchema, LeaveRequestCreate, LeaveApprovalRequest, LeaveRequestSchema,
@@ -17,6 +18,30 @@ from app.schemas.leave import (
 )
 
 router = APIRouter(prefix="/leave", tags=["Leave Management"])
+
+
+def _employee_display_name(employee: Employee) -> str:
+    name = " ".join(part for part in [employee.first_name, employee.last_name] if part)
+    return name or employee.employee_id or "An employee"
+
+
+def _notify_user(db: Session, user_id: int, title: str, message: str, event_type: str, related_entity_id: int) -> None:
+    from app.api.v1.notifications import create_notification
+
+    create_notification(
+        db,
+        NotificationCreate(
+            user_id=user_id,
+            title=title,
+            message=message,
+            module="leave",
+            event_type=event_type,
+            related_entity_type="leave_request",
+            related_entity_id=related_entity_id,
+            action_url="/leave",
+            channels=["in_app"],
+        ),
+    )
 
 
 def _role_name(user: User) -> str:
@@ -202,7 +227,20 @@ def apply_leave(
     if not current_user.employee:
         raise HTTPException(status_code=400, detail="No employee profile")
     try:
-        return crud_leave.create_leave_request(db, current_user.employee.id, data.model_dump())
+        result = crud_leave.create_leave_request(db, current_user.employee.id, data.model_dump())
+        manager = None
+        if current_user.employee.reporting_manager_id:
+            manager = db.query(Employee).filter(Employee.id == current_user.employee.reporting_manager_id).first()
+        if manager and manager.user_id:
+            _notify_user(
+                db,
+                manager.user_id,
+                "Leave Request Pending Approval",
+                f"{_employee_display_name(current_user.employee)} has applied for leave from {result.from_date} to {result.to_date}.",
+                "leave_submitted",
+                result.id,
+            )
+        return result
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -353,6 +391,17 @@ def approve_leave(
     )
     if not result:
         raise HTTPException(status_code=404, detail="Leave request not found or already processed")
+    emp = db.query(Employee).filter(Employee.id == result.employee_id).first()
+    if emp and emp.user_id:
+        remarks = f" Remarks: {data.review_remarks}" if data.review_remarks else ""
+        _notify_user(
+            db,
+            emp.user_id,
+            f"Leave {data.status}",
+            f"Your leave request ({result.from_date} - {result.to_date}) has been {data.status.lower()}.{remarks}",
+            f"leave_{data.status.lower()}",
+            result.id,
+        )
     return {"message": f"Leave request {data.status}"}
 
 

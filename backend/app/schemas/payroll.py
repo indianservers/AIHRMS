@@ -445,6 +445,7 @@ class PayrollRunCreate(BaseModel):
 class PayrollRunApproval(BaseModel):
     action: str  # approve, lock, paid/mark_paid
     remarks: Optional[str] = None
+    force_approve: bool = False
 
 
 class PayrollRunSchema(BaseModel):
@@ -1273,6 +1274,11 @@ class PayrollRunEmployeeSchema(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class PayrollRunEmployeeAction(BaseModel):
+    action: str
+    reason: Optional[str] = None
 
 
 class PayrollCalculationSnapshotSchema(BaseModel):

@@ -11,7 +11,9 @@ import { toast } from "@/hooks/use-toast";
 import { getRoleKey } from "@/lib/roles";
 import { formatDateTime } from "@/lib/utils";
 import { workflowApi } from "@/services/api";
+import { usePageTitle } from "@/hooks/use-page-title";
 import { useAuthStore } from "@/store/authStore";
+import { NOTIF_UNREAD_KEY } from "@/components/layout/Topbar";
 
 type WorkflowItem = {
   id: string;
@@ -83,6 +85,7 @@ function statusTone(status: string) {
 }
 
 export default function WorkflowInboxPage() {
+  usePageTitle("Workflow Inbox");
   const qc = useQueryClient();
   const { user } = useAuthStore();
   const roleKey = getRoleKey(user?.role, user?.is_superuser);
@@ -127,6 +130,7 @@ export default function WorkflowInboxPage() {
       setDefinitionForm({ name: "", module: "leave", trigger_event: "leave_submitted", description: "" });
       setSteps([blankStep(1)]);
       qc.invalidateQueries({ queryKey: ["workflow-definitions"] });
+      qc.invalidateQueries({ queryKey: NOTIF_UNREAD_KEY });
     },
     onError: () => toast({ title: "Unable to save workflow", variant: "destructive" }),
   });

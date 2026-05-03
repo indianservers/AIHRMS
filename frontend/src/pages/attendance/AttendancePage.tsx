@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Clock, CheckCircle2, XCircle, CalendarDays, MapPin,
@@ -10,6 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { attendanceApi } from "@/services/api";
 import { formatDateTime, statusColor } from "@/lib/utils";
 import { toast } from "@/hooks/use-toast";
+import { usePageTitle } from "@/hooks/use-page-title";
 
 function getMonthDays(year: number, month: number) {
   const days: Date[] = [];
@@ -33,7 +34,7 @@ const statusDotColor: Record<string, string> = {
 };
 
 export default function AttendancePage() {
-  useEffect(() => { document.title = "Attendance · AI HRMS"; }, []);
+  usePageTitle("Attendance");
   const qc = useQueryClient();
   const today = new Date();
   const [viewMonth, setViewMonth] = useState(today.getMonth() + 1);
@@ -120,13 +121,13 @@ export default function AttendancePage() {
         <CardContent className="p-6">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div className="space-y-1">
-              <p className="text-sm text-muted-foreground">Today — {today.toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}</p>
+              <p className="text-sm text-muted-foreground">Today â€” {today.toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}</p>
               {loadingToday ? (
                 <div className="h-6 w-40 skeleton rounded" />
               ) : isCheckedOut ? (
                 <div className="flex items-center gap-2 text-green-600">
                   <CheckCircle2 className="h-5 w-5" />
-                  <span className="font-semibold">Completed — {formatDateTime(todayRecord.check_in)} → {formatDateTime(todayRecord.check_out)}</span>
+                  <span className="font-semibold">Completed â€” {formatDateTime(todayRecord.check_in)} â†’ {formatDateTime(todayRecord.check_out)}</span>
                 </div>
               ) : isCheckedIn ? (
                 <div className="flex items-center gap-2 text-blue-600">
@@ -296,13 +297,13 @@ export default function AttendancePage() {
                         </span>
                       </td>
                       <td className="px-4 py-3 text-muted-foreground">
-                        {r.check_in ? new Date(r.check_in).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }) : "—"}
+                        {r.check_in ? new Date(r.check_in).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }) : "â€”"}
                       </td>
                       <td className="px-4 py-3 text-muted-foreground">
-                        {r.check_out ? new Date(r.check_out).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }) : "—"}
+                        {r.check_out ? new Date(r.check_out).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }) : "â€”"}
                       </td>
                       <td className="px-4 py-3">
-                        {r.total_hours != null ? `${r.total_hours.toFixed(1)}h` : "—"}
+                        {r.total_hours != null ? `${r.total_hours.toFixed(1)}h` : "â€”"}
                       </td>
                     </tr>
                   ))

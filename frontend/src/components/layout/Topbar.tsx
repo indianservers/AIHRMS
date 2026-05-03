@@ -19,6 +19,8 @@ interface TopbarProps {
   onMenuClick: () => void;
 }
 
+export const NOTIF_UNREAD_KEY = ["notifications-unread-count"];
+
 export default function Topbar({ onMenuClick }: TopbarProps) {
   const navigate = useNavigate();
   const { theme, setTheme } = useThemeStore();
@@ -29,9 +31,10 @@ export default function Topbar({ onMenuClick }: TopbarProps) {
   const roleLabel = getRoleLabel(user?.role, user?.is_superuser);
   const initials = user?.email?.slice(0, 2).toUpperCase() || "?";
   const unreadCount = useQuery({
-    queryKey: ["notifications-unread-count"],
+    queryKey: NOTIF_UNREAD_KEY,
     queryFn: () => notificationsApi.unreadCount().then((response) => response.data.unread as number),
-    refetchInterval: 60000,
+    refetchInterval: 60_000,
+    staleTime: 30_000,
     retry: false,
   });
 

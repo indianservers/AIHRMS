@@ -9,6 +9,7 @@ const LoginPage = React.lazy(() => import("@/pages/auth/LoginPage"));
 const DashboardPage = React.lazy(() => import("@/pages/dashboard/DashboardPage"));
 const ManagerDashboardPage = React.lazy(() => import("@/pages/dashboard/ManagerDashboardPage"));
 const EmployeesPage = React.lazy(() => import("@/pages/employees/EmployeesPage"));
+const EmployeeDirectoryPage = React.lazy(() => import("@/pages/employees/EmployeeDirectoryPage"));
 const EmployeeDetailPage = React.lazy(() => import("@/pages/employees/EmployeeDetailPage"));
 const AddEmployeePage = React.lazy(() => import("@/pages/employees/AddEmployeePage"));
 const AttendancePage = React.lazy(() => import("@/pages/attendance/AttendancePage"));
@@ -79,6 +80,7 @@ export default function App() {
             <Route path="dashboard" element={<DashboardPage />} />
             <Route path="manager-dashboard" element={<ManagerDashboardPage />} />
             <Route path="ess" element={<ESSPortalPage />} />
+            <Route path="employee-directory" element={<EmployeeDirectoryPage />} />
             <Route path="employees" element={<EmployeesPage />} />
             <Route path="employees/new" element={<AddEmployeePage />} />
             <Route path="employees/:id" element={<EmployeeDetailPage />} />

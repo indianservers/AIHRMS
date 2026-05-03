@@ -1,14 +1,15 @@
 import { useQuery } from "@tanstack/react-query";
-import { useEffect } from "react";
+
 import { CalendarDays, Clock, Download, FileText, HelpCircle, Laptop, Target, Ticket, UserRound } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { employeeApi, leaveApi, reportsApi } from "@/services/api";
+import { usePageTitle } from "@/hooks/use-page-title";
 import { assetUrl, formatCurrency, formatDate } from "@/lib/utils";
 
 export default function ESSPortalPage() {
-  useEffect(() => { document.title = "ESS Portal · AI HRMS"; }, []);
+  usePageTitle("ESS Portal");
   const completeness = useQuery({ queryKey: ["profile-completeness"], queryFn: () => employeeApi.profileCompleteness().then((r) => r.data), retry: false });
   const summary = useQuery({ queryKey: ["ess-summary"], queryFn: () => reportsApi.essSummary().then((r) => r.data), retry: false });
   const leaveBalance = useQuery({ queryKey: ["ess-leave-balance"], queryFn: () => leaveApi.balance(new Date().getFullYear()).then((r) => r.data), retry: false });
@@ -100,7 +101,7 @@ export default function ESSPortalPage() {
             {(summary.data?.goals || []).slice(0, 5).map((item: any) => (
               <div key={item.id} className="rounded-lg border p-3">
                 <p className="text-sm font-medium">{item.title}</p>
-                <p className="text-xs text-muted-foreground">{item.status} • target {formatDate(item.target_date)}</p>
+                <p className="text-xs text-muted-foreground">{item.status} â€¢ target {formatDate(item.target_date)}</p>
               </div>
             ))}
             {(summary.data?.reviews || []).slice(0, 3).map((item: any) => <Badge key={item.id} variant="outline">{item.review_type}: {item.status}</Badge>)}
@@ -121,7 +122,7 @@ export default function ESSPortalPage() {
             {(summary.data?.assets || []).map((item: any) => (
               <div key={item.id} className="rounded-lg border p-3">
                 <p className="text-sm font-medium">{item.name || "Asset"} <span className="text-muted-foreground">({item.asset_tag})</span></p>
-                <p className="text-xs text-muted-foreground">Assigned {formatDate(item.assigned_date)} • {item.condition || "Good"}</p>
+                <p className="text-xs text-muted-foreground">Assigned {formatDate(item.assigned_date)} â€¢ {item.condition || "Good"}</p>
               </div>
             ))}
             {!summary.data?.assets?.length && <p className="text-sm text-muted-foreground">No active asset assignments.</p>}

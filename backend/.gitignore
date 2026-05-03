@@ -1,0 +1,8 @@
+*.log
+*.out.log
+*.err.log
+__pycache__/
+.pytest_cache/
+uploads/
+venv/
+.env

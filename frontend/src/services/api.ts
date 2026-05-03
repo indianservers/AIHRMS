@@ -65,6 +65,12 @@ export const authApi = {
       new_password: newPassword,
     }),
   logout: () => api.post("/auth/logout"),
+  mfaSetup: () => api.post("/auth/mfa/setup"),
+  mfaConfirm: (data: unknown) => api.post("/auth/mfa/confirm", data),
+  mfaVerify: (data: unknown) => api.post("/auth/mfa/verify", data),
+  mfaDisable: (data: unknown) => api.delete("/auth/mfa/disable", { data }),
+  mfaStatus: () => api.get("/auth/mfa/status"),
+  regenerateRecoveryCodes: (data: unknown) => api.post("/auth/mfa/regenerate-recovery-codes", data),
   permissions: () => api.get("/auth/permissions"),
   roles: () => api.get("/auth/roles"),
   createRole: (data: unknown) => api.post("/auth/roles", data),
@@ -78,11 +84,30 @@ export const authApi = {
   verifyMfaMethod: (id: number) => api.put(`/auth/mfa-methods/${id}/verify`),
   passwordPolicies: () => api.get("/auth/password-policies"),
   createPasswordPolicy: (data: unknown) => api.post("/auth/password-policies", data),
+  updatePasswordPolicy: (id: number, data: unknown) => api.put(`/auth/password-policies/${id}`, data),
+  enforceMfaPolicy: (id: number) => api.post(`/auth/password-policies/${id}/enforce-mfa`),
   loginAttempts: (params?: Record<string, unknown>) => api.get("/auth/login-attempts", { params }),
+  ssoProviders: () => api.get("/auth/sso/providers/active"),
+  ssoAdminProviders: () => api.get("/auth/sso/providers"),
+  createSsoProvider: (data: unknown) => api.post("/auth/sso/providers", data),
+  updateSsoProvider: (id: number, data: unknown) => api.put(`/auth/sso/providers/${id}`, data),
+  deleteSsoProvider: (id: number) => api.delete(`/auth/sso/providers/${id}`),
+  testSsoProvider: (id: number) => api.get(`/auth/sso/providers/${id}/test`),
+  ssoMetadata: (id: number) => api.get(`/auth/sso/providers/${id}/sp-metadata`, { responseType: "blob" }),
 };
 
 export const employeeApi = {
   list: (params?: Record<string, unknown>) => api.get("/employees/", { params }),
+  directory: (params?: Record<string, unknown>) => api.get("/employees/directory", { params }),
+  directoryExport: (params?: Record<string, unknown>) =>
+    api.get("/employees/directory/export", { params, responseType: "blob" }),
+  directoryFilters: () => api.get("/employees/directory/filters"),
+  recentJoiners: (params?: Record<string, unknown>) => api.get("/employees/recent-joiners", { params }),
+  birthdays: (params?: Record<string, unknown>) => api.get("/employees/birthdays", { params }),
+  workAnniversaries: (params?: Record<string, unknown>) => api.get("/employees/work-anniversaries", { params }),
+  orgSearch: (params?: Record<string, unknown>) => api.get("/employees/org-search", { params }),
+  profileCard: (id: number) => api.get(`/employees/${id}/profile-card`),
+  reportDirectoryCorrection: (data: unknown) => api.post("/employees/directory/report-correction", data),
   create: (data: unknown) => api.post("/employees/", data),
   me: () => api.get("/employees/me"),
   exportCsv: (params?: Record<string, unknown>) =>
@@ -94,6 +119,10 @@ export const employeeApi = {
   get: (id: number) => api.get(`/employees/${id}`),
   update: (id: number, data: unknown) => api.put(`/employees/${id}`, data),
   delete: (id: number) => api.delete(`/employees/${id}`),
+  userOptions: (params?: Record<string, unknown>) =>
+    api.get("/employees/user-options", { params }),
+  linkUser: (id: number, userId: number | null) =>
+    api.put(`/employees/${id}/user-link`, { user_id: userId }),
   stats: () => api.get("/employees/stats"),
   count: () => api.get("/employees/count"),
   addEducation: (id: number, data: unknown) => api.post(`/employees/${id}/education`, data),
@@ -292,7 +321,7 @@ export const payrollApi = {
     api.put(`/payroll/salary-revisions/${id}/review`, data),
   salaryAudit: (params?: Record<string, unknown>) =>
     api.get("/payroll/salary-audit", { params }),
-  runs: () => api.get("/payroll/runs"),
+  runs: (params?: Record<string, unknown>) => api.get("/payroll/runs", { params }),
   lastRun: () => api.get("/payroll/last-run"),
   runPayroll: (data: unknown) => api.post("/payroll/run", data),
   getRun: (id: number) => api.get(`/payroll/runs/${id}`),
@@ -366,6 +395,8 @@ export const payrollApi = {
     api.get("/payroll/inputs/leave-encashment-lines", { params }),
   createLeaveEncashmentLine: (data: unknown) => api.post("/payroll/inputs/leave-encashment-lines", data),
   runWorksheet: (runId: number) => api.get(`/payroll/runs/${runId}/worksheet`),
+  updateWorksheetRow: (runId: number, rowId: number, data: unknown) =>
+    api.put(`/payroll/runs/${runId}/worksheet/${rowId}`, data),
   processRunWorksheet: (runId: number) => api.post(`/payroll/runs/${runId}/worksheet/process`),
   calculationSnapshots: (runId: number, params?: Record<string, unknown>) =>
     api.get(`/payroll/runs/${runId}/calculation-snapshots`, { params }),
@@ -425,6 +456,18 @@ export const statutoryComplianceApi = {
     api.get("/statutory-compliance/portal-submissions", { params }),
   createPortalSubmission: (data: unknown) => api.post("/statutory-compliance/portal-submissions", data),
   updateCalendarEvent: (id: number, data: unknown) => api.put(`/statutory-compliance/calendar/${id}`, data),
+};
+
+export const statutoryApi = {
+  calendar: (params?: Record<string, unknown>) => api.get("/statutory/calendar", { params }),
+  markFiled: (id: number, data: unknown) => api.put(`/statutory/calendar/${id}/mark-filed`, data),
+  generate: (runId: number, type: string) => api.post(`/statutory/generate/${runId}/${type}`),
+  submissions: (params?: Record<string, unknown>) => api.get("/statutory/submissions", { params }),
+  downloadSubmission: (id: number) =>
+    api.get(`/statutory/submissions/${id}/download`, { responseType: "blob" }),
+  markSubmitted: (id: number, data: unknown) =>
+    api.put(`/statutory/submissions/${id}/mark-submitted`, data),
+  complianceSummary: () => api.get("/statutory/compliance-summary"),
 };
 
 export const lmsApi = {
@@ -568,22 +611,22 @@ export const reportsApi = {
   peopleMoments: (days = 30) => api.get("/reports/people-moments", { params: { days } }),
   globalSearch: (q: string) => api.get("/reports/global-search", { params: { q } }),
   headcountByDept: () => api.get("/reports/headcount-by-department"),
-  attendanceTrend: (month: number, year: number) =>
-    api.get("/reports/attendance-trend", { params: { month, year } }),
-  leaveTrend: (year: number) =>
-    api.get("/reports/leave-trend", { params: { year } }),
-  payrollSummary: (year: number) =>
-    api.get("/reports/payroll-summary", { params: { year } }),
-  turnover: (fromDate: string, toDate: string) =>
-    api.get("/reports/employee-turnover", { params: { from_date: fromDate, to_date: toDate } }),
+  attendanceTrend: (month?: number, year?: number) =>
+    api.get("/reports/attendance-trend", { params: month && year ? { month, year } : undefined }),
+  leaveTrend: (year?: number) =>
+    api.get("/reports/leave-trend", { params: year ? { year } : undefined }),
+  payrollSummary: (year?: number) =>
+    api.get("/reports/payroll-summary", { params: year ? { year } : undefined }),
+  turnover: (fromDate?: string, toDate?: string) =>
+    api.get("/reports/employee-turnover", { params: fromDate && toDate ? { from_date: fromDate, to_date: toDate } : undefined }),
   deiAnalytics: (params?: Record<string, unknown>) =>
     api.get("/reports/dei-analytics", { params }),
   recruitmentFunnel: (jobId?: number) =>
-    api.get("/reports/recruitment-funnel", { params: { job_id: jobId } }),
+    api.get("/reports/recruitment-funnel", { params: jobId ? { job_id: jobId } : undefined }),
   fieldCatalog: (params?: Record<string, unknown>) => api.get("/reports/field-catalog", { params }),
   definitions: (params?: Record<string, unknown>) => api.get("/reports/definitions", { params }),
   createDefinition: (data: unknown) => api.post("/reports/definitions", data),
-  runDefinition: (id: number) => api.post(`/reports/definitions/${id}/run`),
+  runDefinition: (id: number) => api.get(`/reports/definitions/${id}/run`),
 };
 
 export const engagementApi = {
@@ -628,20 +671,25 @@ export const workflowApi = {
 
 export const workflowDefinitionsApi = {
   list: (params?: Record<string, unknown>) =>
-    api.get("/workflow/definitions", { params }),
-  get: (id: number) => api.get(`/workflow/definitions/${id}`),
-  create: (data: unknown) => api.post("/workflow/definitions", data),
-  update: (id: number, data: unknown) => api.put(`/workflow/definitions/${id}`, data),
-  delete: (id: number) => api.delete(`/workflow/definitions/${id}`),
-  getSteps: (id: number) => api.get(`/workflow/definitions/${id}/steps`),
-  addStep: (id: number, data: unknown) =>
-    api.post(`/workflow/definitions/${id}/steps`, data),
+    api.get("/workflow-engine/definitions", { params }),
+  get: (id: number) => api.get(`/workflow-engine/definitions/${id}`),
+  create: (data: unknown) => api.post("/workflow-engine/definitions", data),
+  update: (id: number, data: unknown) => api.put(`/workflow-engine/definitions/${id}`, data),
+  delete: (id: number) => api.delete(`/workflow-engine/definitions/${id}`),
+  toggleActive: (id: number) => api.put(`/workflow-engine/definitions/${id}/toggle-active`),
+  steps: (id: number) => api.get(`/workflow-engine/definitions/${id}/steps`),
+  createStep: (id: number, data: unknown) =>
+    api.post(`/workflow-engine/definitions/${id}/steps`, data),
   updateStep: (id: number, stepId: number, data: unknown) =>
-    api.put(`/workflow/definitions/${id}/steps/${stepId}`, data),
+    api.put(`/workflow-engine/definitions/${id}/steps/${stepId}`, data),
   deleteStep: (id: number, stepId: number) =>
-    api.delete(`/workflow/definitions/${id}/steps/${stepId}`),
-  activate: (id: number) => api.post(`/workflow/definitions/${id}/activate`),
-  deactivate: (id: number) => api.post(`/workflow/definitions/${id}/deactivate`),
+    api.delete(`/workflow-engine/definitions/${id}/steps/${stepId}`),
+  reorderSteps: (id: number, data: unknown) =>
+    api.put(`/workflow-engine/definitions/${id}/steps/reorder`, data),
+  getSteps: (id: number) => api.get(`/workflow-engine/definitions/${id}/steps`),
+  addStep: (id: number, data: unknown) => api.post(`/workflow-engine/definitions/${id}/steps`, data),
+  activate: (id: number) => api.put(`/workflow-engine/definitions/${id}/toggle-active`),
+  deactivate: (id: number) => api.put(`/workflow-engine/definitions/${id}/toggle-active`),
 };
 
 export const notificationsApi = {

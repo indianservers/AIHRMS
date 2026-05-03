@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { notificationsApi } from "@/services/api";
 import { formatDate } from "@/lib/utils";
+import { usePageTitle } from "@/hooks/use-page-title";
 import { toast } from "@/hooks/use-toast";
 
 type Notification = {
@@ -23,6 +24,7 @@ type Notification = {
 };
 
 export default function NotificationsPage() {
+  usePageTitle("Notifications");
   const qc = useQueryClient();
   const [unreadOnly, setUnreadOnly] = useState(false);
   const [page, setPage] = useState(1);

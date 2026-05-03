@@ -7,7 +7,9 @@ from app.models.payroll import (
     SalaryComponent, SalaryStructure, SalaryStructureComponent,
     EmployeeSalary, PayrollRun, PayrollRecord, PayrollComponent, Reimbursement,
     PayrollVarianceItem, PayrollPeriod, PayrollAttendanceInput,
-    OvertimePayLine, LeaveEncashmentLine
+    OvertimePayLine, LeaveEncashmentLine,
+    EmployeeStatutoryProfile, PayrollStatutoryContributionLine,
+    PFRule, ESIRule, ProfessionalTaxSlab, LWFSlab,
 )
 
 
@@ -81,6 +83,137 @@ def coerce_payroll_run_status(payroll_run: PayrollRun) -> PayrollRun:
 
 def _money(value: Decimal) -> Decimal:
     return (value or Decimal("0")).quantize(Decimal("0.01"))
+
+
+def _rounded_money(value: Decimal, rule: str | None = "Nearest Rupee") -> Decimal:
+    if rule == "No Rounding":
+        return _money(value)
+    return value.quantize(Decimal("1")).quantize(Decimal("0.01"))
+
+
+def _active_rule(db: Session, model, on_date: date):
+    return db.query(model).filter(
+        model.is_active == True,
+        model.effective_from <= on_date,
+        or_(model.effective_to.is_(None), model.effective_to >= on_date),
+    ).order_by(model.effective_from.desc(), model.id.desc()).first()
+
+
+def _salary_in_slab(salary: Decimal, salary_from: Decimal, salary_to: Decimal | None) -> bool:
+    if salary < Decimal(salary_from or 0):
+        return False
+    return salary_to is None or salary <= Decimal(salary_to)
+
+
+def _calculate_statutory_amounts(
+    db: Session,
+    employee_id: int,
+    month: int,
+    calculation_date: date,
+    basic: Decimal,
+    gross: Decimal,
+) -> tuple[dict[str, Decimal], list[PayrollStatutoryContributionLine]]:
+    profile = db.query(EmployeeStatutoryProfile).filter(
+        EmployeeStatutoryProfile.employee_id == employee_id,
+    ).first()
+    amounts = {
+        "pf_employee": Decimal("0"),
+        "pf_employer": Decimal("0"),
+        "esi_employee": Decimal("0"),
+        "esi_employer": Decimal("0"),
+        "professional_tax": Decimal("0"),
+        "lwf_employee": Decimal("0"),
+        "lwf_employer": Decimal("0"),
+    }
+    lines: list[PayrollStatutoryContributionLine] = []
+
+    if not profile or profile.pf_applicable:
+        pf_rule = _active_rule(db, PFRule, calculation_date)
+        if pf_rule:
+            pf_wage = min(Decimal(basic or 0), Decimal(pf_rule.wage_ceiling or 0))
+            employee_pf = _rounded_money(pf_wage * Decimal(pf_rule.employee_rate or 0) / Decimal("100"), pf_rule.rounding_rule)
+            employer_pf = _rounded_money(pf_wage * Decimal(pf_rule.employer_rate or 0) / Decimal("100"), pf_rule.rounding_rule)
+            amounts["pf_employee"] = employee_pf
+            amounts["pf_employer"] = employer_pf
+            lines.append(PayrollStatutoryContributionLine(
+                employee_id=employee_id,
+                component="PF",
+                wage_base=pf_wage,
+                employee_amount=employee_pf,
+                employer_amount=employer_pf,
+                admin_charge=_rounded_money(pf_wage * Decimal(pf_rule.admin_charge_rate or 0) / Decimal("100"), pf_rule.rounding_rule),
+                edli_amount=_rounded_money(pf_wage * Decimal(pf_rule.edli_rate or 0) / Decimal("100"), pf_rule.rounding_rule),
+                rule_id=pf_rule.id,
+                rule_type="PF",
+            ))
+
+    if not profile or profile.esi_applicable:
+        esi_rule = _active_rule(db, ESIRule, calculation_date)
+        esi_wage = Decimal(gross or 0)
+        if esi_rule and esi_wage <= Decimal(esi_rule.wage_threshold or 0):
+            employee_esi = _rounded_money(esi_wage * Decimal(esi_rule.employee_rate or 0) / Decimal("100"), esi_rule.rounding_rule)
+            employer_esi = _rounded_money(esi_wage * Decimal(esi_rule.employer_rate or 0) / Decimal("100"), esi_rule.rounding_rule)
+            amounts["esi_employee"] = employee_esi
+            amounts["esi_employer"] = employer_esi
+            lines.append(PayrollStatutoryContributionLine(
+                employee_id=employee_id,
+                component="ESI",
+                wage_base=esi_wage,
+                employee_amount=employee_esi,
+                employer_amount=employer_esi,
+                rule_id=esi_rule.id,
+                rule_type="ESI",
+            ))
+
+    state = profile.pt_state if profile else None
+    if state:
+        pt_slabs = db.query(ProfessionalTaxSlab).filter(
+            ProfessionalTaxSlab.is_active == True,
+            ProfessionalTaxSlab.state == state,
+            ProfessionalTaxSlab.effective_from <= calculation_date,
+            or_(ProfessionalTaxSlab.effective_to.is_(None), ProfessionalTaxSlab.effective_to >= calculation_date),
+        ).order_by(ProfessionalTaxSlab.salary_from.asc(), ProfessionalTaxSlab.id.asc()).all()
+        for slab in pt_slabs:
+            if slab.month and slab.month != month:
+                continue
+            if _salary_in_slab(Decimal(gross or 0), Decimal(slab.salary_from or 0), slab.salary_to):
+                amounts["professional_tax"] = _money(Decimal(slab.employee_amount or 0))
+                lines.append(PayrollStatutoryContributionLine(
+                    employee_id=employee_id,
+                    component="PT",
+                    wage_base=gross,
+                    employee_amount=amounts["professional_tax"],
+                    employer_amount=Decimal("0"),
+                    rule_id=slab.id,
+                    rule_type="PT",
+                ))
+                break
+
+    if profile and profile.lwf_applicable and state:
+        lwf_slabs = db.query(LWFSlab).filter(
+            LWFSlab.is_active == True,
+            LWFSlab.state == state,
+            LWFSlab.effective_from <= calculation_date,
+            or_(LWFSlab.effective_to.is_(None), LWFSlab.effective_to >= calculation_date),
+        ).order_by(LWFSlab.salary_from.asc(), LWFSlab.id.asc()).all()
+        for slab in lwf_slabs:
+            if slab.deduction_month and slab.deduction_month != month:
+                continue
+            if _salary_in_slab(Decimal(gross or 0), Decimal(slab.salary_from or 0), slab.salary_to):
+                amounts["lwf_employee"] = _money(Decimal(slab.employee_amount or 0))
+                amounts["lwf_employer"] = _money(Decimal(slab.employer_amount or 0))
+                lines.append(PayrollStatutoryContributionLine(
+                    employee_id=employee_id,
+                    component="LWF",
+                    wage_base=gross,
+                    employee_amount=amounts["lwf_employee"],
+                    employer_amount=amounts["lwf_employer"],
+                    rule_id=slab.id,
+                    rule_type="LWF",
+                ))
+                break
+
+    return amounts, lines
 
 
 def get_active_salary(db: Session, employee_id: int) -> Optional[EmployeeSalary]:
@@ -230,17 +363,6 @@ def run_payroll(db: Session, month: int, year: int, run_by_user_id: int) -> Payr
 
         gross = monthly_ctc - lop_deduction
 
-        # PF: 12% of basic
-        pf_employee = min(basic * Decimal("0.12"), Decimal("1800"))
-        pf_employer = pf_employee
-
-        # Professional tax (simplified)
-        pt = Decimal("200") if gross > Decimal("20000") else Decimal("0")
-
-        # ESI: 0.75% employee if gross <= 21000
-        esi_employee = gross * Decimal("0.0075") if gross <= Decimal("21000") else Decimal("0")
-        esi_employer = gross * Decimal("0.0325") if gross <= Decimal("21000") else Decimal("0")
-
         approved_reimbursements = db.query(Reimbursement).filter(
             and_(
                 Reimbursement.employee_id == emp.id,
@@ -275,8 +397,23 @@ def run_payroll(db: Session, month: int, year: int, run_by_user_id: int) -> Payr
             overtime_total = sum((item.amount or Decimal("0")) for item in overtime_lines)
             encashment_total = sum((item.amount or Decimal("0")) for item in encashment_lines)
 
-        total_ded = pf_employee + esi_employee + pt
         gross = gross + overtime_total + encashment_total
+        statutory_amounts, statutory_lines = _calculate_statutory_amounts(
+            db=db,
+            employee_id=emp.id,
+            month=month,
+            calculation_date=period_start,
+            basic=basic,
+            gross=gross,
+        )
+        pf_employee = statutory_amounts["pf_employee"]
+        pf_employer = statutory_amounts["pf_employer"]
+        esi_employee = statutory_amounts["esi_employee"]
+        esi_employer = statutory_amounts["esi_employer"]
+        pt = statutory_amounts["professional_tax"]
+        lwf_employee = statutory_amounts["lwf_employee"]
+        lwf_employer = statutory_amounts["lwf_employer"]
+        total_ded = pf_employee + esi_employee + pt + lwf_employee
         net = gross - total_ded + reimbursement_total
 
         # AI anomaly detection placeholder
@@ -294,6 +431,9 @@ def run_payroll(db: Session, month: int, year: int, run_by_user_id: int) -> Payr
             )
         ).first()
         if existing:
+            db.query(PayrollStatutoryContributionLine).filter(
+                PayrollStatutoryContributionLine.payroll_record_id == existing.id,
+            ).delete(synchronize_session=False)
             db.delete(existing)
             db.flush()
 
@@ -316,6 +456,7 @@ def run_payroll(db: Session, month: int, year: int, run_by_user_id: int) -> Payr
             esi_employer=esi_employer,
             professional_tax=pt,
             tds=Decimal("0"),
+            other_deductions=lwf_employee,
             total_deductions=total_ded,
             reimbursements=reimbursement_total,
             net_salary=net,
@@ -333,8 +474,10 @@ def run_payroll(db: Session, month: int, year: int, run_by_user_id: int) -> Payr
             ("PF Employee", "Deduction", pf_employee),
             ("ESI Employee", "Deduction", esi_employee),
             ("Professional Tax", "Deduction", pt),
+            ("Labour Welfare Fund", "Deduction", lwf_employee),
             ("PF Employer", "Employer Contribution", pf_employer),
             ("ESI Employer", "Employer Contribution", esi_employer),
+            ("LWF Employer", "Employer Contribution", lwf_employer),
         ]
         if overtime_total > 0:
             payroll_lines.append(("Overtime Pay", "Earning", overtime_total))
@@ -363,6 +506,10 @@ def run_payroll(db: Session, month: int, year: int, run_by_user_id: int) -> Payr
                         "period_end": period_end.isoformat(),
                     },
                 ))
+
+        for line in statutory_lines:
+            line.payroll_record_id = record.id
+            db.add(line)
 
         for reimbursement in approved_reimbursements:
             reimbursement.payroll_record_id = record.id

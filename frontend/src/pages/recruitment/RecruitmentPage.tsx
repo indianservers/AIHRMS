@@ -12,6 +12,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { recruitmentApi } from "@/services/api";
 import { formatDate, statusColor } from "@/lib/utils";
+import { usePageTitle } from "@/hooks/use-page-title";
 import { toast } from "@/hooks/use-toast";
 
 interface Job {
@@ -51,6 +52,7 @@ const CANDIDATE_STATUSES = [
 ];
 
 export default function RecruitmentPage() {
+  usePageTitle("Recruitment");
   const qc = useQueryClient();
   const [activeTab, setActiveTab] = useState<"jobs" | "candidates">("jobs");
   const [showJobForm, setShowJobForm] = useState(false);
@@ -237,7 +239,7 @@ export default function RecruitmentPage() {
                   </div>
                   <div className="space-y-1 text-xs text-muted-foreground">
                     {job.department && <p>{job.department.name}</p>}
-                    <p>{job.employment_type} {job.location ? `· ${job.location}` : ""}</p>
+                    <p>{job.employment_type} {job.location ? `Â· ${job.location}` : ""}</p>
                     <p>{job.openings} opening{job.openings !== 1 ? "s" : ""}</p>
                   </div>
                   <div className="flex items-center justify-between pt-1">
@@ -339,8 +341,8 @@ export default function RecruitmentPage() {
                             <p className="font-medium">{c.name}</p>
                             <p className="text-xs text-muted-foreground">{c.email}</p>
                           </td>
-                          <td className="px-4 py-3 text-muted-foreground">{c.job?.title || "—"}</td>
-                          <td className="px-4 py-3 text-muted-foreground">{c.source || "—"}</td>
+                          <td className="px-4 py-3 text-muted-foreground">{c.job?.title || "â€”"}</td>
+                          <td className="px-4 py-3 text-muted-foreground">{c.source || "â€”"}</td>
                           <td className="px-4 py-3 text-muted-foreground">{formatDate(c.applied_date)}</td>
                           <td className="px-4 py-3">
                             <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${statusColor(c.status)}`}>

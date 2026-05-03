@@ -5,11 +5,13 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { aiApi } from "@/services/api";
+import { usePageTitle } from "@/hooks/use-page-title";
 import { toast } from "@/hooks/use-toast";
 
 type Message = { role: "user" | "assistant"; content: string };
 
 export default function AIAssistantPage() {
+  usePageTitle("AI Assistant");
   const [message, setMessage] = useState("");
   const [messages, setMessages] = useState<Message[]>([
     { role: "assistant", content: "Ask me about HR policy, leave, payroll, onboarding, or employee operations." },

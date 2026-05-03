@@ -5,6 +5,7 @@ import { AlertTriangle, Activity, RefreshCw, Search } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { usePageTitle } from "@/hooks/use-page-title";
 import { logsApi } from "@/services/api";
 
 type AuditLog = {
@@ -39,6 +40,7 @@ function statusVariant(status?: number | null) {
 }
 
 export default function AdminLogsPage() {
+  usePageTitle("Audit Logs");
   const [endpoint, setEndpoint] = useState("attendance");
   const [errorsOnly, setErrorsOnly] = useState(true);
   const params = { endpoint: endpoint || undefined, limit: 100 };

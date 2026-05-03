@@ -2,6 +2,7 @@ from app.db.base_class import Base  # noqa: F401
 
 # Import all models so Alembic can detect them
 from app.models.user import User, Role, Permission, UserSession, MFAMethod, PasswordPolicy, LoginAttempt  # noqa: F401
+from app.models.sso import SSOProvider, SSOSession  # noqa: F401
 from app.models.company import Company, Branch, Department, Designation, BusinessUnit, CostCenter, WorkLocation, GradeBand, JobFamily, JobProfile, Position, HeadcountPlan  # noqa: F401
 from app.models.employee import Employee, EmployeeEducation, EmployeeExperience, EmployeeSkill, EmployeeDocument, EmployeeLifecycleEvent, EmployeeChangeRequest  # noqa: F401
 from app.models.attendance import Shift, ShiftWeeklyOff, ShiftRosterAssignment, Holiday, Attendance, AttendancePunch, BiometricDevice, BiometricImportBatch, GeoAttendancePolicy, AttendancePunchProof, AttendanceMonthLock, AttendanceRegularization, OvertimeRequest  # noqa: F401

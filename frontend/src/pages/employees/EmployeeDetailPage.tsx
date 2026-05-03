@@ -1,6 +1,6 @@
 import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Camera, ChevronLeft, Save, User, Briefcase, CreditCard, GraduationCap, FileText, Star, HeartPulse, Users } from "lucide-react";
+import { Camera, ChevronLeft, Link2, Save, User, Briefcase, CreditCard, GraduationCap, FileText, Star, HeartPulse, Unlink, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -10,6 +10,7 @@ import { useEffect, useState } from "react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "@/hooks/use-toast";
+import { usePageTitle } from "@/hooks/use-page-title";
 
 const TABS = [
   { id: "personal", label: "Personal", icon: User },
@@ -18,6 +19,7 @@ const TABS = [
   { id: "experience", label: "Experience", icon: Briefcase },
   { id: "skills", label: "Skills", icon: Star },
   { id: "documents", label: "Documents", icon: FileText },
+  { id: "account", label: "Account", icon: Link2 },
   { id: "family", label: "Family", icon: Users },
   { id: "health", label: "Health", icon: HeartPulse },
   { id: "bank", label: "Bank & Tax", icon: CreditCard },
@@ -61,6 +63,27 @@ const EDIT_FIELDS: Record<string, Array<[string, string, string?]>> = {
   ],
 };
 
+function getApiErrorMessage(error: unknown): string {
+  const responseData = (error as { response?: { data?: { detail?: unknown; message?: unknown } }; message?: string })?.response?.data;
+  const detail = responseData?.detail || responseData?.message;
+  if (typeof detail === "string") return detail;
+  if (Array.isArray(detail)) {
+    return detail
+      .map((item) => {
+        const location = Array.isArray(item?.loc) ? item.loc.filter((part: string) => part !== "body").join(".") : "";
+        const message = item?.msg || item?.message || "Invalid value";
+        return location ? `${location}: ${message}` : message;
+      })
+      .join("; ");
+  }
+  if (detail && typeof detail === "object") {
+    return Object.entries(detail as Record<string, unknown>)
+      .map(([key, value]) => `${key}: ${Array.isArray(value) ? value.join(", ") : String(value)}`)
+      .join("; ");
+  }
+  return (error as { message?: string })?.message || "Please check the required fields and try again.";
+}
+
 export default function EmployeeDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -71,11 +94,22 @@ export default function EmployeeDetailPage() {
   const [educationForm, setEducationForm] = useState<Record<string, any>>({});
   const [experienceForm, setExperienceForm] = useState<Record<string, any>>({});
   const [skillForm, setSkillForm] = useState<Record<string, any>>({});
+  const [selectedUserId, setSelectedUserId] = useState("");
   const editing = params.get("edit") === "true";
+  usePageTitle("Employee Details");
 
   const { data: emp, isLoading } = useQuery({
     queryKey: ["employee", id],
     queryFn: () => employeeApi.get(Number(id)).then((r) => r.data),
+    enabled: !!id,
+  });
+
+  const userOptions = useQuery({
+    queryKey: ["employee-user-options", id],
+    queryFn: () =>
+      employeeApi
+        .userOptions({ include_employee_id: Number(id) })
+        .then((r) => r.data as Array<{ id: number; email: string; role?: string | null; employee_id?: number | null; employee_code?: string | null; employee_name?: string | null }>),
     enabled: !!id,
   });
 
@@ -144,6 +178,20 @@ export default function EmployeeDetailPage() {
     }),
   });
 
+  const linkUserMutation = useMutation({
+    mutationFn: (userId: number | null) => employeeApi.linkUser(Number(id), userId),
+    onSuccess: () => {
+      toast({ title: "User mapping updated" });
+      qc.invalidateQueries({ queryKey: ["employee", id] });
+      qc.invalidateQueries({ queryKey: ["employee-user-options", id] });
+    },
+    onError: (err: unknown) => toast({
+      title: "Could not update user mapping",
+      description: getApiErrorMessage(err),
+      variant: "destructive",
+    }),
+  });
+
   useEffect(() => {
     if (!emp || !editing) return;
     setEditForm({
@@ -182,6 +230,11 @@ export default function EmployeeDetailPage() {
     });
   }, [emp, editing]);
 
+  useEffect(() => {
+    if (!emp) return;
+    setSelectedUserId(emp.user_id ? String(emp.user_id) : "");
+  }, [emp]);
+
   if (isLoading) {
     return (
       <div className="space-y-4">
@@ -195,6 +248,7 @@ export default function EmployeeDetailPage() {
   if (!emp) return null;
 
   const initials = getInitials(`${emp.first_name} ${emp.last_name}`);
+  const linkedUser = (userOptions.data || []).find((user) => user.id === emp.user_id);
 
   return (
     <div className="space-y-6">
@@ -381,6 +435,12 @@ export default function EmployeeDetailPage() {
                 Document upload is managed from the Documents section for this employee.
               </p>
             )}
+
+            {activeTab === "account" && (
+              <p className="text-sm text-muted-foreground">
+                User login mapping can be managed from the Account tab below.
+              </p>
+            )}
           </CardContent>
         </Card>
       )}
@@ -562,6 +622,68 @@ export default function EmployeeDetailPage() {
         </Card>
       )}
 
+      {activeTab === "account" && (
+        <Card>
+          <CardHeader><CardTitle>User Login Mapping</CardTitle></CardHeader>
+          <CardContent className="space-y-4">
+            <div className="rounded-lg border bg-muted/30 p-4 text-sm">
+              <p className="font-medium">Current login</p>
+              <p className="mt-1 text-muted-foreground">
+                {emp.user_id
+                  ? `${linkedUser?.email || `User #${emp.user_id}`} is linked to this employee.`
+                  : "No login user is linked to this employee yet."}
+              </p>
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-[1fr_auto_auto]">
+              <div className="space-y-2">
+                <Label>Select existing user</Label>
+                <select
+                  value={selectedUserId}
+                  onChange={(event) => setSelectedUserId(event.target.value)}
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                  disabled={userOptions.isLoading}
+                >
+                  <option value="">No linked user</option>
+                  {(userOptions.data || []).map((user) => (
+                    <option key={user.id} value={user.id}>
+                      {user.email}{user.role ? ` (${user.role})` : ""}{user.employee_id ? " - current" : ""}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-xs text-muted-foreground">
+                  Only unlinked users are shown, plus the user already linked to this employee.
+                </p>
+              </div>
+              <div className="flex items-end">
+                <Button
+                  type="button"
+                  onClick={() => linkUserMutation.mutate(selectedUserId ? Number(selectedUserId) : null)}
+                  disabled={linkUserMutation.isPending || userOptions.isLoading}
+                >
+                  <Link2 className="mr-2 h-4 w-4" />
+                  {linkUserMutation.isPending ? "Saving..." : "Save Mapping"}
+                </Button>
+              </div>
+              <div className="flex items-end">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => {
+                    setSelectedUserId("");
+                    linkUserMutation.mutate(null);
+                  }}
+                  disabled={!emp.user_id || linkUserMutation.isPending}
+                >
+                  <Unlink className="mr-2 h-4 w-4" />
+                  Unlink
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {activeTab === "bank" && (
         <Card>
           <CardHeader><CardTitle>Bank & Tax Details</CardTitle></CardHeader>
@@ -667,27 +789,4 @@ function AddRecordForm({
       </div>
     </form>
   );
-}
-
-function getApiErrorMessage(error: unknown) {
-  const responseData = (error as { response?: { data?: { detail?: unknown; message?: unknown } }; message?: string })?.response?.data;
-  const detail = responseData?.detail || responseData?.message;
-
-  if (typeof detail === "string") return detail;
-  if (Array.isArray(detail)) {
-    return detail
-      .map((item) => {
-        const location = Array.isArray(item?.loc) ? item.loc.filter((part: string) => part !== "body").join(".") : "";
-        const message = item?.msg || item?.message || "Invalid value";
-        return location ? `${location}: ${message}` : message;
-      })
-      .join("; ");
-  }
-  if (detail && typeof detail === "object") {
-    return Object.entries(detail)
-      .map(([key, value]) => `${key}: ${Array.isArray(value) ? value.join(", ") : String(value)}`)
-      .join("; ");
-  }
-
-  return (error as { message?: string })?.message || "Please check the required fields and try again.";
 }

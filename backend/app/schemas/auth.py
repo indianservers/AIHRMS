@@ -19,6 +19,21 @@ class TokenResponse(BaseModel):
     employee_id: Optional[int] = None
 
 
+class MFAVerifyRequest(BaseModel):
+    mfa_token: str
+    code: str
+    method: str = "totp"
+
+
+class MFAConfirmRequest(BaseModel):
+    method_id: int
+    code: str
+
+
+class MFACodeRequest(BaseModel):
+    code: str
+
+
 class RefreshTokenRequest(BaseModel):
     refresh_token: str
 
@@ -135,15 +150,20 @@ class MFAMethodSchema(MFAMethodCreate):
 
 
 class PasswordPolicyCreate(BaseModel):
-    name: str
+    name: str = "Default"
     min_length: int = 8
     require_uppercase: bool = True
     require_lowercase: bool = True
     require_number: bool = True
+    require_special: bool = False
     require_symbol: bool = False
+    max_age_days: int = 90
     expiry_days: int = 90
     lockout_attempts: int = 5
+    lockout_duration_minutes: int = 30
     lockout_minutes: int = 30
+    mfa_required: bool = False
+    is_default: bool = False
     is_active: bool = True
 
 
@@ -161,7 +181,10 @@ class LoginAttemptSchema(BaseModel):
     user_id: Optional[int] = None
     ip_address: Optional[str] = None
     status: str
+    success: Optional[bool] = None
     failure_reason: Optional[str] = None
+    mfa_attempted: bool = False
+    mfa_success: Optional[bool] = None
     created_at: datetime
 
     class Config:

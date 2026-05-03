@@ -11,6 +11,7 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { employeeApi, companyApi, attendanceApi } from "@/services/api";
 import { toast } from "@/hooks/use-toast";
+import { usePageTitle } from "@/hooks/use-page-title";
 
 const schema = z.object({
   first_name: z.string().min(1, "First name is required"),

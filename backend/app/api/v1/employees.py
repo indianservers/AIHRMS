@@ -2,14 +2,18 @@ from datetime import date, datetime, timedelta, timezone
 from io import StringIO
 from typing import List, Optional
 import csv
+import json
+import time
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
 from fastapi.responses import StreamingResponse
-from sqlalchemy import func
-from sqlalchemy.orm import Session
+from pydantic import BaseModel
+from sqlalchemy import asc, desc, func, or_
+from sqlalchemy.orm import Session, joinedload
 from app.core.deps import get_db, get_current_user, RequirePermission
 from app.core.masking import mask_employee_detail, mask_employee_list_item
 from app.crud.crud_employee import crud_employee
-from app.models.user import User
+from app.models.audit import AuditLog
+from app.models.user import Role, User
 from app.models.employee import Employee, EmployeeDocument, EmployeeChangeRequest
 from app.api.v1.notifications import create_notification
 from app.schemas.notification import NotificationCreate
@@ -27,6 +31,252 @@ import os, shutil
 from app.core.config import settings
 
 router = APIRouter(prefix="/employees", tags=["Employees"])
+_DIRECTORY_SEARCH_BUCKETS: dict[int, list[float]] = {}
+
+
+class EmployeeUserLinkUpdate(BaseModel):
+    user_id: Optional[int] = None
+
+
+class EmployeeUserOption(BaseModel):
+    id: int
+    email: str
+    role: Optional[str] = None
+    employee_id: Optional[int] = None
+    employee_code: Optional[str] = None
+    employee_name: Optional[str] = None
+
+
+class EmployeeDirectoryItem(BaseModel):
+    id: int
+    employee_id: str
+    full_name: str
+    preferred_display_name: Optional[str] = None
+    email: Optional[str] = None
+    work_email: Optional[str] = None
+    phone_number: Optional[str] = None
+    office_extension: Optional[str] = None
+    department: Optional[str] = None
+    designation: Optional[str] = None
+    branch: Optional[str] = None
+    reporting_manager: Optional[str] = None
+    work_location: Optional[str] = None
+    desk_code: Optional[str] = None
+    timezone: Optional[str] = None
+    skills_tags: Optional[str] = None
+    profile_completeness: Optional[int] = None
+    profile_photo_url: Optional[str] = None
+    is_direct_report: bool = False
+    contact_masked: bool = False
+
+
+class EmployeeProfileCard(BaseModel):
+    id: int
+    employee_id: str
+    full_name: str
+    email: Optional[str] = None
+    phone_number: Optional[str] = None
+    department: Optional[str] = None
+    designation: Optional[str] = None
+    branch: Optional[str] = None
+    reporting_manager: Optional[str] = None
+    work_location: Optional[str] = None
+    desk_code: Optional[str] = None
+    office_extension: Optional[str] = None
+    timezone: Optional[str] = None
+    skills: List[str] = []
+    profile_photo_url: Optional[str] = None
+    contact_masked: bool = False
+
+
+class DirectoryCorrectionReport(BaseModel):
+    employee_id: int
+    field_name: str
+    message: str
+
+
+class DirectorySuggestion(BaseModel):
+    id: int
+    label: str
+    subtitle: Optional[str] = None
+    type: str = "employee"
+
+
+class DirectoryEventItem(BaseModel):
+    id: int
+    employee_id: str
+    full_name: str
+    department: Optional[str] = None
+    designation: Optional[str] = None
+    event_date: date
+    profile_photo_url: Optional[str] = None
+
+
+def _role_key(user: User) -> str:
+    if user.is_superuser:
+        return "admin"
+    name = (user.role.name if user.role else "").lower().replace(" ", "_")
+    if name in {"admin", "super_admin"}:
+        return "admin"
+    if name in {"hr", "hr_admin", "hr_manager"}:
+        return "hr"
+    if name in {"ceo", "founder", "director", "executive"}:
+        return "ceo"
+    if name in {"manager", "team_lead", "department_head"}:
+        return "manager"
+    return "employee"
+
+
+def _can_manage_directory(user: User) -> bool:
+    return _role_key(user) in {"admin", "hr"}
+
+
+def _is_team_related(viewer: User, employee: Employee) -> bool:
+    if not viewer.employee:
+        return False
+    viewer_emp = viewer.employee
+    return (
+        employee.id == viewer_emp.id
+        or employee.reporting_manager_id == viewer_emp.id
+        or viewer_emp.reporting_manager_id is not None
+        and employee.reporting_manager_id == viewer_emp.reporting_manager_id
+    )
+
+
+def _can_view_contact(user: User, employee: Employee) -> bool:
+    visibility = employee.directory_visibility or "public"
+    if _can_manage_directory(user) or _role_key(user) == "ceo":
+        return visibility != "hidden"
+    if visibility == "public":
+        return True
+    if visibility == "team":
+        return _is_team_related(user, employee)
+    return False
+
+
+def _directory_name(employee: Employee) -> str:
+    return employee.preferred_display_name or f"{employee.first_name} {employee.last_name}"
+
+
+def _directory_query(db: Session):
+    return (
+        db.query(Employee)
+        .options(
+            joinedload(Employee.department),
+            joinedload(Employee.designation),
+            joinedload(Employee.branch),
+            joinedload(Employee.reporting_manager),
+        )
+        .filter(
+            Employee.deleted_at.is_(None),
+            Employee.status.in_(["Active", "Probation", "On Leave"]),
+            or_(Employee.directory_visibility.is_(None), Employee.directory_visibility != "hidden"),
+        )
+    )
+
+
+def _apply_directory_filters(
+    query,
+    search: Optional[str] = None,
+    department_id: Optional[int] = None,
+    designation_id: Optional[int] = None,
+    branch_id: Optional[int] = None,
+    location_id: Optional[int] = None,
+    skills: Optional[str] = None,
+    work_location: Optional[str] = None,
+    employment_type: Optional[str] = None,
+    worker_type: Optional[str] = None,
+    timezone_filter: Optional[str] = None,
+    has_photo: Optional[bool] = None,
+    profile_completeness_min: Optional[int] = None,
+    joined_after: Optional[date] = None,
+    joined_before: Optional[date] = None,
+):
+    if department_id:
+        query = query.filter(Employee.department_id == department_id)
+    if designation_id:
+        query = query.filter(Employee.designation_id == designation_id)
+    if branch_id:
+        query = query.filter(Employee.branch_id == branch_id)
+    if location_id:
+        query = query.filter(Employee.location_id == location_id)
+    if skills:
+        query = query.filter(Employee.skills_tags.ilike(f"%{skills.strip()}%"))
+    if work_location:
+        query = query.filter(Employee.work_location == work_location)
+    if employment_type:
+        query = query.filter(Employee.employment_type == employment_type)
+    if worker_type:
+        query = query.filter(Employee.worker_type == worker_type)
+    if timezone_filter:
+        query = query.filter(Employee.timezone == timezone_filter)
+    if has_photo is True:
+        query = query.filter(Employee.profile_photo_url.isnot(None))
+    elif has_photo is False:
+        query = query.filter(Employee.profile_photo_url.is_(None))
+    if profile_completeness_min is not None:
+        query = query.filter(Employee.profile_completeness >= profile_completeness_min)
+    if joined_after:
+        query = query.filter(Employee.date_of_joining >= joined_after)
+    if joined_before:
+        query = query.filter(Employee.date_of_joining <= joined_before)
+    if search:
+        pattern = f"%{search.strip()}%"
+        query = query.filter(
+            (Employee.first_name.ilike(pattern))
+            | (Employee.last_name.ilike(pattern))
+            | (Employee.employee_id.ilike(pattern))
+            | (Employee.work_email.ilike(pattern))
+            | (Employee.personal_email.ilike(pattern))
+            | (Employee.preferred_display_name.ilike(pattern))
+            | (Employee.skills_tags.ilike(pattern))
+        )
+    return query
+
+
+def _mask(value: Optional[str], visible: bool) -> Optional[str]:
+    if visible:
+        return value
+    return "Hidden by privacy setting" if value else None
+
+
+def _to_directory_item(employee: Employee, current_user: User) -> EmployeeDirectoryItem:
+    can_contact = _can_view_contact(current_user, employee)
+    return EmployeeDirectoryItem(
+        id=employee.id,
+        employee_id=employee.employee_id,
+        full_name=_directory_name(employee),
+        preferred_display_name=employee.preferred_display_name,
+        email=_mask(employee.work_email or employee.personal_email, can_contact),
+        work_email=_mask(employee.work_email, can_contact),
+        phone_number=_mask(employee.phone_number, can_contact),
+        office_extension=_mask(employee.office_extension, can_contact),
+        department=employee.department.name if employee.department else None,
+        designation=employee.designation.name if employee.designation else None,
+        branch=employee.branch.name if employee.branch else None,
+        reporting_manager=(
+            f"{employee.reporting_manager.first_name} {employee.reporting_manager.last_name}"
+            if employee.reporting_manager
+            else None
+        ),
+        work_location=employee.work_location,
+        desk_code=employee.desk_code,
+        timezone=employee.timezone,
+        skills_tags=employee.skills_tags,
+        profile_completeness=employee.profile_completeness,
+        profile_photo_url=employee.profile_photo_url,
+        is_direct_report=bool(current_user.employee and employee.reporting_manager_id == current_user.employee.id),
+        contact_masked=not can_contact,
+    )
+
+
+def _rate_limit_directory_search(current_user: User) -> None:
+    now = time.time()
+    bucket = [stamp for stamp in _DIRECTORY_SEARCH_BUCKETS.get(current_user.id, []) if now - stamp < 60]
+    if len(bucket) >= 120:
+        raise HTTPException(status_code=429, detail="Too many directory searches. Please wait a minute.")
+    bucket.append(now)
+    _DIRECTORY_SEARCH_BUCKETS[current_user.id] = bucket
 
 
 def _parse_date(value: Optional[str], row_number: int, field_name: str):
@@ -36,6 +286,386 @@ def _parse_date(value: Optional[str], row_number: int, field_name: str):
         return datetime.strptime(value.strip(), "%Y-%m-%d").date()
     except ValueError:
         raise ValueError(f"{field_name} must be YYYY-MM-DD on row {row_number}")
+
+
+@router.get("/directory", response_model=PaginatedResponse[EmployeeDirectoryItem])
+def employee_directory(
+    search: Optional[str] = Query(None),
+    department_id: Optional[int] = Query(None),
+    designation_id: Optional[int] = Query(None),
+    branch_id: Optional[int] = Query(None),
+    location_id: Optional[int] = Query(None),
+    skills: Optional[str] = Query(None),
+    work_location: Optional[str] = Query(None),
+    employment_type: Optional[str] = Query(None),
+    worker_type: Optional[str] = Query(None),
+    timezone_filter: Optional[str] = Query(None, alias="timezone"),
+    has_photo: Optional[bool] = Query(None),
+    profile_completeness_min: Optional[int] = Query(None, ge=0, le=100),
+    joined_after: Optional[date] = Query(None),
+    joined_before: Optional[date] = Query(None),
+    team_only: bool = Query(False),
+    sort_by: str = Query("name"),
+    sort_order: str = Query("asc"),
+    include_counts: bool = Query(False),
+    include_facets: bool = Query(False),
+    page: int = Query(1, ge=1),
+    per_page: int = Query(20, ge=1, le=100),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    if search:
+        _rate_limit_directory_search(current_user)
+    query = _apply_directory_filters(
+        _directory_query(db),
+        search=search,
+        department_id=department_id,
+        designation_id=designation_id,
+        branch_id=branch_id,
+        location_id=location_id,
+        skills=skills,
+        work_location=work_location,
+        employment_type=employment_type,
+        worker_type=worker_type,
+        timezone_filter=timezone_filter,
+        has_photo=has_photo,
+        profile_completeness_min=profile_completeness_min,
+        joined_after=joined_after,
+        joined_before=joined_before,
+    )
+    if team_only:
+        if not current_user.employee:
+            raise HTTPException(status_code=400, detail="No employee profile is linked to this user")
+        query = query.filter(Employee.reporting_manager_id == current_user.employee.id)
+
+    total = query.count()
+    sort_map = {
+        "name": Employee.first_name,
+        "department": Employee.department_id,
+        "joining_date": Employee.date_of_joining,
+        "location": Employee.location_id,
+        "designation": Employee.designation_id,
+    }
+    sort_column = sort_map.get(sort_by, Employee.first_name)
+    query = query.order_by(desc(sort_column) if sort_order == "desc" else asc(sort_column), asc(Employee.last_name))
+    items = (
+        query
+        .offset((page - 1) * per_page)
+        .limit(per_page)
+        .all()
+    )
+    import math
+
+    return PaginatedResponse(
+        items=[_to_directory_item(item, current_user) for item in items],
+        total=total,
+        page=page,
+        per_page=per_page,
+        pages=math.ceil(total / per_page) if total else 0,
+    )
+
+
+@router.get("/directory/export")
+def export_employee_directory(
+    search: Optional[str] = Query(None),
+    department_id: Optional[int] = Query(None),
+    designation_id: Optional[int] = Query(None),
+    branch_id: Optional[int] = Query(None),
+    location_id: Optional[int] = Query(None),
+    team_only: bool = Query(False),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    query = _apply_directory_filters(
+        _directory_query(db),
+        search=search,
+        department_id=department_id,
+        designation_id=designation_id,
+        branch_id=branch_id,
+        location_id=location_id,
+    )
+    if team_only:
+        if not current_user.employee:
+            raise HTTPException(status_code=400, detail="No employee profile is linked to this user")
+        query = query.filter(Employee.reporting_manager_id == current_user.employee.id)
+
+    rows = query.order_by(Employee.first_name.asc(), Employee.last_name.asc()).limit(5000).all()
+    output = StringIO()
+    writer = csv.writer(output)
+    writer.writerow(["employee_id", "name", "email", "phone", "department", "designation", "branch", "manager", "location"])
+    for employee in rows:
+        item = _to_directory_item(employee, current_user)
+        writer.writerow([
+            item.employee_id,
+            item.full_name,
+            item.email or "",
+            item.phone_number or "",
+            item.department or "",
+            item.designation or "",
+            item.branch or "",
+            item.reporting_manager or "",
+            item.work_location or "",
+        ])
+    db.add(AuditLog(
+        user_id=current_user.id,
+        method="GET",
+        endpoint="/api/v1/employees/directory/export",
+        status_code=200,
+        entity_type="employee_directory",
+        action="EXPORT",
+        description=f"Exported {len(rows)} directory rows with role masking",
+    ))
+    db.commit()
+    output.seek(0)
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=employee_directory.csv"},
+    )
+
+
+@router.get("/directory/filters")
+def employee_directory_filters(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    base = _directory_query(db)
+    departments = (
+        base.filter(Employee.department_id.isnot(None))
+        .with_entities(Employee.department_id, func.count(Employee.id))
+        .group_by(Employee.department_id)
+        .all()
+    )
+    designations = (
+        base.filter(Employee.designation_id.isnot(None))
+        .with_entities(Employee.designation_id, func.count(Employee.id))
+        .group_by(Employee.designation_id)
+        .all()
+    )
+    branches = (
+        base.filter(Employee.branch_id.isnot(None))
+        .with_entities(Employee.branch_id, func.count(Employee.id))
+        .group_by(Employee.branch_id)
+        .all()
+    )
+    work_locations = (
+        base.filter(Employee.work_location.isnot(None))
+        .with_entities(Employee.work_location, func.count(Employee.id))
+        .group_by(Employee.work_location)
+        .all()
+    )
+    skills: dict[str, int] = {}
+    for row in base.filter(Employee.skills_tags.isnot(None)).with_entities(Employee.skills_tags).limit(1000).all():
+        for skill in str(row[0] or "").replace(";", ",").split(","):
+            value = skill.strip()
+            if value:
+                skills[value] = skills.get(value, 0) + 1
+    return {
+        "departments": [{"id": item[0], "count": item[1]} for item in departments],
+        "designations": [{"id": item[0], "count": item[1]} for item in designations],
+        "branches": [{"id": item[0], "count": item[1]} for item in branches],
+        "work_locations": [{"name": item[0], "count": item[1]} for item in work_locations],
+        "skills": [{"name": key, "count": value} for key, value in sorted(skills.items())[:50]],
+    }
+
+
+@router.get("/recent-joiners", response_model=List[EmployeeDirectoryItem])
+def recent_joiners(
+    days: int = Query(30, ge=1, le=365),
+    limit: int = Query(10, ge=1, le=50),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    since = date.today() - timedelta(days=days)
+    rows = (
+        _directory_query(db)
+        .filter(Employee.date_of_joining >= since)
+        .order_by(Employee.date_of_joining.desc())
+        .limit(limit)
+        .all()
+    )
+    return [_to_directory_item(row, current_user) for row in rows]
+
+
+@router.get("/birthdays", response_model=List[DirectoryEventItem])
+def upcoming_birthdays(
+    days: int = Query(30, ge=1, le=90),
+    include_private: bool = Query(False),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    if include_private and not _can_manage_directory(current_user):
+        raise HTTPException(status_code=403, detail="Private birthday access is limited to HR/Admin")
+    today = date.today()
+    until = today + timedelta(days=days)
+    rows = _directory_query(db).filter(Employee.date_of_birth.isnot(None)).all()
+    items = []
+    for employee in rows:
+        event_date = employee.date_of_birth.replace(year=today.year)
+        if event_date < today:
+            event_date = event_date.replace(year=today.year + 1)
+        if today <= event_date <= until:
+            items.append(DirectoryEventItem(
+                id=employee.id,
+                employee_id=employee.employee_id,
+                full_name=_directory_name(employee),
+                department=employee.department.name if employee.department else None,
+                designation=employee.designation.name if employee.designation else None,
+                event_date=event_date,
+                profile_photo_url=employee.profile_photo_url,
+            ))
+    return sorted(items, key=lambda item: item.event_date)
+
+
+@router.get("/work-anniversaries", response_model=List[DirectoryEventItem])
+def upcoming_work_anniversaries(
+    days: int = Query(30, ge=1, le=90),
+    include_private: bool = Query(False),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    if include_private and not _can_manage_directory(current_user):
+        raise HTTPException(status_code=403, detail="Private anniversary access is limited to HR/Admin")
+    today = date.today()
+    until = today + timedelta(days=days)
+    rows = _directory_query(db).all()
+    items = []
+    for employee in rows:
+        event_date = employee.date_of_joining.replace(year=today.year)
+        if event_date < today:
+            event_date = event_date.replace(year=today.year + 1)
+        if today <= event_date <= until:
+            items.append(DirectoryEventItem(
+                id=employee.id,
+                employee_id=employee.employee_id,
+                full_name=_directory_name(employee),
+                department=employee.department.name if employee.department else None,
+                designation=employee.designation.name if employee.designation else None,
+                event_date=event_date,
+                profile_photo_url=employee.profile_photo_url,
+            ))
+    return sorted(items, key=lambda item: item.event_date)
+
+
+@router.get("/org-search", response_model=List[DirectorySuggestion])
+def org_search_autocomplete(
+    q: str = Query("", min_length=0),
+    limit: int = Query(8, ge=1, le=20),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    _rate_limit_directory_search(current_user)
+    query = _directory_query(db)
+    if q.strip():
+        pattern = f"%{q.strip()}%"
+        query = query.filter(
+            (Employee.first_name.ilike(pattern))
+            | (Employee.last_name.ilike(pattern))
+            | (Employee.employee_id.ilike(pattern))
+            | (Employee.preferred_display_name.ilike(pattern))
+            | (Employee.skills_tags.ilike(pattern))
+        )
+    rows = query.order_by(Employee.first_name.asc()).limit(limit).all()
+    return [
+        DirectorySuggestion(
+            id=row.id,
+            label=_directory_name(row),
+            subtitle=f"{row.employee_id} | {row.designation.name if row.designation else 'No designation'}",
+        )
+        for row in rows
+    ]
+
+
+@router.get("/{employee_id}/profile-card", response_model=EmployeeProfileCard)
+def employee_profile_card(
+    employee_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    employee = (
+        _directory_query(db)
+        .filter(Employee.id == employee_id)
+        .first()
+    )
+    if not employee:
+        raise HTTPException(status_code=404, detail="Employee not found")
+    can_contact = _can_view_contact(current_user, employee)
+    db.add(AuditLog(
+        user_id=current_user.id,
+        method="GET",
+        endpoint=f"/api/v1/employees/{employee_id}/profile-card",
+        status_code=200,
+        entity_type="employee",
+        entity_id=employee_id,
+        action="VIEW",
+        description="Viewed employee directory profile card",
+    ))
+    db.commit()
+    return EmployeeProfileCard(
+        id=employee.id,
+        employee_id=employee.employee_id,
+        full_name=_directory_name(employee),
+        email=_mask(employee.work_email or employee.personal_email, can_contact),
+        phone_number=_mask(employee.phone_number, can_contact),
+        department=employee.department.name if employee.department else None,
+        designation=employee.designation.name if employee.designation else None,
+        branch=employee.branch.name if employee.branch else None,
+        reporting_manager=(
+            f"{employee.reporting_manager.first_name} {employee.reporting_manager.last_name}"
+            if employee.reporting_manager
+            else None
+        ),
+        work_location=employee.work_location,
+        desk_code=employee.desk_code,
+        office_extension=_mask(employee.office_extension, can_contact),
+        timezone=employee.timezone,
+        skills=[skill.strip() for skill in (employee.skills_tags or "").replace(";", ",").split(",") if skill.strip()],
+        profile_photo_url=employee.profile_photo_url,
+        contact_masked=not can_contact,
+    )
+
+
+@router.post("/directory/report-correction", status_code=201)
+def report_directory_correction(
+    data: DirectoryCorrectionReport,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    employee = db.query(Employee).filter(Employee.id == data.employee_id, Employee.deleted_at.is_(None)).first()
+    if not employee:
+        raise HTTPException(status_code=404, detail="Employee not found")
+    db.add(AuditLog(
+        user_id=current_user.id,
+        method="POST",
+        endpoint="/api/v1/employees/directory/report-correction",
+        status_code=201,
+        entity_type="employee",
+        entity_id=employee.id,
+        action="DIRECTORY_CORRECTION",
+        new_values=json.dumps({"field": data.field_name, "message": data.message}),
+        description=f"Directory correction reported for {employee.employee_id}",
+    ))
+    hr_users = (
+        db.query(User)
+        .join(Role, User.role_id == Role.id, isouter=True)
+        .filter(or_(User.is_superuser == True, Role.name.in_(["hr", "hr_admin", "hr_manager", "admin"])))
+        .limit(20)
+        .all()
+    )
+    for user in hr_users:
+        create_notification(db, NotificationCreate(
+            user_id=user.id,
+            title="Directory correction reported",
+            message=f"{current_user.email} reported {data.field_name} for {employee.employee_id}: {data.message}",
+            module="employees",
+            event_type="directory_correction",
+            related_entity_type="employee",
+            related_entity_id=employee.id,
+            action_url=f"/employees/{employee.id}",
+            channels=["in_app"],
+        ))
+    db.commit()
+    return {"message": "Correction report submitted"}
 
 
 @router.get("/", response_model=PaginatedResponse[EmployeeListSchema])
@@ -418,6 +1048,39 @@ def list_employee_change_requests(
     return payload
 
 
+@router.get("/user-options", response_model=List[EmployeeUserOption])
+def list_employee_user_options(
+    search: Optional[str] = Query(None),
+    include_employee_id: Optional[int] = Query(None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(RequirePermission("employee_update")),
+):
+    query = db.query(User).outerjoin(Employee, Employee.user_id == User.id)
+    if search:
+        term = f"%{search}%"
+        query = query.filter(User.email.ilike(term))
+    if include_employee_id:
+        query = query.filter((Employee.id.is_(None)) | (Employee.id == include_employee_id))
+    else:
+        query = query.filter(Employee.id.is_(None))
+
+    users = query.order_by(User.email).limit(100).all()
+    options = []
+    for user in users:
+        employee = user.employee
+        options.append(
+            {
+                "id": user.id,
+                "email": user.email,
+                "role": user.role.name if user.role else None,
+                "employee_id": employee.id if employee else None,
+                "employee_code": employee.employee_id if employee else None,
+                "employee_name": f"{employee.first_name} {employee.last_name}" if employee else None,
+            }
+        )
+    return options
+
+
 @router.put("/change-requests/{request_id}/review", response_model=EmployeeChangeRequestSchema)
 def review_employee_change_request(
     request_id: int,
@@ -460,6 +1123,44 @@ def review_employee_change_request(
     db.commit()
     db.refresh(item)
     return item
+
+
+@router.put("/{employee_id}/user-link", response_model=EmployeeSchema)
+def update_employee_user_link(
+    employee_id: int,
+    data: EmployeeUserLinkUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(RequirePermission("employee_update")),
+):
+    emp = db.query(Employee).filter(Employee.id == employee_id, Employee.deleted_at.is_(None)).first()
+    if not emp:
+        raise HTTPException(status_code=404, detail="Employee not found")
+
+    if data.user_id is None:
+        emp.user_id = None
+        db.commit()
+        db.refresh(emp)
+        return emp
+
+    user = db.query(User).filter(User.id == data.user_id, User.is_active.is_(True)).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Active user not found")
+
+    existing = db.query(Employee).filter(
+        Employee.user_id == data.user_id,
+        Employee.id != employee_id,
+        Employee.deleted_at.is_(None),
+    ).first()
+    if existing:
+        raise HTTPException(
+            status_code=400,
+            detail=f"User is already linked to employee {existing.employee_id}",
+        )
+
+    emp.user_id = data.user_id
+    db.commit()
+    db.refresh(emp)
+    return emp
 
 
 @router.get("/{employee_id}", response_model=EmployeeSchema)

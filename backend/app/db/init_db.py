@@ -6,6 +6,7 @@ from app.models.target import FeatureCatalog, FeaturePlan, IndustryTarget
 from app.models.company import Branch, Company, Department, Designation
 from app.models.employee import Employee
 from app.models.leave import LeaveType
+from app.models.sso import SSOProvider, SSOSession  # noqa: F401
 
 
 SYSTEM_PERMISSIONS = [

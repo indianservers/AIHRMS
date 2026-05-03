@@ -1,5 +1,6 @@
 import pytest
 import os
+import sys
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -13,6 +14,17 @@ from sqlalchemy.pool import StaticPool
 #   - Full-text indexes
 # Run integration tests against a real MySQL instance before releasing
 # any migration or CRUD change that uses these features.
+
+def _make_unraisablehook(default_hook):
+    def _suppress_python314_gzip_teardown_warning(unraisable):
+        if isinstance(unraisable.exc_value, ValueError) and "I/O operation on closed file" in str(unraisable.exc_value):
+            return
+        default_hook(unraisable)
+
+    return _suppress_python314_gzip_teardown_warning
+
+
+sys.unraisablehook = _make_unraisablehook(sys.unraisablehook)
 
 os.environ.setdefault("ENVIRONMENT", "test")
 os.environ.setdefault("MYSQL_PASSWORD", "")

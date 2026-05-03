@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Gift, HeartPulse, PiggyBank, Plus, RefreshCw, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { benefitsApi } from "@/services/api";
 import { toast } from "@/hooks/use-toast";
+import { usePageTitle } from "@/hooks/use-page-title";
 
 type BenefitPlan = {
   id: number;
@@ -49,7 +50,7 @@ const money = (value: string | number | undefined) =>
   Number(value || 0).toLocaleString("en-IN", { maximumFractionDigits: 0 });
 
 export default function BenefitsPage() {
-  useEffect(() => { document.title = "Benefits · AI HRMS"; }, []);
+  usePageTitle("Benefits");
   const qc = useQueryClient();
   const [showPlanForm, setShowPlanForm] = useState(false);
   const [planForm, setPlanForm] = useState({

@@ -79,7 +79,7 @@ from app.schemas.payroll import (
     LeaveEncashmentPolicyCreate, LeaveEncashmentPolicySchema,
     LeaveEncashmentLineCreate, LeaveEncashmentLineSchema,
     PayrollAttendanceReconcileRequest, PayrollAttendanceReconcileSchema,
-    PayrollRunEmployeeSchema, PayrollCalculationSnapshotSchema, PayrollWorksheetProcessSchema,
+    PayrollRunEmployeeSchema, PayrollRunEmployeeAction, PayrollCalculationSnapshotSchema, PayrollWorksheetProcessSchema,
     PayrollArrearRunCreate, PayrollArrearRunSchema, OffCyclePayrollRunCreate, OffCyclePayrollRunSchema,
     PayrollPaymentBatchCreate, PayrollPaymentBatchSchema,
     PayrollPaymentStatusImportRequest, PayrollPaymentStatusImportSchema,
@@ -1931,7 +1931,7 @@ def approve_payroll(
     action = data.action.lower()
     if action == "approve":
         blockers = _payroll_input_blockers(db, run)
-        if blockers:
+        if blockers and not data.force_approve:
             raise HTTPException(status_code=400, detail={"message": "Payroll attendance inputs must be approved and locked before approval", "blockers": blockers})
         try:
             crud_payroll.transition_payroll_run_status(run, crud_payroll.PAYROLL_RUN_STATUS_APPROVED)
@@ -1939,7 +1939,10 @@ def approve_payroll(
             raise HTTPException(status_code=422, detail=str(e))
         run.approved_by = current_user.id
         run.approved_at = datetime.now(timezone.utc)
-        _audit(db, run.id, "approved", current_user.id, data.remarks)
+        audit_detail = data.remarks
+        if blockers and data.force_approve:
+            audit_detail = f"{data.remarks or 'Forced approval'} | overridden blockers: {'; '.join(blockers)}"
+        _audit(db, run.id, "approved", current_user.id, audit_detail)
     elif action == "lock":
         try:
             crud_payroll.transition_payroll_run_status(run, crud_payroll.PAYROLL_RUN_STATUS_LOCKED)
@@ -2073,6 +2076,62 @@ def list_payroll_worksheet(
     return db.query(PayrollRunEmployee).filter(PayrollRunEmployee.payroll_run_id == run_id).order_by(PayrollRunEmployee.id).all()
 
 
+@router.put("/runs/{run_id}/worksheet/{row_id}", response_model=PayrollRunEmployeeSchema)
+def update_payroll_worksheet_row(
+    run_id: int,
+    row_id: int,
+    data: PayrollRunEmployeeAction,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(RequirePermission("payroll_run")),
+):
+    run = _get_payroll_run_or_404(db, run_id)
+    try:
+        crud_payroll.coerce_payroll_run_status(run)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    if run.status in {crud_payroll.PAYROLL_RUN_STATUS_LOCKED, crud_payroll.PAYROLL_RUN_STATUS_PAID}:
+        raise HTTPException(status_code=400, detail="Payroll run is locked")
+
+    row = db.query(PayrollRunEmployee).filter(
+        PayrollRunEmployee.id == row_id,
+        PayrollRunEmployee.payroll_run_id == run_id,
+    ).first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Payroll worksheet row not found")
+
+    action = data.action.strip().lower()
+    reason = (data.reason or "").strip() or None
+    if action == "hold":
+        row.status = "Held"
+        row.approval_status = "On Hold"
+        row.hold_reason = reason or "Held from payroll console"
+        row.skip_reason = None
+    elif action == "skip":
+        row.status = "Skipped"
+        row.approval_status = "Skipped"
+        row.skip_reason = reason or "Skipped from payroll console"
+        row.hold_reason = None
+    elif action == "clear":
+        row.status = "Calculated"
+        row.approval_status = "Pending"
+        row.hold_reason = None
+        row.skip_reason = None
+    elif action == "approve":
+        if row.hold_reason or row.skip_reason:
+            raise HTTPException(status_code=400, detail="Clear hold/skip before approving this employee")
+        row.status = "Approved"
+        row.approval_status = "Approved"
+        row.approved_by = current_user.id
+        row.approved_at = datetime.now(timezone.utc)
+    else:
+        raise HTTPException(status_code=400, detail="action must be hold, skip, clear, or approve")
+
+    _audit(db, run_id, f"worksheet_employee_{action}", current_user.id, f"row_id={row_id}:{reason or ''}")
+    db.commit()
+    db.refresh(row)
+    return row
+
+
 @router.post("/runs/{run_id}/worksheet/process", response_model=PayrollWorksheetProcessSchema, status_code=201)
 def process_payroll_worksheet(
     run_id: int,
@@ -2107,14 +2166,17 @@ def process_payroll_worksheet(
             db.add(row)
             db.flush()
         row.payroll_record_id = record.id
-        row.status = "Blocked" if any(f"Employee {record.employee_id}:" in blocker for blocker in blocked) else "Calculated"
+        manual_hold = bool(row.hold_reason)
+        manual_skip = bool(row.skip_reason)
+        row.status = "Skipped" if manual_skip else "Held" if manual_hold else "Blocked" if any(f"Employee {record.employee_id}:" in blocker for blocker in blocked) else "Calculated"
         row.input_status = attendance_input.source_status if attendance_input else "Missing"
         row.calculation_status = "Calculated"
-        row.approval_status = "Pending"
+        row.approval_status = "Skipped" if manual_skip else "On Hold" if manual_hold else "Pending"
         row.gross_salary = record.gross_salary or Decimal("0")
         row.total_deductions = record.total_deductions or Decimal("0")
         row.net_salary = record.net_salary or Decimal("0")
-        row.hold_reason = "; ".join(blocker for blocker in blocked if f"Employee {record.employee_id}:" in blocker) or None
+        if not manual_hold and not manual_skip:
+            row.hold_reason = "; ".join(blocker for blocker in blocked if f"Employee {record.employee_id}:" in blocker) or None
         snapshot = PayrollCalculationSnapshot(
             payroll_run_id=run_id,
             run_employee_id=row.id,
@@ -2619,13 +2681,14 @@ def review_unlock_request(
     return request
 
 
-@router.get("/runs/{run_id}/records", response_model=List[PayrollRecordSchema])
+@router.get("/runs/{run_id}/records")
 def get_payroll_records(
     run_id: int,
     db: Session = Depends(get_db),
     current_user: User = Depends(RequirePermission("payroll_view")),
 ):
-    return db.query(PayrollRecord).filter(PayrollRecord.payroll_run_id == run_id).all()
+    records = db.query(PayrollRecord).filter(PayrollRecord.payroll_run_id == run_id).all()
+    return [crud_payroll.build_payslip_payload(db, record) for record in records]
 
 
 @router.post("/runs/{run_id}/payslip-publish", response_model=PayslipPublishBatchSchema, status_code=201)

@@ -19,6 +19,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { companyApi } from "@/services/api";
+import { usePageTitle } from "@/hooks/use-page-title";
 import { toast } from "@/hooks/use-toast";
 
 type OrgForm = Record<string, any>;
@@ -30,6 +31,7 @@ const emptyDepartment = {};
 const emptyDesignation = { level: 1 };
 
 export default function CompanyPage() {
+  usePageTitle("Company");
   const qc = useQueryClient();
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [form, setForm] = useState<OrgForm>(emptyCompany);

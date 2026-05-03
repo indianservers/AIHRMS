@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import {
@@ -9,7 +9,7 @@ import {
 } from "@tanstack/react-table";
 import {
   Plus, Search, Filter, Download, RefreshCw,
-  Eye, Edit, UserX, Camera
+  Eye, Edit, UserX, Camera, Users
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -17,6 +17,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { employeeApi } from "@/services/api";
 import { assetUrl, formatDate, statusColor, getInitials } from "@/lib/utils";
+import { usePageTitle } from "@/hooks/use-page-title";
 import { toast } from "@/hooks/use-toast";
 
 interface Employee {
@@ -33,11 +34,10 @@ interface Employee {
   date_of_joining: string;
   profile_photo_url: string | null;
 }
-
 const columnHelper = createColumnHelper<Employee>();
 
 export default function EmployeesPage() {
-  useEffect(() => { document.title = "Employees · AI HRMS"; }, []);
+  usePageTitle("Employees");
   const qc = useQueryClient();
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
@@ -132,13 +132,13 @@ export default function EmployeesPage() {
     columnHelper.accessor("personal_email", {
       header: "Email",
       cell: (info) => (
-        <span className="text-sm text-muted-foreground">{info.getValue() || "—"}</span>
+        <span className="text-sm text-muted-foreground">{info.getValue() || "-"}</span>
       ),
     }),
     columnHelper.accessor("phone_number", {
       header: "Phone",
       cell: (info) => (
-        <span className="text-sm">{info.getValue() || "—"}</span>
+        <span className="text-sm">{info.getValue() || "-"}</span>
       ),
     }),
     columnHelper.accessor("employment_type", {
@@ -345,7 +345,7 @@ export default function EmployeesPage() {
         {data && data.pages > 1 && (
           <div className="flex items-center justify-between px-4 py-3 border-t">
             <p className="text-xs text-muted-foreground">
-              Showing {(page - 1) * 20 + 1}–{Math.min(page * 20, data.total)} of {data.total}
+              Showing {(page - 1) * 20 + 1}Ã¢â‚¬â€œ{Math.min(page * 20, data.total)} of {data.total}
             </p>
             <div className="flex items-center gap-2">
               <Button
@@ -372,17 +372,5 @@ export default function EmployeesPage() {
         )}
       </Card>
     </div>
-  );
-}
-
-// Missing import
-function Users(props: React.SVGProps<SVGSVGElement>) {
-  return (
-    <svg {...props} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-      <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
-      <circle cx="9" cy="7" r="4" />
-      <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
-      <path d="M16 3.13a4 4 0 0 1 0 7.75" />
-    </svg>
   );
 }

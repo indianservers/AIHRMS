@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Bar, BarChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { Megaphone, Plus, RefreshCw, Send, Smile, Trophy } from "lucide-react";
@@ -11,10 +11,11 @@ import { useToast } from "@/hooks/use-toast";
 import { getRoleKey } from "@/lib/roles";
 import { employeeApi, engagementApi, reportsApi } from "@/services/api";
 import { useAuthStore } from "@/store/authStore";
+import { usePageTitle } from "@/hooks/use-page-title";
 import { formatDate } from "@/lib/utils";
 
 export default function EngagementPage() {
-  useEffect(() => { document.title = "Engagement · AI HRMS"; }, []);
+  usePageTitle("Engagement");
   const qc = useQueryClient();
   const { toast } = useToast();
   const user = useAuthStore((state) => state.user);
@@ -129,7 +130,7 @@ export default function EngagementPage() {
           <CardContent className="space-y-2">
             {[...(moments.data?.birthdays || []).map((item: any) => ({ ...item, type: "Birthday" })), ...(moments.data?.anniversaries || []).map((item: any) => ({ ...item, type: "Anniversary" }))].slice(0, 6).map((item: any) => (
               <a key={`${item.type}-${item.employee_id}`} href={`/employees/${item.employee_id}`} className="flex justify-between rounded-lg border p-3 text-sm hover:bg-muted/50">
-                <span>{item.name}</span><span className="text-muted-foreground">{item.type} • {formatDate(item.date)}</span>
+                <span>{item.name}</span><span className="text-muted-foreground">{item.type} â€¢ {formatDate(item.date)}</span>
               </a>
             ))}
             {!moments.data?.birthdays?.length && !moments.data?.anniversaries?.length && <p className="text-sm text-muted-foreground">No upcoming birthdays or anniversaries.</p>}

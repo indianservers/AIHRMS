@@ -8,6 +8,10 @@ class Employee(Base):
     __tablename__ = "employees"
     __table_args__ = (
         Index("idx_employees_active_status", "deleted_at", "status"),
+        Index("idx_employees_name", "first_name", "last_name"),
+        Index("idx_employees_directory_email", "work_email", "personal_email"),
+        Index("idx_employees_department_status", "department_id", "status", "deleted_at"),
+        Index("idx_employees_manager_status", "reporting_manager_id", "status", "deleted_at"),
     )
 
     id = Column(Integer, primary_key=True, index=True)
@@ -30,9 +34,11 @@ class Employee(Base):
     veteran_status = Column(String(50))
 
     # Contact
+    work_email = Column(String(150), index=True)
     personal_email = Column(String(150))
     phone_number = Column(String(20))
     alternate_phone = Column(String(20))
+    office_extension = Column(String(20))
     emergency_contact_name = Column(String(100))
     emergency_contact_number = Column(String(20))
     emergency_contact_relation = Column(String(50))
@@ -66,6 +72,9 @@ class Employee(Base):
     work_location = Column(String(50), default="Office")  # Office, Remote, Hybrid
     shift_id = Column(Integer, ForeignKey("shifts.id", ondelete="SET NULL"), nullable=True)
     probation_period_months = Column(Integer, default=6)
+    desk_code = Column(String(50))
+    timezone = Column(String(80), default="Asia/Kolkata")
+    manager_chain_path = Column(String(500))
 
     # Bank Details (encrypted in production)
     bank_name = Column(String(100))
@@ -84,6 +93,10 @@ class Employee(Base):
 
     # Profile
     profile_photo_url = Column(String(500))
+    preferred_display_name = Column(String(150))
+    directory_visibility = Column(String(20), default="public", index=True)  # public, team, hidden
+    skills_tags = Column(Text)
+    profile_completeness = Column(Integer, default=0)
     bio = Column(Text)
     interests = Column(Text)
     research_work = Column(Text)

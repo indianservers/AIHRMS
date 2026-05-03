@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { CalendarDays, Plus, CheckCircle2, XCircle, RefreshCw, ChevronLeft, ChevronRight } from "lucide-react";
 import { useForm } from "react-hook-form";
@@ -10,7 +10,9 @@ import { leaveApi } from "@/services/api";
 import { formatDate, statusColor } from "@/lib/utils";
 import { toast } from "@/hooks/use-toast";
 import { useAuthStore } from "@/store/authStore";
+import { usePageTitle } from "@/hooks/use-page-title";
 import { getRoleKey } from "@/lib/roles";
+import { NOTIF_UNREAD_KEY } from "@/components/layout/Topbar";
 
 interface LeaveType {
   id: number;
@@ -64,7 +66,7 @@ interface ApplyForm {
 }
 
 export default function LeavePage() {
-  useEffect(() => { document.title = "Leave · AI HRMS"; }, []);
+  usePageTitle("Leave");
   const qc = useQueryClient();
   const { user } = useAuthStore();
   const roleKey = getRoleKey(user?.role, user?.is_superuser);
@@ -129,6 +131,7 @@ export default function LeavePage() {
       qc.invalidateQueries({ queryKey: ["leave-balance"] });
       qc.invalidateQueries({ queryKey: ["my-leave-requests"] });
       qc.invalidateQueries({ queryKey: ["all-leave-requests"] });
+      qc.invalidateQueries({ queryKey: NOTIF_UNREAD_KEY });
     },
     onError: (e: unknown) => {
       const msg = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail || "Failed to apply";
@@ -145,6 +148,7 @@ export default function LeavePage() {
       qc.invalidateQueries({ queryKey: ["leave-balance"] });
       qc.invalidateQueries({ queryKey: ["my-leave-requests"] });
       qc.invalidateQueries({ queryKey: ["all-leave-requests"] });
+      qc.invalidateQueries({ queryKey: NOTIF_UNREAD_KEY });
     },
     onError: (e: unknown) => {
       const msg = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail || "Action failed";

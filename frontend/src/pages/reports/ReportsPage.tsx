@@ -1,201 +1,390 @@
-import { useEffect, useMemo, useState } from "react";
+import { ReactNode, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { BarChart3, Briefcase, CalendarDays, Download, RefreshCw, TrendingDown, Users } from "lucide-react";
-import { Bar, BarChart, CartesianGrid, Cell, Line, LineChart, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import {
+  Bar,
+  BarChart,
+  Area,
+  AreaChart,
+  CartesianGrid,
+  Cell,
+  ComposedChart,
+  Funnel,
+  FunnelChart,
+  LabelList,
+  Legend,
+  Line,
+  LineChart,
+  Pie,
+  PieChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
+import { BarChart3, Download, UserCheck, UserPlus, Users } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { reportsApi } from "@/services/api";
-import { formatCurrency } from "@/lib/utils";
+import { usePageTitle } from "@/hooks/use-page-title";
+import { cn } from "@/lib/utils";
 
-const COLORS = ["#2563eb", "#16a34a", "#f59e0b", "#dc2626", "#7c3aed", "#0891b2"];
-const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const STALE_TIME = 5 * 60 * 1000;
+const TABS = ["Overview Dashboard", "Workforce Analytics", "Saved Reports"] as const;
+const tooltipStyle = {
+  background: "hsl(var(--background))",
+  border: "1px solid hsl(var(--border))",
+  borderRadius: 8,
+  boxShadow: "0 8px 24px rgb(15 23 42 / 0.12)",
+  fontSize: 12,
+};
+
+const currency = new Intl.NumberFormat("en-IN", {
+  style: "currency",
+  currency: "INR",
+  maximumFractionDigits: 0,
+});
+
+const monthLabel = (month?: string) =>
+  month ? new Date(`${month}-01`).toLocaleDateString("en-IN", { month: "short", year: "numeric" }) : "";
+
+const money = (value: unknown) => currency.format(Number(value || 0));
+
+type ReportDefinition = {
+  id: number;
+  name: string;
+  description?: string | null;
+  module?: string | null;
+  fields_json?: unknown;
+};
+
+type ReportResult = {
+  columns: string[];
+  rows: Record<string, unknown>[];
+};
 
 export default function ReportsPage() {
-  useEffect(() => { document.title = "Reports · AI HRMS"; }, []);
-  const now = new Date();
-  const [month, setMonth] = useState(now.getMonth() + 1);
-  const [year, setYear] = useState(now.getFullYear());
-  const fromDate = `${year}-01-01`;
-  const toDate = `${year}-12-31`;
-
-  const dashboard = useQuery({ queryKey: ["reports-dashboard"], queryFn: () => reportsApi.dashboard().then((r) => r.data) });
-  const headcount = useQuery({ queryKey: ["headcount-by-dept"], queryFn: () => reportsApi.headcountByDept().then((r) => r.data) });
-  const payroll = useQuery({ queryKey: ["payroll-summary", year], queryFn: () => reportsApi.payrollSummary(year).then((r) => r.data) });
-  const leave = useQuery({ queryKey: ["leave-trend", year], queryFn: () => reportsApi.leaveTrend(year).then((r) => r.data) });
-  const attendance = useQuery({ queryKey: ["attendance-trend", month, year], queryFn: () => reportsApi.attendanceTrend(month, year).then((r) => r.data) });
-  const turnover = useQuery({ queryKey: ["turnover", year], queryFn: () => reportsApi.turnover(fromDate, toDate).then((r) => r.data) });
-  const funnel = useQuery({ queryKey: ["recruitment-funnel"], queryFn: () => reportsApi.recruitmentFunnel().then((r) => r.data) });
-
-  const leaveByMonth = useMemo(() => {
-    const rows = Array.from({ length: 12 }, (_, i) => ({ month: MONTHS[i], Approved: 0, Pending: 0, Rejected: 0 }));
-    (leave.data || []).forEach((item: any) => {
-      const row = rows[(Number(item.month) || 1) - 1];
-      row[item.status as "Approved"] = (row[item.status as "Approved"] || 0) + Number(item.count || 0);
-    });
-    return rows;
-  }, [leave.data]);
-
-  const attendanceByDate = useMemo(() => {
-    const grouped: Record<string, any> = {};
-    (attendance.data || []).forEach((item: any) => {
-      grouped[item.date] = grouped[item.date] || { date: item.date.slice(5) };
-      grouped[item.date][item.status] = Number(item.count || 0);
-    });
-    return Object.values(grouped);
-  }, [attendance.data]);
-
-  const isLoading = dashboard.isLoading || headcount.isLoading;
+  usePageTitle("Reports & Analytics");
+  const [activeTab, setActiveTab] = useState<(typeof TABS)[number]>("Overview Dashboard");
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-        <div>
-          <h1 className="page-title">Reports & Analytics</h1>
-          <p className="page-description">Live HR insights for headcount, attendance, leave, payroll, recruitment, and turnover.</p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <select value={month} onChange={(e) => setMonth(Number(e.target.value))} className="h-9 rounded-md border bg-background px-3 text-sm">
-            {MONTHS.map((m, i) => <option key={m} value={i + 1}>{m}</option>)}
-          </select>
-          <input type="number" value={year} onChange={(e) => setYear(Number(e.target.value))} className="h-9 w-24 rounded-md border bg-background px-3 text-sm" />
-          <Button variant="outline" size="sm" onClick={() => { dashboard.refetch(); headcount.refetch(); payroll.refetch(); leave.refetch(); attendance.refetch(); turnover.refetch(); funnel.refetch(); }}>
-            <RefreshCw className="mr-2 h-4 w-4" />
-            Refresh
-          </Button>
-          <Button variant="outline" size="sm">
-            <Download className="mr-2 h-4 w-4" />
-            Export
-          </Button>
-        </div>
+      <div>
+        <h1 className="page-title">Reports & Analytics</h1>
+        <p className="page-description">Live workforce dashboards, statutory insights, and configurable report output.</p>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <Metric title="Active Employees" value={dashboard.data?.headcount?.active || 0} hint={`${dashboard.data?.headcount?.total || 0} total`} icon={Users} />
-        <Metric title="Present Today" value={dashboard.data?.attendance?.present_today || 0} hint={`${dashboard.data?.attendance?.absent_today || 0} absent`} icon={BarChart3} />
-        <Metric title="Pending Leaves" value={dashboard.data?.leaves?.pending_approvals || 0} hint="Awaiting approval" icon={CalendarDays} />
-        <Metric title="Turnover Rate" value={`${turnover.data?.turnover_rate || 0}%`} hint={`${turnover.data?.resigned || 0} exits in ${year}`} icon={TrendingDown} />
+      <div className="flex flex-wrap gap-2 border-b">
+        {TABS.map((tab) => (
+          <button
+            key={tab}
+            type="button"
+            onClick={() => setActiveTab(tab)}
+            className={cn(
+              "border-b-2 px-3 py-2 text-sm font-medium transition-colors",
+              activeTab === tab
+                ? "border-primary text-primary"
+                : "border-transparent text-muted-foreground hover:text-foreground"
+            )}
+          >
+            {tab}
+          </button>
+        ))}
       </div>
 
-      <div className="grid gap-6 xl:grid-cols-2">
-        <ChartCard title="Headcount by Department" description="Distribution of employees across departments">
-          <ResponsiveContainer width="100%" height={280}>
-            <BarChart data={headcount.data || []}>
-              <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-              <XAxis dataKey="department" tick={{ fontSize: 11 }} />
-              <YAxis tick={{ fontSize: 11 }} />
-              <Tooltip />
-              <Bar dataKey="count" fill="#2563eb" radius={[4, 4, 0, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
-        </ChartCard>
-
-        <ChartCard title={`Payroll Summary ${year}`} description="Monthly gross, deductions, and net payroll">
-          <ResponsiveContainer width="100%" height={280}>
-            <BarChart data={payroll.data || []}>
-              <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-              <XAxis dataKey="month" tickFormatter={(m) => MONTHS[Number(m) - 1]} tick={{ fontSize: 11 }} />
-              <YAxis tickFormatter={(v) => `₹${Math.round(Number(v) / 1000)}k`} tick={{ fontSize: 11 }} />
-              <Tooltip formatter={(v: number) => formatCurrency(v)} />
-              <Bar dataKey="gross" fill="#2563eb" radius={[4, 4, 0, 0]} />
-              <Bar dataKey="net" fill="#16a34a" radius={[4, 4, 0, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
-        </ChartCard>
-
-        <ChartCard title={`Attendance Trend ${MONTHS[month - 1]} ${year}`} description="Daily attendance statuses by date">
-          <ResponsiveContainer width="100%" height={280}>
-            <LineChart data={attendanceByDate}>
-              <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-              <XAxis dataKey="date" tick={{ fontSize: 11 }} />
-              <YAxis tick={{ fontSize: 11 }} />
-              <Tooltip />
-              <Line type="monotone" dataKey="Present" stroke="#16a34a" strokeWidth={2} />
-              <Line type="monotone" dataKey="Absent" stroke="#dc2626" strokeWidth={2} />
-              <Line type="monotone" dataKey="Half-day" stroke="#f59e0b" strokeWidth={2} />
-            </LineChart>
-          </ResponsiveContainer>
-        </ChartCard>
-
-        <ChartCard title={`Leave Trend ${year}`} description="Monthly leave requests by status">
-          <ResponsiveContainer width="100%" height={280}>
-            <BarChart data={leaveByMonth}>
-              <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-              <XAxis dataKey="month" tick={{ fontSize: 11 }} />
-              <YAxis tick={{ fontSize: 11 }} />
-              <Tooltip />
-              <Bar dataKey="Approved" fill="#16a34a" radius={[4, 4, 0, 0]} />
-              <Bar dataKey="Pending" fill="#f59e0b" radius={[4, 4, 0, 0]} />
-              <Bar dataKey="Rejected" fill="#dc2626" radius={[4, 4, 0, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
-        </ChartCard>
-      </div>
-
-      <div className="grid gap-6 xl:grid-cols-[1fr_1fr]">
-        <ChartCard title="Recruitment Funnel" description="Candidate status split across all jobs">
-          <ResponsiveContainer width="100%" height={260}>
-            <PieChart>
-              <Pie data={funnel.data || []} dataKey="count" nameKey="status" outerRadius={95} label>
-                {(funnel.data || []).map((_: any, index: number) => <Cell key={index} fill={COLORS[index % COLORS.length]} />)}
-              </Pie>
-              <Tooltip />
-            </PieChart>
-          </ResponsiveContainer>
-        </ChartCard>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Executive Snapshot</CardTitle>
-            <CardDescription>Key ratios for the selected year</CardDescription>
-          </CardHeader>
-          <CardContent className="grid gap-3 sm:grid-cols-2">
-            <Snapshot label="Joined" value={turnover.data?.joined || 0} />
-            <Snapshot label="Exited" value={turnover.data?.resigned || 0} />
-            <Snapshot label="Open Positions" value={dashboard.data?.recruitment?.open_positions || 0} />
-            <Snapshot label="Candidates" value={dashboard.data?.recruitment?.total_candidates || 0} />
-          </CardContent>
-        </Card>
-      </div>
-
-      {isLoading && <p className="text-sm text-muted-foreground">Loading live reports...</p>}
+      {activeTab === "Overview Dashboard" && <OverviewDashboard />}
+      {activeTab === "Workforce Analytics" && <WorkforceAnalytics />}
+      {activeTab === "Saved Reports" && <SavedReports />}
     </div>
   );
 }
 
-function Metric({ title, value, hint, icon: Icon }: { title: string; value: string | number; hint: string; icon: any }) {
+function OverviewDashboard() {
+  const dashboard = useQuery({ queryKey: ["reports-dashboard"], queryFn: () => reportsApi.dashboard().then((r) => r.data), staleTime: STALE_TIME });
+  const headcount = useQuery({ queryKey: ["reports-headcount-by-dept"], queryFn: () => reportsApi.headcountByDept().then((r) => r.data), staleTime: STALE_TIME });
+  const attendance = useQuery({ queryKey: ["reports-attendance-trend"], queryFn: () => reportsApi.attendanceTrend().then((r) => r.data), staleTime: STALE_TIME });
+  const leave = useQuery({ queryKey: ["reports-leave-trend"], queryFn: () => reportsApi.leaveTrend().then((r) => r.data), staleTime: STALE_TIME });
+  const payroll = useQuery({ queryKey: ["reports-payroll-summary"], queryFn: () => reportsApi.payrollSummary().then((r) => r.data), staleTime: STALE_TIME });
+  const attrition = Number(dashboard.data?.attrition_rate || 0);
+  const attritionClass = attrition > 5 ? "text-red-600 bg-red-50" : attrition >= 2 ? "text-yellow-700 bg-yellow-50" : "text-green-700 bg-green-50";
+
+  return (
+    <div className="space-y-6">
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <Kpi title="Total Employees" value={dashboard.data?.headcount ?? 0} icon={Users} className="bg-blue-50 text-blue-700" loading={dashboard.isLoading} />
+        <Kpi title="Active Employees" value={dashboard.data?.active_count ?? 0} icon={UserCheck} className="bg-green-50 text-green-700" loading={dashboard.isLoading} />
+        <Kpi title="New Hires This Month" value={dashboard.data?.new_hires_this_month ?? 0} icon={UserPlus} className="bg-purple-50 text-purple-700" loading={dashboard.isLoading} />
+        <Kpi title="Attrition Rate" value={`${attrition.toFixed(1)}%`} icon={BarChart3} className={attritionClass} loading={dashboard.isLoading} />
+      </div>
+
+      <div className="grid gap-6 xl:grid-cols-2">
+        <ChartCard title="Headcount by Department" query={headcount}>
+          <ResponsiveContainer width="100%" height={280}>
+            <BarChart data={headcount.data || []} layout="vertical" margin={{ left: 20 }}>
+              <CartesianGrid stroke="#e2e8f0" strokeDasharray="3 3" />
+              <XAxis type="number" />
+              <YAxis dataKey="department_name" type="category" width={120} tick={{ fontSize: 11 }} />
+              <Tooltip contentStyle={tooltipStyle} />
+              <Bar dataKey="count" fill="hsl(var(--primary))" radius={[0, 4, 4, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        </ChartCard>
+
+        <ChartCard title="Attendance Trend" query={attendance}>
+          <ResponsiveContainer width="100%" height={280}>
+            <AreaChart data={(attendance.data || []).map((row: any) => ({ ...row, label: monthLabel(row.month) }))}>
+              <CartesianGrid stroke="#e2e8f0" strokeDasharray="3 3" />
+              <XAxis dataKey="label" tick={{ fontSize: 11 }} />
+              <YAxis />
+              <Tooltip contentStyle={tooltipStyle} />
+              <Legend />
+              <Area type="monotone" stackId="1" dataKey="present_days" stroke="#16a34a" fill="#16a34a" name="Present" />
+              <Area type="monotone" stackId="1" dataKey="absent_days" stroke="hsl(var(--destructive))" fill="hsl(var(--destructive))" name="Absent" />
+              <Area type="monotone" stackId="1" dataKey="wfh_days" stroke="#2563eb" fill="#2563eb" name="WFH" />
+            </AreaChart>
+          </ResponsiveContainer>
+        </ChartCard>
+
+        <ChartCard title="Leave Trend" query={leave}>
+          <ResponsiveContainer width="100%" height={280}>
+            <LineChart data={(leave.data || []).map((row: any) => ({ ...row, label: monthLabel(row.month) }))}>
+              <CartesianGrid stroke="#e2e8f0" strokeDasharray="3 3" />
+              <XAxis dataKey="label" tick={{ fontSize: 11 }} />
+              <YAxis />
+              <Tooltip contentStyle={tooltipStyle} />
+              <Legend />
+              <Line type="monotone" dataKey="approved_count" stroke="#16a34a" strokeWidth={2} name="Approved" />
+              <Line type="monotone" dataKey="pending_count" stroke="#f59e0b" strokeWidth={2} name="Pending" />
+            </LineChart>
+          </ResponsiveContainer>
+        </ChartCard>
+
+        <ChartCard title="Payroll Summary" query={payroll}>
+          <ResponsiveContainer width="100%" height={280}>
+            <ComposedChart data={(payroll.data || []).map((row: any) => ({ ...row, label: monthLabel(row.month) }))}>
+              <CartesianGrid stroke="#e2e8f0" strokeDasharray="3 3" />
+              <XAxis dataKey="label" tick={{ fontSize: 11 }} />
+              <YAxis tickFormatter={(value) => money(value)} width={92} />
+              <Tooltip contentStyle={tooltipStyle} formatter={(value) => money(value)} />
+              <Legend />
+              <Bar dataKey="gross_pay" fill="#2563eb" name="Gross Pay" />
+              <Bar dataKey="total_deductions" fill="hsl(var(--destructive))" name="Deductions" />
+              <Line type="monotone" dataKey="net_pay" stroke="#16a34a" strokeWidth={2} name="Net Pay" />
+            </ComposedChart>
+          </ResponsiveContainer>
+        </ChartCard>
+      </div>
+    </div>
+  );
+}
+
+function WorkforceAnalytics() {
+  const turnover = useQuery({ queryKey: ["reports-turnover"], queryFn: () => reportsApi.turnover().then((r) => r.data), staleTime: STALE_TIME });
+  const funnel = useQuery({ queryKey: ["reports-recruitment-funnel"], queryFn: () => reportsApi.recruitmentFunnel().then((r) => r.data), staleTime: STALE_TIME });
+  const dei = useQuery({ queryKey: ["reports-dei-analytics"], queryFn: () => reportsApi.deiAnalytics().then((r) => r.data), staleTime: STALE_TIME });
+  const genderColors: Record<string, string> = {
+    Male: "hsl(221 83% 53%)",
+    Female: "hsl(330 81% 60%)",
+    Other: "hsl(280 65% 60%)",
+    "Prefer Not to Say": "hsl(280 65% 60%)",
+  };
+
+  return (
+    <div className="grid gap-6 xl:grid-cols-3">
+      <ChartCard title="Employee Turnover" query={turnover}>
+        <ResponsiveContainer width="100%" height={280}>
+          <LineChart data={(turnover.data || []).map((row: any) => ({ ...row, label: monthLabel(row.month) }))}>
+            <CartesianGrid stroke="#e2e8f0" strokeDasharray="3 3" />
+            <XAxis dataKey="label" tick={{ fontSize: 11 }} />
+            <YAxis />
+            <YAxis yAxisId="right" orientation="right" tickFormatter={(v) => `${v}%`} />
+            <Tooltip contentStyle={tooltipStyle} />
+            <Legend />
+            <Line dataKey="joined" stroke="#16a34a" strokeWidth={2} name="Joined" />
+            <Line dataKey="exited" stroke="hsl(var(--destructive))" strokeWidth={2} name="Exited" />
+            <Line yAxisId="right" dataKey="attrition_rate" stroke="#f97316" strokeDasharray="4 4" strokeWidth={2} name="Attrition %" />
+          </LineChart>
+        </ResponsiveContainer>
+      </ChartCard>
+
+      <ChartCard title="Recruitment Funnel" query={funnel}>
+        <ResponsiveContainer width="100%" height={280}>
+          <FunnelChart>
+            <Tooltip contentStyle={tooltipStyle} />
+            <Funnel dataKey="count" data={funnel.data || []} nameKey="stage" fill="hsl(var(--primary))">
+              <LabelList position="right" fill="hsl(var(--foreground))" dataKey="stage" />
+            </Funnel>
+          </FunnelChart>
+        </ResponsiveContainer>
+      </ChartCard>
+
+      <ChartCard title="Gender Distribution" query={dei}>
+        <ResponsiveContainer width="100%" height={280}>
+          <PieChart>
+            <Tooltip contentStyle={tooltipStyle} />
+            <Legend />
+            <Pie data={dei.data?.gender_distribution || []} dataKey="count" nameKey="label" outerRadius={92} label>
+              {(dei.data?.gender_distribution || []).map((row: any) => (
+                <Cell key={row.label} fill={genderColors[row.label] || "hsl(280 65% 60%)"} />
+              ))}
+            </Pie>
+          </PieChart>
+        </ResponsiveContainer>
+      </ChartCard>
+
+      <ChartCard title="Department Diversity" query={dei}>
+        <ResponsiveContainer width="100%" height={280}>
+          <BarChart data={dei.data?.department_diversity || []}>
+            <CartesianGrid stroke="#e2e8f0" strokeDasharray="3 3" />
+            <XAxis dataKey="department_name" tick={{ fontSize: 11 }} />
+            <YAxis />
+            <Tooltip contentStyle={tooltipStyle} />
+            <Legend />
+            <Bar dataKey="Male" stackId="a" fill={genderColors.Male} />
+            <Bar dataKey="Female" stackId="a" fill={genderColors.Female} />
+            <Bar dataKey="Other" stackId="a" fill={genderColors.Other} />
+          </BarChart>
+        </ResponsiveContainer>
+      </ChartCard>
+
+      <ChartCard title="Avg Gross Pay by Gender" query={dei}>
+        <ResponsiveContainer width="100%" height={280}>
+          <BarChart data={dei.data?.avg_gross_by_gender || []}>
+            <CartesianGrid stroke="#e2e8f0" strokeDasharray="3 3" />
+            <XAxis dataKey="label" tick={{ fontSize: 11 }} />
+            <YAxis tickFormatter={(v) => money(v)} width={92} />
+            <Tooltip contentStyle={tooltipStyle} formatter={(value) => money(value)} />
+            <Bar dataKey="avg_gross_pay" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
+          </BarChart>
+        </ResponsiveContainer>
+      </ChartCard>
+    </div>
+  );
+}
+
+function SavedReports() {
+  const [selected, setSelected] = useState<ReportDefinition | null>(null);
+  const definitions = useQuery({ queryKey: ["report-definitions"], queryFn: () => reportsApi.definitions().then((r) => r.data as ReportDefinition[]), staleTime: STALE_TIME });
+  const result = useQuery({
+    queryKey: ["report-definition-run", selected?.id],
+    queryFn: () => reportsApi.runDefinition(selected!.id).then((r) => r.data as ReportResult),
+    enabled: false,
+  });
+
+  const exportCsv = () => {
+    if (!result.data) return;
+    const escape = (value: unknown) => `"${String(value ?? "").replace(/"/g, '""')}"`;
+    const csv = [
+      result.data.columns.map(escape).join(","),
+      ...result.data.rows.map((row) => result.data!.columns.map((column) => escape(row[column])).join(",")),
+    ].join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `${selected?.name || "report"}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
+  return (
+    <div className="grid gap-5 xl:grid-cols-[320px_1fr]">
+      <Card>
+        <CardHeader><CardTitle className="text-base">Saved Reports</CardTitle></CardHeader>
+        <CardContent className="space-y-3">
+          {definitions.isLoading && <div className="h-[280px] animate-pulse rounded bg-muted" />}
+          {!definitions.isLoading && !definitions.data?.length && (
+            <p className="rounded-lg border p-4 text-sm text-muted-foreground">No saved reports yet. Reports can be configured by your administrator.</p>
+          )}
+          {(definitions.data || []).map((definition) => (
+            <button
+              key={definition.id}
+              type="button"
+              onClick={() => setSelected(definition)}
+              className={cn("w-full rounded-lg border p-3 text-left transition-colors hover:bg-muted/60", selected?.id === definition.id && "border-primary bg-primary/10")}
+            >
+              <div className="flex items-center justify-between gap-2">
+                <p className="truncate text-sm font-medium">{definition.name}</p>
+                <ModuleBadge module={definition.module || "custom"} />
+              </div>
+              <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">{definition.description || "No description"}</p>
+            </button>
+          ))}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between gap-3">
+          <CardTitle className="text-base">{selected ? selected.name : "Report Output"}</CardTitle>
+          {selected && (
+            <div className="flex gap-2">
+              <Button size="sm" onClick={() => result.refetch()} disabled={result.isFetching}>Run Report</Button>
+              <Button size="sm" variant="outline" onClick={exportCsv} disabled={!result.data?.rows?.length}>
+                <Download className="mr-2 h-4 w-4" /> Export CSV
+              </Button>
+            </div>
+          )}
+        </CardHeader>
+        <CardContent>
+          {!selected && <p className="py-16 text-center text-sm text-muted-foreground">Select a report from the left to run it</p>}
+          {selected && result.isFetching && <div className="h-[280px] animate-pulse rounded bg-muted" />}
+          {selected && result.isError && <p className="py-10 text-center text-sm text-muted-foreground">Could not load data</p>}
+          {selected && result.data && (
+            <div className="overflow-x-auto rounded-lg border">
+              <table className="w-full min-w-[720px] text-sm">
+                <thead className="bg-muted/60">
+                  <tr>{result.data.columns.map((column) => <th key={column} className="px-3 py-2 text-left font-medium">{column}</th>)}</tr>
+                </thead>
+                <tbody>
+                  {result.data.rows.map((row, index) => (
+                    <tr key={index} className="border-t">
+                      {result.data!.columns.map((column) => <td key={column} className="px-3 py-2">{String(row[column] ?? "")}</td>)}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+function Kpi({ title, value, icon: Icon, className, loading }: { title: string; value: string | number; icon: any; className: string; loading: boolean }) {
   return (
     <Card>
-      <CardContent className="flex items-start justify-between p-5">
+      <CardContent className="flex items-center justify-between p-5">
         <div>
           <p className="text-sm text-muted-foreground">{title}</p>
-          <p className="mt-2 text-2xl font-semibold">{value}</p>
-          <p className="mt-1 text-xs text-muted-foreground">{hint}</p>
+          {loading ? <div className="mt-2 h-8 w-20 animate-pulse rounded bg-muted" /> : <p className="mt-2 text-2xl font-semibold">{value}</p>}
         </div>
-        <div className="rounded-md bg-primary/10 p-2 text-primary">
-          <Icon className="h-5 w-5" />
-        </div>
+        <div className={cn("rounded-lg p-3", className)}><Icon className="h-5 w-5" /></div>
       </CardContent>
     </Card>
   );
 }
 
-function ChartCard({ title, description, children }: { title: string; description: string; children: React.ReactNode }) {
+function ChartCard({ title, query, children }: { title: string; query: { isLoading: boolean; isError: boolean }; children: ReactNode }) {
   return (
     <Card>
-      <CardHeader>
-        <CardTitle className="text-base">{title}</CardTitle>
-        <CardDescription>{description}</CardDescription>
-      </CardHeader>
-      <CardContent>{children}</CardContent>
+      <CardHeader><CardTitle className="text-base">{title}</CardTitle></CardHeader>
+      <CardContent>
+        {query.isLoading ? <div className="h-[280px] animate-pulse rounded bg-muted" /> : query.isError ? (
+          <p className="py-10 text-center text-sm text-muted-foreground">Could not load data</p>
+        ) : children}
+      </CardContent>
     </Card>
   );
 }
 
-function Snapshot({ label, value }: { label: string; value: string | number }) {
-  return (
-    <div className="rounded-lg border p-4">
-      <p className="text-xs text-muted-foreground">{label}</p>
-      <p className="mt-2 text-xl font-semibold">{value}</p>
-    </div>
-  );
+function ModuleBadge({ module }: { module: string }) {
+  const colors: Record<string, string> = {
+    payroll: "bg-purple-100 text-purple-800",
+    employee: "bg-blue-100 text-blue-800",
+    attendance: "bg-orange-100 text-orange-800",
+    leave: "bg-green-100 text-green-800",
+    recruitment: "bg-pink-100 text-pink-800",
+  };
+  return <Badge className={cn("border-0", colors[module] || "bg-muted text-muted-foreground")}>{module}</Badge>;
 }

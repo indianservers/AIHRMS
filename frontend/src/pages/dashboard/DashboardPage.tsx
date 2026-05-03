@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { useEffect } from "react";
+
 import {
   Users, Clock, CalendarDays, Briefcase, TrendingUp, TrendingDown,
   CheckCircle2, AlertCircle, Building2, DollarSign, ShieldCheck, Target,
@@ -11,6 +11,7 @@ import { attendanceApi, documentsApi, employeeApi, engagementApi, leaveApi, payr
 import { formatCurrency } from "@/lib/utils";
 import { useAuthStore } from "@/store/authStore";
 import { getRoleKey, getRoleLabel } from "@/lib/roles";
+import { usePageTitle } from "@/hooks/use-page-title";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell, Legend
@@ -89,7 +90,7 @@ function SkeletonCard() {
 }
 
 export default function DashboardPage() {
-  useEffect(() => { document.title = "Dashboard · AI HRMS"; }, []);
+  usePageTitle("Dashboard");
   const { user } = useAuthStore();
   const roleKey = getRoleKey(user?.role, user?.is_superuser);
   const roleLabel = getRoleLabel(user?.role, user?.is_superuser);

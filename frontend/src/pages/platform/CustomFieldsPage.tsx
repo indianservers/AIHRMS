@@ -1,7 +1,9 @@
 import { SlidersHorizontal } from "lucide-react";
+import { usePageTitle } from "@/hooks/use-page-title";
 import ModuleShell from "@/components/ModuleShell";
 
 export default function CustomFieldsPage() {
+  usePageTitle("Custom Fields");
   return (
     <ModuleShell
       title="Custom Fields & Forms"

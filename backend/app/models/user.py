@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Boolean, ForeignKey, DateTime, Table, Text
+from sqlalchemy import Column, Integer, String, Boolean, ForeignKey, DateTime, Table, Text, JSON
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from app.db.base_class import Base
@@ -50,6 +50,9 @@ class User(Base):
     last_login = Column(DateTime(timezone=True), nullable=True)
     password_reset_token = Column(String(255), nullable=True)
     password_reset_expires = Column(DateTime(timezone=True), nullable=True)
+    mfa_enabled = Column(Boolean, default=False)
+    mfa_enforced_at = Column(DateTime(timezone=True), nullable=True)
+    sso_provider_id = Column(Integer, ForeignKey("sso_providers.id"), nullable=True)
 
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
@@ -84,12 +87,18 @@ class MFAMethod(Base):
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     method_type = Column(String(30), nullable=False)  # TOTP, Email OTP, SMS OTP
+    secret = Column(String(255))
     secret_ref = Column(String(255))
     phone_number = Column(String(30))
     email = Column(String(120))
     is_primary = Column(Boolean, default=False)
     is_verified = Column(Boolean, default=False)
+    is_active = Column(Boolean, default=True)
     enabled_at = Column(DateTime(timezone=True))
+    last_used_at = Column(DateTime(timezone=True))
+    recovery_codes_json = Column(JSON)
+    verified_at = Column(DateTime(timezone=True))
+    backup_email = Column(String(255))
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     user = relationship("User")
@@ -104,10 +113,15 @@ class PasswordPolicy(Base):
     require_uppercase = Column(Boolean, default=True)
     require_lowercase = Column(Boolean, default=True)
     require_number = Column(Boolean, default=True)
+    require_special = Column(Boolean, default=False)
     require_symbol = Column(Boolean, default=False)
+    max_age_days = Column(Integer, default=90)
     expiry_days = Column(Integer, default=90)
     lockout_attempts = Column(Integer, default=5)
+    lockout_duration_minutes = Column(Integer, default=30)
     lockout_minutes = Column(Integer, default=30)
+    mfa_required = Column(Boolean, default=False)
+    is_default = Column(Boolean, default=False)
     is_active = Column(Boolean, default=True, index=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
@@ -121,7 +135,10 @@ class LoginAttempt(Base):
     ip_address = Column(String(50))
     user_agent = Column(Text)
     status = Column(String(30), nullable=False, index=True)
+    success = Column(Boolean)
     failure_reason = Column(String(255))
+    mfa_attempted = Column(Boolean, default=False)
+    mfa_success = Column(Boolean)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     user = relationship("User")

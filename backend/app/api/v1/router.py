@@ -23,7 +23,9 @@ from app.api.v1 import (
     performance,
     recruitment,
     reports,
+    statutory,
     statutory_compliance,
+    sso,
     timesheets,
     whatsapp_ess,
     workflow,
@@ -49,6 +51,8 @@ api_router.include_router(recruitment.router)
 api_router.include_router(performance.router)
 api_router.include_router(helpdesk.router)
 api_router.include_router(reports.router)
+api_router.include_router(statutory.router)
+api_router.include_router(sso.router)
 api_router.include_router(timesheets.router)
 api_router.include_router(workflow.router)
 api_router.include_router(workflow_engine.router)

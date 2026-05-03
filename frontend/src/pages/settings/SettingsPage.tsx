@@ -21,6 +21,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { attendanceApi, authApi, companyApi, leaveApi, payrollApi } from "@/services/api";
+import { usePageTitle } from "@/hooks/use-page-title";
 import { toast } from "@/hooks/use-toast";
 
 type Entity = Record<string, any>;
@@ -88,6 +89,7 @@ function EmptyState({ onAdd }: { onAdd: () => void }) {
 }
 
 export default function SettingsPage() {
+  usePageTitle("Settings");
   const qc = useQueryClient();
   const [active, setActive] = useState<SettingKey>("companies");
   const [query, setQuery] = useState("");

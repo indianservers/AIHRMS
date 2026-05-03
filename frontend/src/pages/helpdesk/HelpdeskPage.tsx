@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, BarChart3, LifeBuoy, MessageSquare, Plus, RefreshCw, Send, Star } from "lucide-react";
 import { useForm } from "react-hook-form";
@@ -9,7 +9,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "@/hooks/use-toast";
 import { statusColor, formatDateTime } from "@/lib/utils";
+import { usePageTitle } from "@/hooks/use-page-title";
 import { helpdeskApi } from "@/services/api";
+import { NOTIF_UNREAD_KEY } from "@/components/layout/Topbar";
 
 interface Ticket {
   id: number;
@@ -56,7 +58,7 @@ const PRIORITIES = ["Low", "Medium", "High", "Critical"];
 const STATUSES = ["Open", "In Progress", "Resolved", "Closed"];
 
 export default function HelpdeskPage() {
-  useEffect(() => { document.title = "Helpdesk · AI HRMS"; }, []);
+  usePageTitle("Helpdesk");
   const qc = useQueryClient();
   const [showForm, setShowForm] = useState(false);
   const [selectedTicket, setSelectedTicket] = useState<Ticket | null>(null);
@@ -109,6 +111,7 @@ export default function HelpdeskPage() {
       setShowForm(false);
       refetch();
       qc.invalidateQueries({ queryKey: ["helpdesk-analytics"] });
+      qc.invalidateQueries({ queryKey: NOTIF_UNREAD_KEY });
     },
     onError: (e: unknown) => {
       const msg = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail || "Failed";
@@ -123,6 +126,7 @@ export default function HelpdeskPage() {
       refetch();
       qc.invalidateQueries({ queryKey: ["helpdesk-analytics"] });
       qc.invalidateQueries({ queryKey: ["helpdesk-sla-breaches"] });
+      qc.invalidateQueries({ queryKey: NOTIF_UNREAD_KEY });
       setSelectedTicket((ticket) => ticket ? { ...ticket, status } : ticket);
     },
   });
@@ -132,6 +136,7 @@ export default function HelpdeskPage() {
     onSuccess: () => {
       setReplyText("");
       refetchReplies();
+      qc.invalidateQueries({ queryKey: NOTIF_UNREAD_KEY });
     },
     onError: () => toast({ title: "Failed to send reply", variant: "destructive" }),
   });

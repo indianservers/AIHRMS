@@ -157,9 +157,11 @@ class EmployeeBase(BaseModel):
     gender_identity: Optional[str] = None
     disability_status: Optional[str] = None
     veteran_status: Optional[str] = None
+    work_email: Optional[str] = None
     personal_email: Optional[str] = None
     phone_number: Optional[str] = None
     alternate_phone: Optional[str] = None
+    office_extension: Optional[str] = None
     emergency_contact_name: Optional[str] = None
     emergency_contact_number: Optional[str] = None
     emergency_contact_relation: Optional[str] = None
@@ -188,6 +190,9 @@ class EmployeeBase(BaseModel):
     work_location: str = "Office"
     shift_id: Optional[int] = None
     probation_period_months: int = 6
+    desk_code: Optional[str] = None
+    timezone: str = "Asia/Kolkata"
+    manager_chain_path: Optional[str] = None
     bank_name: Optional[str] = None
     bank_branch: Optional[str] = None
     account_number: Optional[str] = None
@@ -199,6 +204,10 @@ class EmployeeBase(BaseModel):
     pf_number: Optional[str] = None
     esic_number: Optional[str] = None
     salary_currency: str = "INR"
+    preferred_display_name: Optional[str] = None
+    directory_visibility: str = "public"
+    skills_tags: Optional[str] = None
+    profile_completeness: int = 0
     bio: Optional[str] = None
     interests: Optional[str] = None
     research_work: Optional[str] = None
@@ -222,9 +231,11 @@ class EmployeeUpdate(BaseModel):
     marital_status: Optional[str] = None
     blood_group: Optional[str] = None
     nationality: Optional[str] = None
+    work_email: Optional[str] = None
     personal_email: Optional[str] = None
     phone_number: Optional[str] = None
     alternate_phone: Optional[str] = None
+    office_extension: Optional[str] = None
     emergency_contact_name: Optional[str] = None
     emergency_contact_number: Optional[str] = None
     emergency_contact_relation: Optional[str] = None
@@ -250,6 +261,9 @@ class EmployeeUpdate(BaseModel):
     status: Optional[str] = None
     work_location: Optional[str] = None
     shift_id: Optional[int] = None
+    desk_code: Optional[str] = None
+    timezone: Optional[str] = None
+    manager_chain_path: Optional[str] = None
     bank_name: Optional[str] = None
     bank_branch: Optional[str] = None
     account_number: Optional[str] = None
@@ -260,6 +274,10 @@ class EmployeeUpdate(BaseModel):
     uan_number: Optional[str] = None
     salary_currency: Optional[str] = None
     profile_photo_url: Optional[str] = None
+    preferred_display_name: Optional[str] = None
+    directory_visibility: Optional[str] = None
+    skills_tags: Optional[str] = None
+    profile_completeness: Optional[int] = None
     bio: Optional[str] = None
     interests: Optional[str] = None
     research_work: Optional[str] = None
@@ -272,8 +290,10 @@ class EmployeeListSchema(BaseModel):
     employee_id: str
     first_name: str
     last_name: str
+    work_email: Optional[str] = None
     personal_email: Optional[str] = None
     phone_number: Optional[str] = None
+    office_extension: Optional[str] = None
     designation_id: Optional[int] = None
     department_id: Optional[int] = None
     branch_id: Optional[int] = None
@@ -287,6 +307,13 @@ class EmployeeListSchema(BaseModel):
     date_of_joining: date
     profile_photo_url: Optional[str] = None
     salary_currency: str = "INR"
+    preferred_display_name: Optional[str] = None
+    directory_visibility: str = "public"
+    skills_tags: Optional[str] = None
+    profile_completeness: int = 0
+    desk_code: Optional[str] = None
+    timezone: str = "Asia/Kolkata"
+    manager_chain_path: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -295,6 +322,7 @@ class EmployeeListSchema(BaseModel):
 class EmployeeSchema(EmployeeBase):
     id: int
     employee_id: str
+    user_id: Optional[int] = None
     profile_photo_url: Optional[str] = None
     educations: List[EmployeeEducationSchema] = []
     experiences: List[EmployeeExperienceSchema] = []

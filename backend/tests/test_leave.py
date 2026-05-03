@@ -167,6 +167,7 @@ def test_leave_request_workflow(client, db):
 def test_hr_can_review_leave_with_reason(client, db, superuser_headers):
     """HR/Admin approval flow records the decision reason and exposes employee details."""
     from app.models.leave import LeaveRequest
+    from app.models.notification import Notification
 
     emp, lt, user = _create_employee_with_leave(db, client, {})
 
@@ -198,6 +199,16 @@ def test_hr_can_review_leave_with_reason(client, db, superuser_headers):
     stored = db.query(LeaveRequest).filter_by(id=request_id).first()
     assert stored.status == "Rejected"
     assert stored.review_remarks == "Project handover is incomplete"
+
+    notification = db.query(Notification).filter_by(
+        user_id=user.id,
+        related_entity_type="leave_request",
+        related_entity_id=request_id,
+        event_type="leave_rejected",
+    ).first()
+    assert notification is not None
+    assert notification.title == "Leave Rejected"
+    assert "Project handover is incomplete" in notification.message
 
 
 def test_leave_calendar_scopes_manager_team_and_holidays(client, db):

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Target, Plus, Star, TrendingUp, CheckCircle2, RefreshCw, MessageSquareText
@@ -11,6 +11,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { performanceApi } from "@/services/api";
 import { formatDate, statusColor } from "@/lib/utils";
+import { usePageTitle } from "@/hooks/use-page-title";
 import { toast } from "@/hooks/use-toast";
 
 interface Cycle {
@@ -64,7 +65,7 @@ interface Feedback360Request {
 }
 
 export default function PerformancePage() {
-  useEffect(() => { document.title = "Performance · AI HRMS"; }, []);
+  usePageTitle("Performance");
   const qc = useQueryClient();
   const [activeTab, setActiveTab] = useState<"goals" | "reviews" | "360">("goals");
   const [showGoalForm, setShowGoalForm] = useState(false);
@@ -368,7 +369,7 @@ export default function PerformancePage() {
                     </label>
                   ))}
                 </div>
-                <p className="text-xs text-muted-foreground">Rating: 1 (Needs Improvement) – 5 (Exceptional)</p>
+                <p className="text-xs text-muted-foreground">Rating: 1 (Needs Improvement) â€“ 5 (Exceptional)</p>
               </div>
 
               <div className="space-y-1.5">

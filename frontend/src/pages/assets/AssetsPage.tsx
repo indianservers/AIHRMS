@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Laptop, Plus, RefreshCw, Search } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label";
 import { assetApi, employeeApi } from "@/services/api";
 import { toast } from "@/hooks/use-toast";
 import { formatCurrency, formatDate } from "@/lib/utils";
+import { usePageTitle } from "@/hooks/use-page-title";
 
 type Asset = {
   id: number;
@@ -26,7 +27,7 @@ type Asset = {
 };
 
 export default function AssetsPage() {
-  useEffect(() => { document.title = "Assets · AI HRMS"; }, []);
+  usePageTitle("Assets");
   const qc = useQueryClient();
   const [search, setSearch] = useState("");
   const [assetTag, setAssetTag] = useState("");
@@ -148,7 +149,7 @@ export default function AssetsPage() {
                   <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary"><Laptop className="h-5 w-5" /></div>
                   <div>
                     <p className="font-medium">{asset.name} <span className="text-muted-foreground">({asset.asset_tag})</span></p>
-                    <p className="text-sm text-muted-foreground">{asset.brand || "No brand"} • {asset.serial_number || "No serial"} • Warranty {formatDate(asset.warranty_expiry || null)}</p>
+                    <p className="text-sm text-muted-foreground">{asset.brand || "No brand"} â€¢ {asset.serial_number || "No serial"} â€¢ Warranty {formatDate(asset.warranty_expiry || null)}</p>
                   </div>
                 </div>
                 <div className="flex items-center gap-2">

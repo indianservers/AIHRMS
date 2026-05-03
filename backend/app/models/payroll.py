@@ -485,6 +485,8 @@ class PayrollStatutoryContributionLine(Base):
     rule_type = Column(String(40))
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
+    payroll_record = relationship("PayrollRecord")
+
 
 class PayrollAttendanceInput(Base):
     __tablename__ = "payroll_attendance_inputs"
@@ -642,6 +644,43 @@ class StatutoryReturnFile(Base):
     validation_errors_json = Column(JSON)
 
     challan = relationship("StatutoryChallan", back_populates="return_files")
+
+
+class StatutoryComplianceCalendar(Base):
+    __tablename__ = "statutory_compliance_calendar"
+
+    id = Column(Integer, primary_key=True)
+    statutory_type = Column(String(50), index=True)
+    due_date = Column(Date, nullable=False, index=True)
+    period_start = Column(Date)
+    period_end = Column(Date)
+    description = Column(String(500))
+    status = Column(String(30), default="Pending", index=True)
+    filed_at = Column(DateTime(timezone=True))
+    filed_by = Column(Integer, ForeignKey("users.id"))
+    remarks = Column(Text)
+    company_id = Column(Integer, ForeignKey("companies.id"))
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class StatutoryFilingSubmission(Base):
+    __tablename__ = "statutory_filing_submissions"
+
+    id = Column(Integer, primary_key=True)
+    statutory_type = Column(String(50), index=True)
+    payroll_run_id = Column(Integer, ForeignKey("payroll_runs.id"), index=True)
+    file_type = Column(String(20))
+    generated_file_path = Column(String(500))
+    validation_status = Column(String(30), default="pending", index=True)
+    validation_errors_json = Column(JSON)
+    row_count = Column(Integer)
+    total_amount = Column(Numeric(18, 2))
+    submitted_at = Column(DateTime(timezone=True))
+    submitted_by = Column(Integer, ForeignKey("users.id"))
+    portal_reference = Column(String(200))
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    payroll_run = relationship("PayrollRun")
 
 
 class PayrollComplianceRule(Base):

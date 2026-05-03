@@ -1,7 +1,9 @@
 import { MessageCircle } from "lucide-react";
+import { usePageTitle } from "@/hooks/use-page-title";
 import ModuleShell from "@/components/ModuleShell";
 
 export default function WhatsAppESSPage() {
+  usePageTitle("WhatsApp ESS");
   return (
     <ModuleShell
       title="WhatsApp ESS"
