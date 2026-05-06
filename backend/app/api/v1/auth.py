@@ -29,8 +29,53 @@ from app.schemas.auth import (
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
+MODULE_ROLE_MAP = {
+    "hrms": {"super_admin", "hr_manager", "ceo", "manager", "employee"},
+    "crm": {
+        "crm_super_admin",
+        "crm_org_admin",
+        "crm_sales_manager",
+        "crm_sales_executive",
+        "crm_support_agent",
+        "crm_marketing_user",
+        "crm_viewer",
+    },
+    "project_management": {
+        "pms_super_admin",
+        "pms_org_admin",
+        "pms_project_manager",
+        "pms_team_member",
+        "pms_client",
+        "pms_viewer",
+    },
+}
+
+
+def _normalize_module(module: str | None) -> str | None:
+    if not module:
+        return None
+    value = module.strip().lower().replace("-", "_")
+    if value in {"pms", "project", "project_management"}:
+        return "project_management"
+    if value in {"crm", "hrms"}:
+        return value
+    return None
+
+
+def _ensure_module_login_allowed(user: User, module: str | None) -> None:
+    module_key = _normalize_module(module)
+    if not module_key:
+        return
+    role_name = user.role.name if user.role else None
+    if role_name not in MODULE_ROLE_MAP[module_key]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"This account is not allowed to sign in to {module_key.replace('_', ' ').upper()}",
+        )
+
 
 def _token_response(user: User) -> TokenResponse:
+    employee = getattr(user, "employee", None)
     return TokenResponse(
         access_token=create_access_token(user.id),
         refresh_token=create_refresh_token(user.id),
@@ -38,7 +83,7 @@ def _token_response(user: User) -> TokenResponse:
         email=user.email,
         role=user.role.name if user.role else None,
         is_superuser=user.is_superuser,
-        employee_id=user.employee.id if user.employee else None,
+        employee_id=employee.id if employee else None,
     )
 
 
@@ -116,6 +161,7 @@ def login(request_data: LoginRequest, request: Request, db: Session = Depends(ge
         _log_attempt(db, user, request_data.email, False, "Account disabled", request)
         db.commit()
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Account is disabled")
+    _ensure_module_login_allowed(user, request_data.module)
 
     user.last_login = datetime.now(timezone.utc)
     _log_attempt(db, user, request_data.email, True, request=request)
@@ -175,6 +221,7 @@ def refresh_token(data: RefreshTokenRequest, db: Session = Depends(get_db)):
     access_token = create_access_token(user.id)
     refresh_token_new = create_refresh_token(user.id)
 
+    employee = getattr(user, "employee", None)
     return TokenResponse(
         access_token=access_token,
         refresh_token=refresh_token_new,
@@ -182,19 +229,20 @@ def refresh_token(data: RefreshTokenRequest, db: Session = Depends(get_db)):
         email=user.email,
         role=user.role.name if user.role else None,
         is_superuser=user.is_superuser,
-        employee_id=user.employee.id if user.employee else None,
+        employee_id=employee.id if employee else None,
     )
 
 
 @router.get("/me", response_model=UserSchema)
 def get_me(current_user: User = Depends(get_current_user)):
+    employee = getattr(current_user, "employee", None)
     return {
         "id": current_user.id,
         "email": current_user.email,
         "is_active": current_user.is_active,
         "is_superuser": current_user.is_superuser,
         "role": current_user.role,
-        "employee_id": current_user.employee.id if current_user.employee else None,
+        "employee_id": employee.id if employee else None,
     }
 
 

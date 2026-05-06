@@ -1,17 +1,27 @@
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { Keyboard } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 export default function KeyboardShortcuts() {
   const [open, setOpen] = useState(false);
+  const navigate = useNavigate();
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (event.key === "?" && !event.ctrlKey && !event.metaKey) setOpen(true);
       if (event.key === "Escape") setOpen(false);
+      if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) return;
+      if (event.key.toLowerCase() === "c" && window.location.pathname.startsWith("/project-management")) navigate("/project-management/projects/new");
+      if (event.key === "/" && window.location.pathname.startsWith("/project-management")) {
+        event.preventDefault();
+        navigate("/project-management/issue-navigator-pro");
+      }
+      if (event.key.toLowerCase() === "a" && window.location.pathname.startsWith("/project-management")) navigate("/project-management/enterprise-engine");
+      if (event.key.toLowerCase() === "m" && window.location.pathname.startsWith("/project-management")) navigate("/project-management/backlog-grooming");
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, []);
+  }, [navigate]);
   return (
     <>
       <Button variant="ghost" size="icon" title="Keyboard shortcuts" aria-label="Keyboard shortcuts" onClick={() => setOpen(true)}>
@@ -31,6 +41,10 @@ export default function KeyboardShortcuts() {
                 ["Esc", "Close dialogs"],
                 ["Alt + H", "Go dashboard"],
                 ["Alt + P", "Go payroll"],
+                ["PMS: C", "Create project/work item"],
+                ["PMS: /", "Open issue navigator"],
+                ["PMS: A", "Assign/open enterprise engine"],
+                ["PMS: M", "Move/groom backlog"],
               ].map(([key, desc]) => (
                 <div key={key} className="flex items-center justify-between rounded-md border p-3">
                   <span>{desc}</span>

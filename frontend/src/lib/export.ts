@@ -27,3 +27,4 @@ export function exportHtmlTable(table: HTMLTableElement, filename = "table.csv")
   link.click();
   URL.revokeObjectURL(url);
 }
+

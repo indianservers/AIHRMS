@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useForm } from "react-hook-form";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -21,35 +21,63 @@ const loginSchema = z.object({
 
 type LoginForm = z.infer<typeof loginSchema>;
 
-const demoLogins = [
-  {
-    label: "Admin",
-    email: "admin@aihrms.com",
-    password: "Admin@123456",
-    description: "Full configuration and system access",
+const moduleLogins = {
+  hrms: {
+    product: "AI HRMS",
+    authModule: "hrms",
+    tagline: "Human Resource Management",
+    description: "Enter your HRMS credentials",
+    afterLogin: "/hrms/dashboard",
+    accent: "blue",
+    demoLogins: [
+      { label: "HRMS Admin", email: "admin@aihrms.com", password: "Admin@123456", description: "HRMS configuration and system access" },
+      { label: "HR Manager", email: "hr@aihrms.com", password: "HR@123456", description: "Employees, leave, payroll, recruitment, HR operations" },
+      { label: "Manager", email: "manager@aihrms.com", password: "Manager@123456", description: "Team leave, attendance, performance, reports" },
+      { label: "Employee", email: "employee@aihrms.com", password: "Employee@123456", description: "Self-service attendance, leave, payslip, helpdesk" },
+    ],
   },
-  {
-    label: "HR",
-    email: "hr@aihrms.com",
-    password: "HR@123456",
-    description: "Employee, leave, payroll, recruitment, and HR operations",
+  crm: {
+    product: "VyaparaCRM",
+    authModule: "crm",
+    tagline: "Customer Relationship Management",
+    description: "Enter your CRM credentials",
+    afterLogin: "/crm",
+    accent: "emerald",
+    demoLogins: [
+      { label: "CRM Admin", email: "admin@vyaparacrm.com", password: "Password@123", description: "CRM users, settings, reports, automation" },
+      { label: "Sales Manager", email: "manager@vyaparacrm.com", password: "Password@123", description: "Pipeline, deals, forecasts, sales team" },
+      { label: "Sales Executive", email: "executive@vyaparacrm.com", password: "Password@123", description: "Leads, contacts, activities, assigned deals" },
+      { label: "Support Agent", email: "support@vyaparacrm.com", password: "Password@123", description: "Customer records and support tickets" },
+      { label: "Marketing", email: "marketing@vyaparacrm.com", password: "Password@123", description: "Campaigns, imports, segments, performance" },
+    ],
   },
-  {
-    label: "Manager",
-    email: "manager@aihrms.com",
-    password: "Manager@123456",
-    description: "Team leave, attendance, performance, reports",
+  project_management: {
+    product: "KaryaFlow",
+    authModule: "project_management",
+    tagline: "Project Management Software",
+    description: "Enter your PMS credentials",
+    afterLogin: "/project-management",
+    accent: "violet",
+    demoLogins: [
+      { label: "PMS Admin", email: "admin@karyaflow.com", password: "Password@123", description: "Project settings, users, workflows, reports" },
+      { label: "Project Manager", email: "manager@karyaflow.com", password: "Password@123", description: "Projects, tasks, milestones, approvals" },
+      { label: "Team Member", email: "member@karyaflow.com", password: "Password@123", description: "Assigned work, board updates, files, time logs" },
+      { label: "Client", email: "client@karyaflow.com", password: "Password@123", description: "Client portal, deliverables, approvals" },
+    ],
   },
-  {
-    label: "Employee",
-    email: "employee@aihrms.com",
-    password: "Employee@123456",
-    description: "Self-service attendance, leave, payslip, helpdesk",
-  },
-];
+} as const;
+
+function getLoginModule(pathname: string): keyof typeof moduleLogins {
+  if (pathname.startsWith("/crm")) return "crm";
+  if (pathname.startsWith("/project-management")) return "project_management";
+  return "hrms";
+}
 
 export default function LoginPage() {
   const navigate = useNavigate();
+  const location = useLocation();
+  const loginModule = getLoginModule(location.pathname);
+  const loginConfig = moduleLogins[loginModule];
   const { setTokens, setUser } = useAuthStore();
   const [showPassword, setShowPassword] = useState(false);
   const [loginPhase, setLoginPhase] = useState<"credentials" | "mfa">("credentials");
@@ -95,18 +123,18 @@ export default function LoginPage() {
           is_superuser: res.data.is_superuser,
           employee_id: res.data.employee_id,
         });
-        navigate("/dashboard");
+        navigate(loginConfig.afterLogin);
       });
     }
     if (ssoError) {
       window.history.replaceState({}, "", window.location.pathname);
       setInlineError(ssoError.replace(/_/g, " "));
     }
-  }, [navigate, setTokens, setUser]);
+  }, [loginConfig.afterLogin, navigate, setTokens, setUser]);
 
   const onSubmit = async (data: LoginForm) => {
     try {
-      const res = await authApi.login(data.email, data.password);
+      const res = await authApi.login(data.email, data.password, loginConfig.authModule);
       if (res.data.mfa_required) {
         setMfaToken(res.data.mfa_token);
         setLoginPhase("mfa");
@@ -119,7 +147,7 @@ export default function LoginPage() {
       setUser({ id: user_id, email, role, is_superuser, employee_id });
 
       toast({ title: "Welcome back!", variant: "default" });
-      navigate("/dashboard");
+      navigate(loginConfig.afterLogin);
     } catch (err: unknown) {
       const message =
         (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail ||
@@ -134,7 +162,7 @@ export default function LoginPage() {
       const { access_token, refresh_token, user_id, email, role, is_superuser, employee_id } = res.data;
       setTokens(access_token, refresh_token);
       setUser({ id: user_id, email, role, is_superuser, employee_id });
-      navigate("/dashboard");
+      navigate(loginConfig.afterLogin);
     },
     onError: (err: unknown) => {
       const message = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail || "Incorrect code";
@@ -142,7 +170,7 @@ export default function LoginPage() {
     },
   });
 
-  const ssoUrl = (provider: SsoProvider) => `${apiBaseUrl}/auth/sso/initiate/${provider.id}?next=/dashboard`;
+  const ssoUrl = (provider: SsoProvider) => `${apiBaseUrl}/auth/sso/initiate/${provider.id}?next=${encodeURIComponent(loginConfig.afterLogin)}`;
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 via-blue-950 to-slate-900 p-4">
@@ -155,8 +183,8 @@ export default function LoginPage() {
           <div className="inline-flex h-16 w-16 items-center justify-center rounded-2xl bg-blue-600 shadow-lg shadow-blue-500/25 mx-auto">
             <Sparkles className="h-8 w-8 text-white" />
           </div>
-          <h1 className="text-3xl font-bold text-white">AI HRMS</h1>
-          <p className="text-blue-200/70 text-sm">Intelligent Human Resource Management</p>
+          <h1 className="text-3xl font-bold text-white">{loginConfig.product}</h1>
+          <p className="text-blue-200/70 text-sm">{loginConfig.tagline}</p>
         </div>
 
         {/* Card */}
@@ -164,7 +192,7 @@ export default function LoginPage() {
           <CardHeader className="space-y-1 pb-4">
             <CardTitle className="text-white text-xl">Sign in</CardTitle>
             <CardDescription className="text-blue-200/60">
-              Enter your credentials to access HRMS
+              {loginConfig.description}
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -205,7 +233,7 @@ export default function LoginPage() {
                 <Input
                   id="email"
                   type="email"
-                  placeholder="admin@aihrms.com"
+                  placeholder={loginConfig.demoLogins[0].email}
                   className="bg-white/10 border-white/20 text-white placeholder:text-white/30 focus-visible:ring-blue-400"
                   {...register("email")}
                 />
@@ -273,7 +301,7 @@ export default function LoginPage() {
 
             <div className="mt-4 space-y-2 rounded-lg border border-blue-500/20 bg-blue-500/10 p-3">
               <p className="text-xs font-medium text-blue-200/80">Role logins</p>
-              {demoLogins.map((login) => (
+              {loginConfig.demoLogins.map((login) => (
                 <button
                   key={login.email}
                   type="button"
@@ -291,11 +319,16 @@ export default function LoginPage() {
                 </button>
               ))}
             </div>
+            <div className="mt-4 grid grid-cols-3 gap-2 text-center text-[11px]">
+              <Link className="rounded-md border border-white/10 bg-white/5 px-2 py-2 text-blue-100 hover:bg-white/10" to="/hrms/login">HRMS Login</Link>
+              <Link className="rounded-md border border-white/10 bg-white/5 px-2 py-2 text-blue-100 hover:bg-white/10" to="/crm/login">CRM Login</Link>
+              <Link className="rounded-md border border-white/10 bg-white/5 px-2 py-2 text-blue-100 hover:bg-white/10" to="/project-management/login">PMS Login</Link>
+            </div>
           </CardContent>
         </Card>
 
         <p className="text-center text-blue-200/40 text-xs">
-          &copy; 2024 AI HRMS. All rights reserved.
+          &copy; 2024 Business Suite. All rights reserved.
         </p>
       </div>
     </div>

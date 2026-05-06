@@ -6,6 +6,7 @@ from pydantic import BaseModel, EmailStr
 class LoginRequest(BaseModel):
     email: EmailStr
     password: str
+    module: Optional[str] = None
 
 
 class TokenResponse(BaseModel):

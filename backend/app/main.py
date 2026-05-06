@@ -14,6 +14,7 @@ from app.core.config import settings
 from app.api.v1.router import api_router
 from app.core.middleware.audit import AuditLogMiddleware
 from app.core.middleware.request_id import RequestIDMiddleware
+from app.module_registry import is_app_enabled
 
 
 @asynccontextmanager
@@ -26,7 +27,7 @@ async def lifespan(app: FastAPI):
     from app.db.session import engine
     from app.db.base import Base
     from app.db.session import SessionLocal
-    from app.db.init_db import init_db
+    from app.db.init_common_db import init_common_db
 
     Base.metadata.create_all(bind=engine)
 
@@ -36,7 +37,12 @@ async def lifespan(app: FastAPI):
 
     db = SessionLocal()
     try:
-        init_db(db)
+        if is_app_enabled("hrms"):
+            from app.db.init_db import init_db
+
+            init_db(db)
+        else:
+            init_common_db(db)
     finally:
         db.close()
 

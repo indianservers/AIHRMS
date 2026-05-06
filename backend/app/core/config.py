@@ -9,10 +9,11 @@ from urllib.parse import quote_plus
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", case_sensitive=True)
 
-    PROJECT_NAME: str = "AI HRMS"
+    PROJECT_NAME: str = "Business Suite"
     API_V1_STR: str = "/api/v1"
     DEBUG: bool = False
     ENVIRONMENT: str = "development"
+    INSTALLED_APPS: Union[List[str], str] = ["hrms"]
 
     # Security
     SECRET_KEY: str = secrets.token_urlsafe(48)
@@ -92,6 +93,18 @@ class Settings(BaseSettings):
                 return json.loads(v)
             except Exception:
                 return [i.strip() for i in v.split(",")]
+        return v
+
+    @field_validator("INSTALLED_APPS", mode="before")
+    @classmethod
+    def assemble_installed_apps(cls, v: Any) -> List[str]:
+        if isinstance(v, str):
+            try:
+                parsed = json.loads(v)
+                if isinstance(parsed, list):
+                    return [str(item).strip() for item in parsed if str(item).strip()]
+            except Exception:
+                return [item.strip() for item in v.split(",") if item.strip()]
         return v
 
     @model_validator(mode="after")

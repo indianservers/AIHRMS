@@ -69,6 +69,20 @@ SYSTEM_PERMISSIONS = [
     ("exit_manage", "Manage exit process", "exit"),
     # AI
     ("ai_assistant", "Use AI assistant", "ai"),
+    # CRM
+    ("crm_view", "View CRM records and dashboards", "crm"),
+    ("crm_manage", "Manage CRM records", "crm"),
+    ("crm_pipeline_manage", "Manage CRM pipelines and deals", "crm"),
+    ("crm_support_manage", "Manage CRM support tickets", "crm"),
+    ("crm_marketing_manage", "Manage CRM campaigns", "crm"),
+    ("crm_admin", "Manage CRM settings and admin areas", "crm"),
+    # Project Management
+    ("pms_view", "View project management records", "project_management"),
+    ("pms_manage_projects", "Manage projects and members", "project_management"),
+    ("pms_manage_tasks", "Manage tasks, boards, and milestones", "project_management"),
+    ("pms_time_manage", "Manage time logs and approvals", "project_management"),
+    ("pms_client_portal", "Access project client portal", "project_management"),
+    ("pms_admin", "Manage project settings and admin areas", "project_management"),
 ]
 
 SYSTEM_ROLES = [
@@ -125,6 +139,71 @@ SYSTEM_ROLES = [
             "notification_view",
         ],
     },
+    {
+        "name": "crm_super_admin",
+        "description": "CRM platform super admin",
+        "permissions": ["crm_view", "crm_manage", "crm_pipeline_manage", "crm_support_manage", "crm_marketing_manage", "crm_admin", "reports_view", "settings_view"],
+    },
+    {
+        "name": "crm_org_admin",
+        "description": "CRM organization admin",
+        "permissions": ["crm_view", "crm_manage", "crm_pipeline_manage", "crm_support_manage", "crm_marketing_manage", "crm_admin", "reports_view", "settings_view"],
+    },
+    {
+        "name": "crm_sales_manager",
+        "description": "CRM sales manager",
+        "permissions": ["crm_view", "crm_manage", "crm_pipeline_manage", "reports_view", "notification_view"],
+    },
+    {
+        "name": "crm_sales_executive",
+        "description": "CRM sales executive",
+        "permissions": ["crm_view", "crm_manage", "crm_pipeline_manage", "notification_view"],
+    },
+    {
+        "name": "crm_support_agent",
+        "description": "CRM support agent",
+        "permissions": ["crm_view", "crm_support_manage", "notification_view"],
+    },
+    {
+        "name": "crm_marketing_user",
+        "description": "CRM marketing user",
+        "permissions": ["crm_view", "crm_marketing_manage", "notification_view"],
+    },
+    {
+        "name": "crm_viewer",
+        "description": "CRM read-only viewer",
+        "permissions": ["crm_view", "reports_view"],
+    },
+    {
+        "name": "pms_super_admin",
+        "description": "Project management platform super admin",
+        "permissions": ["pms_view", "pms_manage_projects", "pms_manage_tasks", "pms_time_manage", "pms_client_portal", "pms_admin", "reports_view", "settings_view"],
+    },
+    {
+        "name": "pms_org_admin",
+        "description": "Project management organization admin",
+        "permissions": ["pms_view", "pms_manage_projects", "pms_manage_tasks", "pms_time_manage", "pms_client_portal", "pms_admin", "reports_view", "settings_view"],
+    },
+    {
+        "name": "pms_project_manager",
+        "description": "Project manager",
+        "permissions": ["pms_view", "pms_manage_projects", "pms_manage_tasks", "pms_time_manage", "reports_view", "notification_view"],
+    },
+    {
+        "name": "pms_team_member",
+        "description": "Project team member",
+        "permissions": ["pms_view", "pms_manage_tasks", "pms_time_manage", "notification_view"],
+    },
+    {
+        "name": "pms_client",
+        "description": "Project client portal user",
+        "permissions": ["pms_view", "pms_client_portal", "notification_view"],
+    },
+    {
+        "name": "pms_viewer",
+        "description": "Project management read-only viewer",
+        "permissions": ["pms_view", "reports_view"],
+    },
 ]
 
 
@@ -151,6 +230,60 @@ DEMO_USERS = [
         "email": "employee@aihrms.com",
         "password": "Employee@123456",
         "role": "employee",
+        "is_superuser": False,
+    },
+    {
+        "email": "admin@vyaparacrm.com",
+        "password": "Password@123",
+        "role": "crm_org_admin",
+        "is_superuser": False,
+    },
+    {
+        "email": "manager@vyaparacrm.com",
+        "password": "Password@123",
+        "role": "crm_sales_manager",
+        "is_superuser": False,
+    },
+    {
+        "email": "executive@vyaparacrm.com",
+        "password": "Password@123",
+        "role": "crm_sales_executive",
+        "is_superuser": False,
+    },
+    {
+        "email": "support@vyaparacrm.com",
+        "password": "Password@123",
+        "role": "crm_support_agent",
+        "is_superuser": False,
+    },
+    {
+        "email": "marketing@vyaparacrm.com",
+        "password": "Password@123",
+        "role": "crm_marketing_user",
+        "is_superuser": False,
+    },
+    {
+        "email": "admin@karyaflow.com",
+        "password": "Password@123",
+        "role": "pms_org_admin",
+        "is_superuser": False,
+    },
+    {
+        "email": "manager@karyaflow.com",
+        "password": "Password@123",
+        "role": "pms_project_manager",
+        "is_superuser": False,
+    },
+    {
+        "email": "member@karyaflow.com",
+        "password": "Password@123",
+        "role": "pms_team_member",
+        "is_superuser": False,
+    },
+    {
+        "email": "client@karyaflow.com",
+        "password": "Password@123",
+        "role": "pms_client",
         "is_superuser": False,
     },
 ]

@@ -3,7 +3,7 @@ import * as Dialog from "@radix-ui/react-dialog";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { FormEvent, useState } from "react";
 import { Bell, LogOut, Menu, Moon, Sun, UserCircle, KeyRound } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -23,6 +23,7 @@ export const NOTIF_UNREAD_KEY = ["notifications-unread-count"];
 
 export default function Topbar({ onMenuClick }: TopbarProps) {
   const navigate = useNavigate();
+  const location = useLocation();
   const { theme, setTheme } = useThemeStore();
   const { user, logout } = useAuthStore();
   const [passwordDialogOpen, setPasswordDialogOpen] = useState(false);
@@ -43,6 +44,7 @@ export default function Topbar({ onMenuClick }: TopbarProps) {
     logout();
     navigate("/login", { replace: true });
   };
+  const hrmsPath = (path: string) => `/hrms${path}`;
   const changePassword = useMutation({
     mutationFn: () => authApi.changePassword(currentPassword, newPassword),
     onSuccess: () => {
@@ -74,7 +76,7 @@ export default function Topbar({ onMenuClick }: TopbarProps) {
 
       <div className="ml-auto flex items-center gap-2">
         {/* Notifications */}
-        <Button variant="ghost" size="icon" className="relative" onClick={() => navigate("/notifications")}>
+        <Button variant="ghost" size="icon" className="relative" onClick={() => navigate(location.pathname.startsWith("/hrms") ? "/hrms/notifications" : "/hrms/notifications")}>
           <Bell className="h-5 w-5" />
           {!!unreadCount.data && unreadCount.data > 0 && (
             <span className="absolute right-0.5 top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[9px] font-bold leading-none text-white">
@@ -115,11 +117,11 @@ export default function Topbar({ onMenuClick }: TopbarProps) {
                 <p className="text-xs text-muted-foreground">{roleLabel}</p>
               </div>
               <DropdownMenu.Separator className="my-1 h-px bg-border" />
-              <DropdownMenu.Item className="flex cursor-pointer items-center gap-2 rounded-sm px-3 py-2 text-sm outline-none hover:bg-accent" onSelect={() => navigate("/profile")}>
+              <DropdownMenu.Item className="flex cursor-pointer items-center gap-2 rounded-sm px-3 py-2 text-sm outline-none hover:bg-accent" onSelect={() => navigate(hrmsPath("/profile"))}>
                 <UserCircle className="h-4 w-4" />
                 My Profile
               </DropdownMenu.Item>
-              <DropdownMenu.Item className="flex cursor-pointer items-center gap-2 rounded-sm px-3 py-2 text-sm outline-none hover:bg-accent" onSelect={() => navigate("/ess")}>
+              <DropdownMenu.Item className="flex cursor-pointer items-center gap-2 rounded-sm px-3 py-2 text-sm outline-none hover:bg-accent" onSelect={() => navigate(hrmsPath("/ess"))}>
                 <UserCircle className="h-4 w-4" />
                 ESS Portal
               </DropdownMenu.Item>

@@ -1,6 +1,7 @@
 from sqlalchemy import Column, Integer, String, Boolean, ForeignKey, DateTime, Table, Text, JSON
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
+from app.core.config import settings
 from app.db.base_class import Base
 
 # M2M: role <-> permissions
@@ -58,7 +59,8 @@ class User(Base):
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
     role = relationship("Role", back_populates="users")
-    employee = relationship("Employee", back_populates="user", uselist=False, foreign_keys="Employee.user_id")
+    if "hrms" in [item.strip().lower().replace("-", "_") for item in settings.INSTALLED_APPS]:
+        employee = relationship("Employee", back_populates="user", uselist=False, foreign_keys="Employee.user_id")
     audit_logs = relationship("AuditLog", back_populates="user")
     notifications = relationship("Notification", back_populates="user", cascade="all, delete-orphan")
 

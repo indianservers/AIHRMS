@@ -1,0 +1,2 @@
+"""CRM product module."""
+

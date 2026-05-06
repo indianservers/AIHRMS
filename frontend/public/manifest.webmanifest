@@ -1,6 +1,6 @@
 {
-  "name": "AI HRMS",
-  "short_name": "AI HRMS",
+  "name": "Business Suite",
+  "short_name": "Business Suite",
   "description": "Employee self-service, HR workflows, payroll, and attendance.",
   "start_url": "/",
   "display": "standalone",

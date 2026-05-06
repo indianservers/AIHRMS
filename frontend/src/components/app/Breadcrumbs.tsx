@@ -2,6 +2,9 @@ import { Link, useLocation } from "react-router-dom";
 import { ChevronRight } from "lucide-react";
 
 const labels: Record<string, string> = {
+  hrms: "HRMS",
+  crm: "CRM",
+  "project-management": "Project Management",
   dashboard: "Dashboard",
   employees: "Employees",
   attendance: "Attendance",
@@ -30,7 +33,7 @@ export default function Breadcrumbs() {
   if (!parts.length) return null;
   return (
     <nav className="mb-4 flex items-center gap-1 text-xs text-muted-foreground">
-      <Link to="/dashboard" className="hover:text-foreground">Home</Link>
+      <Link to="/" className="hover:text-foreground">Apps</Link>
       {parts.map((part, index) => {
         const path = `/${parts.slice(0, index + 1).join("/")}`;
         const active = index === parts.length - 1;

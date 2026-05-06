@@ -94,3 +94,4 @@ export function debounce<T extends (...args: unknown[]) => void>(fn: T, delay: n
     timer = setTimeout(() => fn(...args), delay);
   }) as T;
 }
+

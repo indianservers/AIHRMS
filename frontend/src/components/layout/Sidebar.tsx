@@ -1,10 +1,11 @@
 import { Fragment } from "react";
-import { NavLink } from "react-router-dom";
+import { NavLink, useLocation } from "react-router-dom";
 import { cn } from "@/lib/utils";
 import { ChevronLeft, ChevronRight, Sparkles, UserCircle, X, LogOut } from "lucide-react";
 import { useAuthStore } from "@/store/authStore";
 import { Button } from "@/components/ui/button";
 import { getRoleLabel, getRoleNav } from "@/lib/roles";
+import { getSuiteName } from "@/appRegistry";
 
 interface SidebarProps {
   open: boolean;
@@ -14,9 +15,11 @@ interface SidebarProps {
 }
 
 export default function Sidebar({ open, collapsed, onClose, onToggleCollapse }: SidebarProps) {
+  const location = useLocation();
   const { user, logout } = useAuthStore();
-  const navItems = getRoleNav(user?.role, user?.is_superuser);
+  const navItems = getRoleNav(user?.role, user?.is_superuser, location.pathname);
   const roleLabel = getRoleLabel(user?.role, user?.is_superuser);
+  const suiteName = getSuiteName();
 
   return (
     <>
@@ -39,7 +42,7 @@ export default function Sidebar({ open, collapsed, onClose, onToggleCollapse }: 
                 <Sparkles className="h-4 w-4 text-white" />
               </div>
               <div>
-                <p className="text-sm font-bold text-sidebar-foreground">AI HRMS</p>
+                <p className="text-sm font-bold text-sidebar-foreground">{suiteName}</p>
                 <p className="text-[10px] text-sidebar-foreground/50">{roleLabel}</p>
               </div>
             </div>
@@ -132,7 +135,7 @@ export default function Sidebar({ open, collapsed, onClose, onToggleCollapse }: 
         {/* User section */}
         <div className="border-t border-sidebar-border p-4">
           <NavLink
-            to="/profile"
+            to="/hrms/profile"
             end
             className={({ isActive }) =>
               cn(

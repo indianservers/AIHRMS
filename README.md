@@ -1,6 +1,6 @@
-# AI HRMS
+# Business Suite
 
-AI HRMS is a full-stack human resources and payroll ERP built for Indian business operations. It combines core HR, employee self-service, payroll, attendance, leave, documents, compliance, talent, analytics, and AI-assisted workflows in one platform.
+Business Suite is a modular ERP platform for HRMS, Project Management, CRM, and future business apps. The current HRMS app combines core HR, employee self-service, payroll, attendance, leave, documents, compliance, talent, analytics, and AI-assisted workflows in one platform.
 
 ## Highlights
 
@@ -34,10 +34,41 @@ AI HRMS is a full-stack human resources and payroll ERP built for Indian busines
 ## Repository Structure
 
 ```text
-backend/   FastAPI API, models, schemas, CRUD, migrations, tests
-frontend/  React/Vite app, pages, services, UI components
-docs/      Gap analysis, todo list, implementation notes
+backend/                 FastAPI API, models, schemas, CRUD, migrations, tests
+backend/app/apps/        Deployable app modules: HRMS, CRM, Project Management
+backend/app/common/      Notes for shared backend platform boundaries
+frontend/                React/Vite shell, shared services, UI components
+frontend/src/apps/       Deployable frontend modules: HRMS, CRM, Project Management
+frontend/src/common/     Notes for shared frontend platform boundaries
+docs/                    Gap analysis, todo list, implementation notes
 ```
+
+## Multi-App Deployment
+
+The suite can load only selected product modules.
+
+Backend:
+
+```env
+INSTALLED_APPS=hrms
+```
+
+```env
+INSTALLED_APPS=crm,project_management
+```
+
+Frontend:
+
+```env
+VITE_INSTALLED_APPS=hrms
+```
+
+```env
+VITE_INSTALLED_APPS=crm,project_management
+```
+
+See `docs/multi_app_architecture.md` for the module split and next cleanup
+step around common people/profile data.
 
 ## Local Backend Setup
 
