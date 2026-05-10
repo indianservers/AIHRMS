@@ -43,6 +43,14 @@ async def lifespan(app: FastAPI):
             init_db(db)
         else:
             init_common_db(db)
+        if is_app_enabled("crm"):
+            from app.apps.crm.schema import ensure_crm_schema
+
+            ensure_crm_schema(db)
+            if not is_app_enabled("hrms"):
+                from app.apps.crm.seed import seed_crm_demo_data
+
+                seed_crm_demo_data(db, organization_id=1)
     finally:
         db.close()
 

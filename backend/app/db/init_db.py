@@ -782,6 +782,15 @@ def init_db(db: Session) -> None:
             user.is_active = True
         seeded_users[item["role"]] = user
 
+    from app.module_registry import is_app_enabled
+
+    if is_app_enabled("crm"):
+        from app.apps.crm.schema import ensure_crm_schema
+        from app.apps.crm.seed import seed_crm_demo_data
+
+        ensure_crm_schema(db)
+        seed_crm_demo_data(db, organization_id=company.id)
+
     manager_employee = db.query(Employee).filter(Employee.employee_id == "DEMO-MGR-001").first()
     if not manager_employee:
         manager_employee = Employee(

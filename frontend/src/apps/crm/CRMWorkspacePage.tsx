@@ -1,4 +1,4 @@
-import { ChangeEvent, useMemo, useRef, useState } from "react";
+import { ChangeEvent, useEffect, useMemo, useRef, useState } from "react";
 import {
   DndContext,
   DragEndEvent,
@@ -51,24 +51,43 @@ import { Label } from "@/components/ui/label";
 import { ProductWorkflowCenter } from "@/components/product/ProductWorkflowCenter";
 import { exportRows } from "@/lib/export";
 import { formatCurrency, formatDate, statusColor } from "@/lib/utils";
-import {
-  crmActivities,
-  crmAdminRows,
-  crmAutomationRules,
-  crmCampaigns,
-  crmCompanies,
-  crmDeals,
-  crmFiles,
-  crmLeads,
-  crmProducts,
-  crmQuotations,
-  crmSettingsRows,
-  crmTickets,
-  pipelineStages,
-  type CRMDeal,
-  type CRMLead,
-  type CRMRecord,
-} from "./data";
+import { crmApi, type CRMApiRecord } from "./api";
+
+type CRMLead = {
+  id: number;
+  name: string;
+  company: string;
+  email?: string;
+  phone?: string;
+  source: string;
+  status: string;
+  rating: string;
+  owner?: string;
+  value: number;
+  nextFollowUp?: string;
+  lastContacted?: string;
+  industry?: string;
+};
+
+type CRMDeal = {
+  id: number;
+  name: string;
+  company: string;
+  contact: string;
+  owner: string;
+  stage: string;
+  amount: number;
+  probability: number;
+  closeDate: string;
+  nextStep: string;
+  products: string[];
+};
+
+type CRMRecord = Record<string, string | number | boolean | null | undefined>;
+
+const emptyRecords: CRMRecord[] = [];
+const emptyLeads: CRMLead[] = [];
+const emptyDeals: CRMDeal[] = [];
 
 type CRMPageKind =
   | "dashboard"
@@ -123,6 +142,63 @@ const savedViews = ["My records", "Hot pipeline", "Due this week", "No follow-up
 type CRMFilters = { owner: string; status: string; type: string };
 type SortState = { key: string; direction: "asc" | "desc" } | null;
 type AutomationCard = [title: string, value: string, detail: string, Icon: React.ElementType];
+type CRMApiState<T> = { data: T; loading: boolean; error: string | null };
+
+const apiEntityForKind: Partial<Record<CRMPageKind, string>> = {
+  leads: "leads",
+  contacts: "contacts",
+  companies: "companies",
+  deals: "deals",
+  pipeline: "deals",
+  activities: "activities",
+  tasks: "tasks",
+  calendar: "meetings",
+  products: "products",
+  quotations: "quotations",
+  settings: "custom-fields",
+  admin: "owners",
+};
+
+function useCrmRecords<T = CRMRecord>(entity: string | undefined, fallback: T[], params?: Record<string, unknown>): CRMApiState<T[]> {
+  const [state, setState] = useState<CRMApiState<T[]>>({ data: fallback, loading: Boolean(entity), error: null });
+
+  useEffect(() => {
+    if (!entity) {
+      setState({ data: fallback, loading: false, error: null });
+      return;
+    }
+    let cancelled = false;
+    setState((current) => ({ ...current, loading: true, error: null }));
+    crmApi
+      .list<CRMApiRecord>(entity, { per_page: 100, ...(params || {}) })
+      .then((response) => {
+        if (!cancelled) setState({ data: response.data.items.map((item) => normalizeApiRecord(kindlessEntity(entity), item)) as T[], loading: false, error: null });
+      })
+      .catch((err) => {
+        if (!cancelled) setState({ data: fallback, loading: false, error: err?.response?.data?.detail || "CRM API is not reachable." });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [entity, JSON.stringify(params)]);
+
+  return state;
+}
+
+function kindlessEntity(entity: string) {
+  if (entity === "companies") return "companies";
+  if (entity === "products") return "products";
+  if (entity === "quotations") return "quotations";
+  if (entity === "deals") return "deals";
+  if (entity === "leads") return "leads";
+  if (entity === "contacts") return "contacts";
+  if (entity === "activities") return "activities";
+  if (entity === "tasks") return "tasks";
+  if (entity === "meetings") return "meetings";
+  if (entity === "custom-fields") return "settings";
+  if (entity === "owners") return "admin";
+  return entity;
+}
 
 export default function CRMWorkspacePage({ kind }: { kind: CRMPageKind }) {
   if (kind === "pipeline") return <PipelinePage />;
@@ -137,11 +213,17 @@ export default function CRMWorkspacePage({ kind }: { kind: CRMPageKind }) {
 }
 
 function CRMDashboard() {
+  const leadState = useCrmRecords<CRMRecord>("leads", emptyRecords);
+  const dealState = useCrmRecords<CRMRecord>("deals", emptyRecords);
+  const stageState = useCrmRecords<CRMRecord>("pipeline-stages", emptyRecords, { sort_by: "position", sort_order: "asc" });
+  const crmLeads = useMemo(() => leadState.data.map(recordToLead), [leadState.data]);
+  const crmDeals = useMemo(() => dealState.data.map((record) => recordToDeal(record, stageState.data)), [dealState.data, stageState.data]);
+  const stageNames = useMemo(() => stageState.data.map((stage) => String(stage.name)).filter(Boolean), [stageState.data]);
   const wonRevenue = crmDeals.filter((deal) => deal.stage === "Won").reduce((sum, deal) => sum + deal.amount, 0);
   const pipelineValue = crmDeals.filter((deal) => !["Won", "Lost"].includes(deal.stage)).reduce((sum, deal) => sum + deal.amount, 0);
   const weighted = crmDeals.reduce((sum, deal) => sum + (deal.amount * deal.probability) / 100, 0);
-  const overdueFollowUps = crmLeads.filter((lead) => new Date(lead.nextFollowUp) < new Date("2026-05-07") && lead.status !== "Converted").length;
-  const chartData = pipelineStages.map((stage) => ({
+  const overdueFollowUps = crmLeads.filter((lead) => lead.nextFollowUp && new Date(lead.nextFollowUp) < new Date() && lead.status !== "Converted").length;
+  const chartData = stageNames.map((stage) => ({
     stage,
     value: crmDeals.filter((deal) => deal.stage === stage).reduce((sum, deal) => sum + deal.amount, 0),
   }));
@@ -160,6 +242,8 @@ function CRMDashboard() {
   return (
     <div className="space-y-6">
       <PageHeader title="VyaparaCRM" description="Sales command center for leads, accounts, deals, pipeline, activities, quotations, support, automation, and analytics." action="Quick create" />
+      {leadState.error || dealState.error || stageState.error ? <div className="rounded-md border border-destructive/30 bg-destructive/10 px-4 py-2 text-sm text-destructive">{leadState.error || dealState.error || stageState.error}</div> : null}
+      {leadState.loading || dealState.loading || stageState.loading ? <div className="rounded-md border bg-card px-4 py-3 text-sm text-muted-foreground">Loading CRM dashboard...</div> : null}
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
         <Metric icon={Users} label="Total leads" value={crmLeads.length} tone="blue" />
         <Metric icon={LayoutGrid} label="Open deals" value={crmDeals.filter((deal) => !["Won", "Lost"].includes(deal.stage)).length} tone="emerald" />
@@ -234,12 +318,21 @@ function CRMDashboard() {
 }
 
 function PipelinePage() {
-  const [deals, setDeals] = useState(crmDeals);
+  const dealState = useCrmRecords<CRMRecord>("deals", emptyRecords);
+  const stageState = useCrmRecords<CRMRecord>("pipeline-stages", emptyRecords, { sort_by: "position", sort_order: "asc" });
+  const stageNameById = useMemo(() => new Map(stageState.data.map((stage) => [Number(stage.id), String(stage.name)])), [stageState.data]);
+  const stageIdByName = useMemo(() => new Map(stageState.data.map((stage) => [String(stage.name), Number(stage.id)])), [stageState.data]);
+  const initialDeals = useMemo<CRMDeal[]>(() => dealState.data.map((record) => recordToDeal(record, stageState.data)), [dealState.data, stageState.data]);
+  const [deals, setDeals] = useState<CRMDeal[]>(initialDeals);
   const [activeId, setActiveId] = useState<number | null>(null);
   const [filter, setFilter] = useState("");
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
   const activeDeal = deals.find((deal) => deal.id === activeId);
   const visibleDeals = deals.filter((deal) => [deal.name, deal.company, deal.owner].join(" ").toLowerCase().includes(filter.toLowerCase()));
+
+  useEffect(() => {
+    setDeals(initialDeals);
+  }, [initialDeals]);
 
   const onDragStart = (event: DragStartEvent) => setActiveId(event.active.id as number);
   const onDragEnd = (event: DragEndEvent) => {
@@ -249,15 +342,19 @@ function PipelinePage() {
     const targetStage = String(over.id).startsWith("stage-") ? String(over.id).replace("stage-", "") : deals.find((deal) => deal.id === over.id)?.stage;
     if (!targetStage) return;
     setDeals((items) => items.map((deal) => (deal.id === active.id ? { ...deal, stage: targetStage, probability: stageProbability(targetStage) } : deal)));
+    crmApi.update("deals", Number(active.id), { probability: stageProbability(targetStage), stage_id: stageIdByName.get(targetStage), status: ["Won", "Lost"].includes(targetStage) ? targetStage : "Open" }).catch(() => undefined);
   };
 
   return (
     <div className="space-y-6">
       <PageHeader title="Sales Pipeline" description="Drag deals between stages. Probability and weighted forecast update with the target stage." action="Quick create deal" />
+      {dealState.error || stageState.error ? <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-800">{dealState.error || stageState.error}</div> : null}
+      {dealState.loading || stageState.loading ? <div className="rounded-md border bg-card px-4 py-3 text-sm text-muted-foreground">Loading CRM pipeline...</div> : null}
       <Toolbar search={filter} onSearch={setFilter} />
       <DndContext sensors={sensors} collisionDetection={closestCorners} onDragStart={onDragStart} onDragEnd={onDragEnd}>
         <div className="flex gap-4 overflow-x-auto pb-4">
-          {pipelineStages.map((stage) => {
+          {stageState.data.map((stageRecord) => {
+            const stage = String(stageRecord.name);
             const stageDeals = visibleDeals.filter((deal) => deal.stage === stage);
             return <PipelineColumn key={stage} stage={stage} deals={stageDeals} />;
           })}
@@ -324,21 +421,33 @@ function CRMListPage({ kind }: { kind: CRMPageKind }) {
   const [filters, setFilters] = useState<CRMFilters>({ owner: "all", status: "all", type: "all" });
   const [showFilters, setShowFilters] = useState(kind === "calendar");
   const [selectedRecord, setSelectedRecord] = useState<CRMRecord | null>(null);
-  const [records, setRecords] = useState<CRMRecord[]>(() => rowsFor(kind));
+  const fallbackRows = useMemo(() => rowsFor(kind), [kind]);
+  const apiEntity = apiEntityForKind[kind];
+  const { data: apiRows, loading, error } = useCrmRecords(apiEntity, fallbackRows);
+  const [localRows, setLocalRows] = useState<CRMRecord[]>([]);
   const [contacts, setContacts] = useState<CRMRecord[]>(() => rowsFor("contacts"));
   const [showCreate, setShowCreate] = useState(false);
+  const records = localRows.length ? localRows : apiRows;
   const rows = useMemo(() => filterRecords(records, search, selectedView, filters), [records, search, selectedView, filters]);
   const owners = useMemo(() => uniqueValues(records, "owner"), [records]);
   const statuses = useMemo(() => uniqueValues(records, "status"), [records]);
   const types = useMemo(() => uniqueValues(records, "type"), [records]);
 
+  useEffect(() => {
+    setLocalRows([]);
+    setSelectedRecord(null);
+  }, [kind]);
+
   const createRecord = () => {
     const nextId = records.length + 1;
     const title = pageTitles[kind].replace("CRM ", "").replace(/s$/, "");
     const record = defaultRecordFor(kind, nextId, title);
-    setRecords((items) => [record, ...items]);
+    setLocalRows((items) => [record, ...records, ...items]);
     setSelectedRecord(record);
     setShowCreate(false);
+    if (apiEntity) {
+      crmApi.create(apiEntity, createPayloadForKind(kind, record)).catch(() => undefined);
+    }
   };
 
   return (
@@ -364,7 +473,7 @@ function CRMListPage({ kind }: { kind: CRMPageKind }) {
         />
       ) : null}
       <div className="grid gap-4 xl:grid-cols-[1fr_22rem]">
-        <SmartCRMTable rows={rows} title={pageTitles[kind]} onSelect={setSelectedRecord} />
+        <SmartCRMTable rows={rows} title={pageTitles[kind]} onSelect={setSelectedRecord} loading={loading} error={error} />
         <RecordPanel record={selectedRecord || rows[0] || null} kind={kind} />
       </div>
       {showCreate ? <CreateRecordDialog kind={kind} onClose={() => setShowCreate(false)} onCreate={createRecord} /> : null}
@@ -373,6 +482,10 @@ function CRMListPage({ kind }: { kind: CRMPageKind }) {
 }
 
 function CRMReports() {
+  const activityState = useCrmRecords<CRMRecord>("activities", emptyRecords);
+  const dealState = useCrmRecords<CRMRecord>("deals", emptyRecords);
+  const crmActivities = activityState.data;
+  const crmDeals = useMemo(() => dealState.data.map((record) => recordToDeal(record, emptyRecords)), [dealState.data]);
   const rows = [
     { report: "Lead conversion report", owner: "Sales Ops", cadence: "Weekly", status: "Ready" },
     { report: "Pipeline forecast", owner: "Sales Manager", cadence: "Daily", status: "Ready" },
@@ -385,8 +498,8 @@ function CRMReports() {
       <PageHeader title="CRM Reports" description="Sales, activity, revenue, campaign, quotation, and support analytics with drill-down tables." action="Export CSV" />
       <div className="grid gap-4 md:grid-cols-4">
         <Metric icon={CheckCircle2} label="Conversion rate" value="38%" tone="emerald" />
-        <Metric icon={IndianRupee} label="Average deal size" value={formatCurrency(826000)} tone="blue" />
-        <Metric icon={Activity} label="Open tickets" value={crmTickets.filter((ticket) => ticket.status !== "Resolved").length} tone="red" />
+        <Metric icon={IndianRupee} label="Average deal size" value={formatCurrency(crmDeals.length ? crmDeals.reduce((sum, deal) => sum + deal.amount, 0) / crmDeals.length : 0)} tone="blue" />
+        <Metric icon={Activity} label="Open tickets" value="-" tone="red" />
         <Metric icon={CalendarDays} label="Due activities" value={crmActivities.length} tone="amber" />
       </div>
       <Card>
@@ -406,6 +519,14 @@ function CRMReports() {
 }
 
 function LeadToCashPage() {
+  const leadState = useCrmRecords<CRMRecord>("leads", emptyRecords);
+  const companyState = useCrmRecords<CRMRecord>("companies", emptyRecords);
+  const dealState = useCrmRecords<CRMRecord>("deals", emptyRecords);
+  const quoteState = useCrmRecords<CRMRecord>("quotations", emptyRecords);
+  const crmLeads = useMemo(() => leadState.data.map(recordToLead), [leadState.data]);
+  const crmDeals = useMemo(() => dealState.data.map((record) => recordToDeal(record, emptyRecords)), [dealState.data]);
+  const crmCompanies = companyState.data;
+  const crmQuotations = quoteState.data;
   const flow = [
     ["Lead", "Qualified", `${crmLeads.filter((lead) => lead.status === "Qualified").length} qualified leads`, "/crm/leads"],
     ["Contact", "Created", `${crmLeads.filter((lead) => lead.status === "Converted").length || 1} converted contacts`, "/crm/contacts"],
@@ -519,6 +640,8 @@ function SalesAutomationPage() {
 }
 
 function ForecastingPage() {
+  const dealState = useCrmRecords<CRMRecord>("deals", emptyRecords);
+  const crmDeals = useMemo(() => dealState.data.map((record) => recordToDeal(record, emptyRecords)), [dealState.data]);
   const weighted = crmDeals.reduce((sum, deal) => sum + (deal.amount * deal.probability) / 100, 0);
   const target = 6500000;
   const commit = crmDeals.filter((deal) => deal.probability >= 70).reduce((sum, deal) => sum + deal.amount, 0);
@@ -574,7 +697,8 @@ function ForecastingPage() {
 }
 
 function Customer360Page() {
-  const customers = crmCompanies.map((company) => customer360For(String(company.name)));
+  const companyState = useCrmRecords<CRMRecord>("companies", emptyRecords);
+  const customers = companyState.data.map((company) => customer360For(String(company.name)));
   return (
     <div className="space-y-6">
       <PageHeader title="Customer 360" description="Contacts, companies, deals, tickets, activities, quotations, files, and campaigns in one customer view." action="Open customer" />
@@ -752,7 +876,7 @@ function FilterPanel({
   );
 }
 
-function SmartCRMTable({ rows, title, onSelect }: { rows: CRMRecord[]; title: string; onSelect: (row: CRMRecord) => void }) {
+function SmartCRMTable({ rows, title, onSelect, loading, error }: { rows: CRMRecord[]; title: string; onSelect: (row: CRMRecord) => void; loading?: boolean; error?: string | null }) {
   const [sort, setSort] = useState<SortState>(null);
   const [columnOrder, setColumnOrder] = useState<string[]>([]);
   const [widths, setWidths] = useState<Record<string, number>>({});
@@ -810,6 +934,7 @@ function SmartCRMTable({ rows, title, onSelect }: { rows: CRMRecord[]; title: st
         </Button>
       </CardHeader>
       <CardContent className="p-0">
+        {error ? <div className="border-t bg-amber-50 px-4 py-2 text-sm text-amber-800">{error}</div> : null}
         <div className="overflow-x-auto">
           <table className="w-full min-w-[820px] table-fixed text-sm">
             <thead className="sticky top-0 bg-muted/70 text-left text-xs uppercase tracking-wide text-muted-foreground">
@@ -830,13 +955,16 @@ function SmartCRMTable({ rows, title, onSelect }: { rows: CRMRecord[]; title: st
               </tr>
             </thead>
             <tbody>
-              {visibleRows.map((row, index) => (
+              {loading ? (
+                <tr><td className="px-4 py-12 text-center text-muted-foreground" colSpan={Math.max(columns.length, 1)}>Loading CRM records...</td></tr>
+              ) : null}
+              {!loading && visibleRows.map((row, index) => (
                 <tr key={index} className="cursor-pointer border-t hover:bg-muted/35" onClick={() => onSelect(row)}>
                   {columns.map((key) => <td key={key} style={{ width: widths[key] || 160 }} className="truncate px-4 py-3">{renderCell(key, row[key])}</td>)}
                 </tr>
               ))}
-              {!visibleRows.length ? (
-                <tr><td className="px-4 py-12 text-center text-muted-foreground" colSpan={Math.max(columns.length, 1)}>No matching records</td></tr>
+              {!loading && !visibleRows.length ? (
+                <tr><td className="px-4 py-12 text-center text-muted-foreground" colSpan={Math.max(columns.length, 1)}>No CRM records found</td></tr>
               ) : null}
             </tbody>
           </table>
@@ -930,36 +1058,19 @@ function RecordPanel({ record, kind }: { record: CRMRecord | null; kind: CRMPage
 }
 
 function customer360For(companyName: string) {
-  const company = crmCompanies.find((item) => String(item.name) === companyName || String(item.company) === companyName);
-  const contacts = crmLeads.filter((lead) => lead.company === companyName);
-  const deals = crmDeals.filter((deal) => deal.company === companyName);
-  const tickets = crmTickets.filter((ticket) => String(ticket.company) === companyName);
-  const quotes = crmQuotations.filter((quote) => String(quote.company) === companyName);
-  const files = crmFiles.filter((file) => String(file.linkedTo).includes(companyName) || deals.some((deal) => String(file.linkedTo).includes(deal.name)));
-  const campaigns = crmCampaigns.filter((campaign) => contacts.some((contact) => String(campaign.campaign).toLowerCase().includes(String(contact.source).toLowerCase().split(" ")[0] || "")));
-  const activities = crmActivities.filter((activity) => deals.some((deal) => String(activity.subject).toLowerCase().includes(deal.company.split(" ")[0].toLowerCase())));
-  const openValue = deals.filter((deal) => !["Won", "Lost"].includes(deal.stage)).reduce((sum, deal) => sum + deal.amount, 0);
-
   return {
     company: companyName || "Customer",
-    industry: String(company?.industry || contacts[0]?.industry || "Account"),
-    status: String(company?.status || contacts[0]?.status || "Active"),
+    industry: "Account",
+    status: "Active",
     metrics: [
-      ["Contacts", contacts.length || 1],
-      ["Deals", deals.length],
-      ["Pipeline", formatCurrency(openValue)],
-      ["Tickets", tickets.length],
-      ["Quotes", quotes.length],
-      ["Files", files.length],
-      ["Campaigns", campaigns.length],
-      ["Activities", activities.length],
+      ["Contacts", "-"],
+      ["Deals", "-"],
+      ["Pipeline", "-"],
+      ["Notes", "-"],
     ] as Array<[string, string | number]>,
     timeline: [
-      deals[0] ? `Deal: ${deals[0].name} at ${deals[0].stage}` : "No open deal activity",
-      quotes[0] ? `Quotation: ${quotes[0].quote} is ${quotes[0].status}` : "No active quotation",
-      tickets[0] ? `Ticket: ${tickets[0].number} ${tickets[0].status}` : "No open support ticket",
-      contacts[0] ? `Primary contact: ${contacts[0].name}` : "Contact profile ready",
-      files[0] ? `File attached: ${files[0].file}` : "No files attached",
+      "Customer 360 reads from CRM APIs.",
+      "Open related CRM grids for persisted contacts, deals, notes, and quotations.",
     ],
   };
 }
@@ -1069,7 +1180,7 @@ function compareValues(a: unknown, b: unknown, direction: "asc" | "desc") {
   return String(a ?? "").localeCompare(String(b ?? "")) * multiplier;
 }
 
-function renderCell(key: string, value: string | number | undefined) {
+function renderCell(key: string, value: string | number | boolean | null | undefined) {
   if (isBadgeField(key)) return <Badge className={statusColor(String(value))}>{String(value)}</Badge>;
   if (key.toLowerCase().includes("date") || key.toLowerCase().includes("due") || key.toLowerCase().includes("followup")) return formatDate(String(value));
   if (typeof value === "number" && isMoneyField(key)) return formatCurrency(value);
@@ -1077,20 +1188,103 @@ function renderCell(key: string, value: string | number | undefined) {
 }
 
 function rowsFor(kind: CRMPageKind): CRMRecord[] {
-  if (kind === "leads") return crmLeads.map(toLeadRecord);
-  if (kind === "contacts") return crmLeads.map(toContactRecord);
-  if (kind === "companies") return crmCompanies;
-  if (kind === "deals") return crmDeals.map(({ name, company, owner, stage, amount, probability, closeDate }) => ({ name, company, owner, stage, amount, probability: `${probability}%`, closeDate }));
-  if (kind === "activities" || kind === "tasks" || kind === "calendar") return crmActivities;
-  if (kind === "campaigns") return crmCampaigns;
-  if (kind === "products") return crmProducts;
-  if (kind === "tickets") return crmTickets;
-  if (kind === "quotations") return crmQuotations;
-  if (kind === "files") return crmFiles;
-  if (kind === "automation") return crmAutomationRules;
-  if (kind === "settings") return crmSettingsRows;
-  if (kind === "admin") return crmAdminRows;
-  return [{ item: pageTitles[kind], status: "Ready" }];
+  return apiEntityForKind[kind] ? [] : [{ item: pageTitles[kind], status: "Connect API", note: "No local CRM mock data is used." }];
+}
+
+function normalizeApiRecord(kind: string, record: CRMApiRecord): CRMRecord {
+  const id = Number(record.id || 0);
+  if (kind === "leads") {
+    return { id, name: String(record.full_name || [record.first_name, record.last_name].filter(Boolean).join(" ") || "Lead"), company: String(record.company_name || ""), email: String(record.email || ""), phone: String(record.phone || ""), source: String(record.source || "Other"), status: String(record.status || "New"), rating: String(record.rating || "Warm"), owner: String(record.ownerId || record.owner_user_id || ""), value: Number(record.estimated_value || 0), nextFollowUp: String(record.next_follow_up_at || ""), lastContacted: String(record.last_contacted_at || ""), industry: String(record.industry || ""), createdAt: String(record.createdAt || "") };
+  }
+  if (kind === "contacts") {
+    return { id, name: String(record.full_name || [record.first_name, record.last_name].filter(Boolean).join(" ") || "Contact"), email: String(record.email || ""), phone: String(record.phone || ""), companyId: Number(record.company_id || 0), title: String(record.job_title || ""), stage: String(record.lifecycle_stage || ""), source: String(record.source || ""), status: String(record.status || "Active"), owner: String(record.ownerId || record.owner_user_id || "") };
+  }
+  if (kind === "companies") {
+    return { id, name: String(record.name || "Company"), industry: String(record.industry || ""), type: String(record.account_type || ""), status: String(record.status || "Active"), revenue: Number(record.annual_revenue || 0), owner: String(record.ownerId || record.owner_user_id || ""), city: String(record.city || ""), email: String(record.email || "") };
+  }
+  if (kind === "deals") {
+    return { id, name: String(record.name || "Deal"), companyId: Number(record.company_id || 0), contactId: Number(record.contact_id || 0), owner: String(record.ownerId || record.owner_user_id || ""), stageId: Number(record.stage_id || 0), pipelineId: Number(record.pipeline_id || 0), stage: String(record.stage || record.status || "Open"), amount: Number(record.amount || 0), probability: Number(record.probability || 0), closeDate: String(record.expected_close_date || ""), nextStep: String(record.description || record.status || ""), status: String(record.status || "Open") };
+  }
+  if (kind === "activities") {
+    return { id, subject: String(record.subject || "Activity"), type: String(record.activity_type || ""), owner: String(record.ownerId || record.owner_user_id || ""), due: String(record.due_date || ""), status: String(record.status || "Pending"), priority: String(record.priority || "Medium") };
+  }
+  if (kind === "tasks") {
+    return { id, subject: String(record.title || "Task"), owner: String(record.ownerId || record.owner_user_id || ""), due: String(record.due_date || ""), status: String(record.status || "To Do"), priority: String(record.priority || "Medium") };
+  }
+  if (kind === "meetings") {
+    return { id, subject: String(record.title || "Meeting"), type: "Meeting", location: String(record.location || ""), due: String(record.start_time || ""), status: String(record.status || "Scheduled") };
+  }
+  if (kind === "products") {
+    return { id, name: String(record.name || "Product"), sku: String(record.sku || ""), category: String(record.category || ""), price: Number(record.unit_price || 0), status: String(record.status || "Active") };
+  }
+  if (kind === "quotations") {
+    return { id, quote: String(record.quote_number || ""), dealId: Number(record.deal_id || 0), companyId: Number(record.company_id || 0), status: String(record.status || "Draft"), issueDate: String(record.issue_date || ""), expiryDate: String(record.expiry_date || ""), total: Number(record.total_amount || 0) };
+  }
+  if (kind === "settings") {
+    return { id, setting: String(record.label || record.field_key || "Custom field"), area: String(record.entity || ""), type: String(record.field_type || ""), status: record.is_active === false ? "Inactive" : "Ready" };
+  }
+  if (kind === "admin") {
+    return { id, adminArea: String(record.full_name || "Owner"), permission: String(record.role || ""), email: String(record.email || ""), status: String(record.status || "Active") };
+  }
+  return { id, ...record };
+}
+
+function recordToLead(record: CRMRecord): CRMLead {
+  return {
+    id: Number(record.id || 0),
+    name: String(record.name || record.full_name || "Lead"),
+    company: String(record.company || record.company_name || ""),
+    email: String(record.email || ""),
+    phone: String(record.phone || ""),
+    source: String(record.source || "Other"),
+    status: String(record.status || "New"),
+    rating: String(record.rating || "Warm"),
+    owner: String(record.owner || record.ownerId || ""),
+    value: Number(record.value || record.estimated_value || 0),
+    nextFollowUp: String(record.nextFollowUp || record.next_follow_up_at || ""),
+    lastContacted: String(record.lastContacted || record.last_contacted_at || ""),
+    industry: String(record.industry || ""),
+  };
+}
+
+function recordToDeal(record: CRMRecord, stages: CRMRecord[]): CRMDeal {
+  const stageId = Number(record.stageId || record.stage_id || 0);
+  const stage = stages.find((item) => Number(item.id) === stageId);
+  return {
+    id: Number(record.id || 0),
+    name: String(record.name || "Deal"),
+    company: String(record.company || record.companyId || record.company_id || ""),
+    contact: String(record.contact || record.contactId || record.contact_id || ""),
+    owner: String(record.owner || record.ownerId || ""),
+    stage: String(record.stage || stage?.name || record.status || "Open"),
+    amount: Number(record.amount || 0),
+    probability: Number(record.probability || 0),
+    closeDate: String(record.closeDate || record.expected_close_date || ""),
+    nextStep: String(record.nextStep || record.description || ""),
+    products: [],
+  };
+}
+
+function createPayloadForKind(kind: CRMPageKind, record: CRMRecord): CRMApiRecord {
+  if (kind === "leads") {
+    const name = String(record.name || "New Lead");
+    const [firstName, ...rest] = name.split(" ");
+    return { first_name: firstName || name, last_name: rest.join(" "), full_name: name, email: record.email, phone: record.phone, company_name: record.company, source: record.source, status: record.status, rating: record.rating, estimated_value: record.value, industry: record.industry };
+  }
+  if (kind === "contacts") {
+    const name = String(record.name || "New Contact");
+    const [firstName, ...rest] = name.split(" ");
+    return { first_name: firstName || name, last_name: rest.join(" "), full_name: name, email: record.email, phone: record.phone, lifecycle_stage: record.stage || "Lead", source: record.source, status: record.status };
+  }
+  if (kind === "companies") return { name: record.name, industry: record.industry, account_type: record.type, status: record.status, annual_revenue: record.revenue };
+  if (kind === "deals") return { name: record.name, pipeline_id: record.pipelineId || 1, stage_id: record.stageId || 1, amount: record.amount, probability: record.probability, status: record.status || "Open" };
+  if (kind === "activities") return { activity_type: record.type || "Task", subject: record.subject || record.name || "Activity", status: record.status, priority: record.priority };
+  if (kind === "tasks") return { title: record.subject || record.name || "Task", status: record.status, priority: record.priority };
+  if (kind === "products") return { name: record.name, sku: record.sku, category: record.category, unit_price: record.price, status: record.status };
+  if (kind === "quotations") return { quote_number: record.quote || `QT-${Date.now()}`, issue_date: record.issueDate || new Date().toISOString().slice(0, 10), expiry_date: record.expiryDate || new Date(Date.now() + 14 * 86400000).toISOString().slice(0, 10), status: record.status || "Draft", total_amount: record.total };
+  if (kind === "settings") return { entity: record.area || "leads", field_key: String(record.setting || "custom_field").toLowerCase().replace(/\W+/g, "_"), label: record.setting || "Custom field", field_type: record.type || "text" };
+  if (kind === "admin") return { full_name: record.adminArea || "CRM Owner", email: record.email || `owner${Date.now()}@example.com`, role: record.permission || "Sales Executive", status: record.status || "Active" };
+  return record;
 }
 
 function defaultRecordFor(kind: CRMPageKind, id: number, title: string): CRMRecord {
@@ -1188,7 +1382,7 @@ function toLeadRecord(lead: CRMLead): CRMRecord {
     designation: designations[index] || "Decision Maker",
     email: lead.email,
     phone: lead.phone,
-    mobile: lead.phone.replace("110", "220"),
+    mobile: String(lead.phone || "").replace("110", "220"),
     city: cities[index] || "Bengaluru",
     state: states[index] || "Karnataka",
     country: "India",
@@ -1228,7 +1422,7 @@ function toContactRecord(lead: CRMLead): CRMRecord {
     title: titles[index] || String(leadRecord.designation),
     department: departments[index] || "Sales",
     email: lead.email,
-    alternateEmail: lead.email.replace("@", ".alt@"),
+    alternateEmail: String(lead.email || "").replace("@", ".alt@"),
     phone: lead.phone,
     mobile: String(leadRecord.mobile),
     city: String(leadRecord.city),
