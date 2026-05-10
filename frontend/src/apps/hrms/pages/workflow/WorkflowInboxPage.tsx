@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowRight, CheckCircle2, Clock3, FileCheck2, GitBranch, Inbox, Plus, ReceiptText, Save, Trash2 } from "lucide-react";
+import { ArrowRight, CheckCircle2, Clock3, FileCheck2, GitBranch, History, Inbox, Plus, ReceiptText, Save, ShieldCheck, Trash2, UserCheck } from "lucide-react";
 import { Link } from "react-router-dom";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -45,6 +45,8 @@ type WorkflowStep = {
   condition_expression: string;
   timeout_hours: string;
   escalation_user_id: string;
+  delegation_role: string;
+  audit_note: string;
   is_required: boolean;
 };
 
@@ -74,6 +76,8 @@ const blankStep = (order: number): WorkflowStep => ({
   condition_expression: "",
   timeout_hours: "24",
   escalation_user_id: "",
+  delegation_role: "",
+  audit_note: "",
   is_required: true,
 });
 
@@ -82,6 +86,12 @@ function statusTone(status: string) {
   if (["Rejected", "Cancelled"].includes(status)) return "bg-red-100 text-red-800";
   if (["Completed", "Submitted", "Pending"].includes(status)) return "bg-amber-100 text-amber-800";
   return "bg-muted text-muted-foreground";
+}
+
+function hrmsActionUrl(url: string) {
+  if (url.startsWith("/hrms")) return url;
+  if (url.startsWith("/crm") || url.startsWith("/pms")) return "/hrms";
+  return url.startsWith("/") ? `/hrms${url}` : `/hrms/${url}`;
 }
 
 export default function WorkflowInboxPage() {
@@ -190,6 +200,12 @@ export default function WorkflowInboxPage() {
             <Card><CardContent className="p-5"><FileCheck2 className="mb-3 h-5 w-5 text-green-600" /><p className="text-2xl font-semibold">{isLoading ? "-" : data?.submitted_by_me ?? 0}</p><p className="text-sm text-muted-foreground">Submitted by me</p></CardContent></Card>
           </div>
 
+          <div className="grid gap-4 md:grid-cols-3">
+            <WorkflowControlCard icon={ShieldCheck} title="Multi-level approvals" detail="Sequential, conditional, and role-based steps are tracked per request." />
+            <WorkflowControlCard icon={UserCheck} title="Delegation ready" detail="Approver delegation and backup roles are visible before handoff." />
+            <WorkflowControlCard icon={History} title="Audit trail" detail="Every submission, approval, escalation, timeout, and rejection is audit-ready." />
+          </div>
+
           <div className="grid gap-5 lg:grid-cols-[0.75fr_1.25fr]">
             <Card>
               <CardHeader>
@@ -233,7 +249,7 @@ export default function WorkflowInboxPage() {
                         </div>
                       </div>
                       <Button asChild variant="outline" size="sm">
-                        <Link to={item.action_url}>{item.action_label}<ArrowRight className="ml-2 h-4 w-4" /></Link>
+                        <Link to={hrmsActionUrl(item.action_url)}>{item.action_label}<ArrowRight className="ml-2 h-4 w-4" /></Link>
                       </Button>
                     </div>
                   );
@@ -297,6 +313,10 @@ export default function WorkflowInboxPage() {
                         <Label>Condition</Label>
                         <Input value={step.condition_expression} onChange={(e) => updateStep(index, { condition_expression: e.target.value })} placeholder="days_count > 3" />
                       </div>
+                      <div className="space-y-1.5">
+                        <Label>Delegation Role</Label>
+                        <Input value={step.delegation_role} onChange={(e) => updateStep(index, { delegation_role: e.target.value })} placeholder="backup_hr_manager" />
+                      </div>
                       <div className="grid grid-cols-2 gap-3">
                         <div className="space-y-1.5">
                           <Label>Timeout Hrs</Label>
@@ -307,10 +327,29 @@ export default function WorkflowInboxPage() {
                           <Input type="number" value={step.escalation_user_id} onChange={(e) => updateStep(index, { escalation_user_id: e.target.value })} />
                         </div>
                       </div>
+                      <div className="space-y-1.5 sm:col-span-2">
+                        <Label>Audit Note</Label>
+                        <Input value={step.audit_note} onChange={(e) => updateStep(index, { audit_note: e.target.value })} placeholder="Captured in approval audit trail" />
+                      </div>
                     </div>
                   </div>
                 ))}
               </div>
+
+              <Card className="bg-muted/30">
+                <CardContent className="grid gap-3 p-4 md:grid-cols-3">
+                  {[
+                    ["Condition examples", "days_count > 3, amount > 10000, department = Finance"],
+                    ["Escalation policy", "Timeout escalates to user/role and marks request at risk."],
+                    ["Delegation policy", "Backup role handles approvals during leave or out-of-office periods."],
+                  ].map(([title, detail]) => (
+                    <div key={title} className="rounded-md border bg-background p-3">
+                      <p className="text-sm font-semibold">{title}</p>
+                      <p className="mt-1 text-xs text-muted-foreground">{detail}</p>
+                    </div>
+                  ))}
+                </CardContent>
+              </Card>
 
               <Button disabled={!definitionForm.name || !definitionForm.trigger_event || createDefinition.isPending} onClick={() => createDefinition.mutate()}>
                 <Save className="mr-2 h-4 w-4" />
@@ -339,6 +378,7 @@ export default function WorkflowInboxPage() {
                       <div key={`${definition.id}-${step.step_order}`} className="rounded-md bg-muted/40 p-2 text-xs">
                         Step {step.step_order}: {step.approver_type} {step.approver_value || ""}
                         {step.condition_expression ? ` when ${step.condition_expression}` : ""}
+                        {step.escalation_user_id ? `; escalates to ${step.escalation_user_id}` : ""}
                       </div>
                     ))}
                     {!definition.steps?.length && <p className="text-xs text-muted-foreground">No step details returned.</p>}
@@ -351,5 +391,21 @@ export default function WorkflowInboxPage() {
         </div>
       )}
     </div>
+  );
+}
+
+function WorkflowControlCard({ icon: Icon, title, detail }: { icon: React.ElementType; title: string; detail: string }) {
+  return (
+    <Card>
+      <CardContent className="flex gap-3 p-4">
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+          <Icon className="h-5 w-5" />
+        </div>
+        <div>
+          <p className="font-medium">{title}</p>
+          <p className="mt-1 text-sm text-muted-foreground">{detail}</p>
+        </div>
+      </CardContent>
+    </Card>
   );
 }

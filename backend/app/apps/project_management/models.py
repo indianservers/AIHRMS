@@ -58,6 +58,58 @@ class PMSProjectMember(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
 
+class PMSEpic(Base):
+    __tablename__ = "pms_epics"
+    __table_args__ = (UniqueConstraint("project_id", "epic_key", name="uq_pms_epic_project_key"),)
+
+    id = Column(Integer, primary_key=True, index=True)
+    project_id = Column(Integer, ForeignKey("pms_projects.id", ondelete="CASCADE"), nullable=False, index=True)
+    epic_key = Column(String(60), nullable=False, index=True)
+    name = Column(String(180), nullable=False)
+    description = Column(Text)
+    status = Column(String(40), default="Planned", index=True)
+    owner_user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    color = Column(String(30))
+    start_date = Column(Date)
+    target_date = Column(Date, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+    deleted_at = Column(DateTime(timezone=True))
+
+
+class PMSComponent(Base):
+    __tablename__ = "pms_components"
+    __table_args__ = (UniqueConstraint("project_id", "name", name="uq_pms_component_project_name"),)
+
+    id = Column(Integer, primary_key=True, index=True)
+    project_id = Column(Integer, ForeignKey("pms_projects.id", ondelete="CASCADE"), nullable=False, index=True)
+    name = Column(String(120), nullable=False, index=True)
+    description = Column(Text)
+    lead_user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    default_assignee_user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    is_active = Column(Boolean, default=True, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+
+class PMSRelease(Base):
+    __tablename__ = "pms_releases"
+    __table_args__ = (UniqueConstraint("project_id", "name", name="uq_pms_release_project_name"),)
+
+    id = Column(Integer, primary_key=True, index=True)
+    project_id = Column(Integer, ForeignKey("pms_projects.id", ondelete="CASCADE"), nullable=False, index=True)
+    name = Column(String(120), nullable=False, index=True)
+    description = Column(Text)
+    status = Column(String(40), default="Planning", index=True)
+    release_date = Column(Date, index=True)
+    owner_user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    readiness_percent = Column(Integer, default=0)
+    launch_notes = Column(Text)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+    deleted_at = Column(DateTime(timezone=True))
+
+
 class PMSBoard(Base):
     __tablename__ = "pms_boards"
 
@@ -93,6 +145,15 @@ class PMSSprint(Base):
     end_date = Column(Date, nullable=False)
     capacity_hours = Column(Numeric(8, 2))
     velocity_points = Column(Integer)
+    committed_task_count = Column(Integer, default=0)
+    committed_story_points = Column(Integer, default=0)
+    completed_story_points = Column(Integer, default=0)
+    scope_change_count = Column(Integer, default=0)
+    carry_forward_task_count = Column(Integer, default=0)
+    started_at = Column(DateTime(timezone=True))
+    completed_at = Column(DateTime(timezone=True))
+    commitment_snapshot = Column(Text)
+    completion_summary = Column(Text)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
@@ -127,12 +188,24 @@ class PMSTask(Base):
     column_id = Column(Integer, ForeignKey("pms_board_columns.id", ondelete="SET NULL"), nullable=True, index=True)
     milestone_id = Column(Integer, ForeignKey("pms_milestones.id", ondelete="SET NULL"), nullable=True, index=True)
     sprint_id = Column(Integer, ForeignKey("pms_sprints.id", ondelete="SET NULL"), nullable=True, index=True)
+    epic_id = Column(Integer, ForeignKey("pms_epics.id", ondelete="SET NULL"), nullable=True, index=True)
+    component_id = Column(Integer, ForeignKey("pms_components.id", ondelete="SET NULL"), nullable=True, index=True)
+    release_id = Column(Integer, ForeignKey("pms_releases.id", ondelete="SET NULL"), nullable=True, index=True)
     parent_task_id = Column(Integer, ForeignKey("pms_tasks.id", ondelete="SET NULL"), nullable=True, index=True)
     assignee_user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
     reporter_user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
     title = Column(String(220), nullable=False)
     description = Column(Text)
     task_key = Column(String(30), nullable=False, index=True)
+    work_type = Column(String(40), default="Task", index=True)
+    epic_key = Column(String(60), index=True)
+    initiative = Column(String(160))
+    component = Column(String(120), index=True)
+    severity = Column(String(20), index=True)
+    environment = Column(String(80))
+    affected_version = Column(String(80))
+    fix_version = Column(String(80), index=True)
+    release_name = Column(String(120), index=True)
     status = Column(String(50), default="To Do", index=True)
     priority = Column(String(30), default="Medium", index=True)
     start_date = Column(Date)
@@ -140,7 +213,16 @@ class PMSTask(Base):
     completed_at = Column(DateTime(timezone=True))
     estimated_hours = Column(Numeric(8, 2))
     actual_hours = Column(Numeric(8, 2))
+    original_estimate_hours = Column(Numeric(8, 2))
+    remaining_estimate_hours = Column(Numeric(8, 2))
     story_points = Column(Integer)
+    rank = Column(Integer, index=True)
+    security_level = Column(String(40), default="Internal", index=True)
+    development_branch = Column(String(200))
+    development_commits = Column(Integer, default=0)
+    development_prs = Column(Integer, default=0)
+    development_deployments = Column(Integer, default=0)
+    development_build = Column(String(30), default="Pending", index=True)
     position = Column(Integer, default=0)
     is_client_visible = Column(Boolean, default=False)
     is_blocking = Column(Boolean, default=False, index=True)
@@ -158,6 +240,37 @@ class PMSTaskDependency(Base):
     depends_on_task_id = Column(Integer, ForeignKey("pms_tasks.id", ondelete="CASCADE"), nullable=False, index=True)
     dependency_type = Column(String(40), default="Finish To Start")
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class PMSSavedFilter(Base):
+    __tablename__ = "pms_saved_filters"
+    __table_args__ = (UniqueConstraint("project_id", "user_id", "name", name="uq_pms_saved_filter_owner_name"),)
+
+    id = Column(Integer, primary_key=True, index=True)
+    project_id = Column(Integer, ForeignKey("pms_projects.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True)
+    name = Column(String(140), nullable=False)
+    view_type = Column(String(40), default="board", index=True)
+    query = Column(Text, nullable=False)
+    is_shared = Column(Boolean, default=False, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+
+class PMSActivity(Base):
+    __tablename__ = "pms_activities"
+
+    id = Column(Integer, primary_key=True, index=True)
+    project_id = Column(Integer, ForeignKey("pms_projects.id", ondelete="CASCADE"), nullable=False, index=True)
+    task_id = Column(Integer, ForeignKey("pms_tasks.id", ondelete="CASCADE"), nullable=True, index=True)
+    sprint_id = Column(Integer, ForeignKey("pms_sprints.id", ondelete="SET NULL"), nullable=True, index=True)
+    actor_user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    action = Column(String(80), nullable=False, index=True)
+    entity_type = Column(String(40), nullable=False, index=True)
+    entity_id = Column(Integer, nullable=True, index=True)
+    summary = Column(String(300), nullable=False)
+    metadata_json = Column(Text)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
 
 
 class PMSChecklistItem(Base):
@@ -259,4 +372,3 @@ class PMSClientApproval(Base):
     remarks = Column(Text)
     decided_at = Column(DateTime(timezone=True))
     created_at = Column(DateTime(timezone=True), server_default=func.now())
-

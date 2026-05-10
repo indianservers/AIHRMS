@@ -12,6 +12,7 @@ import KeyboardShortcuts from "@/components/app/KeyboardShortcuts";
 import { useThemeStore } from "@/store/themeStore";
 import { useAuthStore } from "@/store/authStore";
 import { getRoleLabel } from "@/lib/roles";
+import { getProductForContext } from "@/lib/products";
 import { authApi, notificationsApi } from "@/services/api";
 import { toast } from "@/hooks/use-toast";
 
@@ -26,6 +27,7 @@ export default function Topbar({ onMenuClick }: TopbarProps) {
   const location = useLocation();
   const { theme, setTheme } = useThemeStore();
   const { user, logout } = useAuthStore();
+  const product = getProductForContext(location.pathname, user?.role, user?.is_superuser);
   const [passwordDialogOpen, setPasswordDialogOpen] = useState(false);
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
@@ -42,9 +44,11 @@ export default function Topbar({ onMenuClick }: TopbarProps) {
   const toggleTheme = () => setTheme(theme === "dark" ? "light" : "dark");
   const handleLogout = () => {
     logout();
-    navigate("/login", { replace: true });
+    navigate(product.loginPath, { replace: true });
   };
-  const hrmsPath = (path: string) => `/hrms${path}`;
+  const isHrms = location.pathname.startsWith("/hrms");
+  const profilePath = isHrms ? "/hrms/profile" : location.pathname.startsWith("/crm") ? "/crm" : "/pms";
+  const selfServicePath = isHrms ? "/hrms/ess" : profilePath;
   const changePassword = useMutation({
     mutationFn: () => authApi.changePassword(currentPassword, newPassword),
     onSuccess: () => {
@@ -76,7 +80,7 @@ export default function Topbar({ onMenuClick }: TopbarProps) {
 
       <div className="ml-auto flex items-center gap-2">
         {/* Notifications */}
-        <Button variant="ghost" size="icon" className="relative" onClick={() => navigate(location.pathname.startsWith("/hrms") ? "/hrms/notifications" : "/hrms/notifications")}>
+        <Button variant="ghost" size="icon" className="relative" onClick={() => navigate(isHrms ? "/hrms/notifications" : profilePath)}>
           <Bell className="h-5 w-5" />
           {!!unreadCount.data && unreadCount.data > 0 && (
             <span className="absolute right-0.5 top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[9px] font-bold leading-none text-white">
@@ -117,13 +121,13 @@ export default function Topbar({ onMenuClick }: TopbarProps) {
                 <p className="text-xs text-muted-foreground">{roleLabel}</p>
               </div>
               <DropdownMenu.Separator className="my-1 h-px bg-border" />
-              <DropdownMenu.Item className="flex cursor-pointer items-center gap-2 rounded-sm px-3 py-2 text-sm outline-none hover:bg-accent" onSelect={() => navigate(hrmsPath("/profile"))}>
+              <DropdownMenu.Item className="flex cursor-pointer items-center gap-2 rounded-sm px-3 py-2 text-sm outline-none hover:bg-accent" onSelect={() => navigate(profilePath)}>
                 <UserCircle className="h-4 w-4" />
                 My Profile
               </DropdownMenu.Item>
-              <DropdownMenu.Item className="flex cursor-pointer items-center gap-2 rounded-sm px-3 py-2 text-sm outline-none hover:bg-accent" onSelect={() => navigate(hrmsPath("/ess"))}>
+              <DropdownMenu.Item className="flex cursor-pointer items-center gap-2 rounded-sm px-3 py-2 text-sm outline-none hover:bg-accent" onSelect={() => navigate(selfServicePath)}>
                 <UserCircle className="h-4 w-4" />
-                ESS Portal
+                {isHrms ? "ESS Portal" : "Workspace"}
               </DropdownMenu.Item>
               <DropdownMenu.Item className="flex cursor-pointer items-center gap-2 rounded-sm px-3 py-2 text-sm outline-none hover:bg-accent" onSelect={() => setPasswordDialogOpen(true)}>
                 <KeyRound className="h-4 w-4" />

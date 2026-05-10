@@ -89,7 +89,7 @@ export const workAdvancedPlanning = [
   { plan: "Team capacity", signal: "Maya team over capacity by 18%", action: "Move 5 pts to next sprint" },
   { plan: "Dependency map", signal: "KAR-104 blocked by KAR-103", action: "Prioritize critical bug" },
   { plan: "Scenario planning", signal: "v2.3 slips 4 days if QA stays fixed", action: "Add reviewer or reduce scope" },
-  { plan: "Cross-project roadmap", signal: "CRM and PMS release dates overlap", action: "Stagger launch comms" },
+  { plan: "Cross-project roadmap", signal: "Project release dates overlap", action: "Stagger launch comms" },
 ];
 
 export const workNavigatorFilters = [

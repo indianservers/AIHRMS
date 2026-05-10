@@ -1,6 +1,7 @@
 import { useParams, useNavigate, useSearchParams } from "react-router-dom";
+import type React from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Camera, ChevronLeft, Link2, Save, User, Briefcase, CreditCard, GraduationCap, FileText, Star, HeartPulse, Unlink, Users } from "lucide-react";
+import { Activity, Banknote, Briefcase, CalendarDays, Camera, ChevronLeft, Clock, CreditCard, FileText, GraduationCap, HeartPulse, HelpCircle, Link2, Package, Save, Star, Target, Unlink, User, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -13,6 +14,7 @@ import { toast } from "@/hooks/use-toast";
 import { usePageTitle } from "@/hooks/use-page-title";
 
 const TABS = [
+  { id: "360", label: "360 Timeline", icon: Activity },
   { id: "personal", label: "Personal", icon: User },
   { id: "job", label: "Job", icon: Briefcase },
   { id: "education", label: "Education", icon: GraduationCap },
@@ -249,11 +251,14 @@ export default function EmployeeDetailPage() {
 
   const initials = getInitials(`${emp.first_name} ${emp.last_name}`);
   const linkedUser = (userOptions.data || []).find((user) => user.id === emp.user_id);
+  const employee360Events = buildEmployee360Events(emp);
+  const skillCount = emp.skills?.length || 0;
+  const documentCount = emp.documents?.length || 0;
 
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-4">
-        <Button variant="ghost" size="sm" onClick={() => navigate("/employees")}>
+        <Button variant="ghost" size="sm" onClick={() => navigate("/hrms/employees")}>
           <ChevronLeft className="h-4 w-4 mr-1" />
           Employees
         </Button>
@@ -446,6 +451,56 @@ export default function EmployeeDetailPage() {
       )}
 
       {/* Tab content */}
+      {activeTab === "360" && (
+        <div className="space-y-5">
+          <div className="grid gap-3 md:grid-cols-4">
+            <InsightTile icon={Star} label="Skills" value={skillCount} detail={skillCount ? "Mapped to proficiency" : "No skills yet"} />
+            <InsightTile icon={FileText} label="Documents" value={documentCount} detail={documentCount ? "Profile documents" : "No documents yet"} />
+            <InsightTile icon={Package} label="Assets" value={emp.asset_count || emp.assets?.length || 0} detail="Assigned and recoverable" />
+            <InsightTile icon={Target} label="Performance" value={emp.performance_score || "Ready"} detail="Goals, reviews, and feedback" />
+          </div>
+
+          <div className="grid gap-5 xl:grid-cols-[1fr_22rem]">
+            <Card>
+              <CardHeader>
+                <CardTitle>Employee 360 Timeline</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {employee360Events.map((event, index) => (
+                  <div key={`${event.title}-${index}`} className="grid gap-3 rounded-lg border p-4 sm:grid-cols-[2.5rem_1fr_auto] sm:items-start">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                      <event.icon className="h-5 w-5" />
+                    </div>
+                    <div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="font-medium">{event.title}</p>
+                        <Badge variant="outline">{event.area}</Badge>
+                      </div>
+                      <p className="mt-1 text-sm text-muted-foreground">{event.detail}</p>
+                    </div>
+                    <p className="text-xs font-medium text-muted-foreground">{event.date}</p>
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>360 Snapshot</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3 text-sm">
+                <SnapshotRow label="Attendance" value={emp.attendance_status || "Stable"} />
+                <SnapshotRow label="Leave" value={emp.leave_balance ? `${emp.leave_balance} days balance` : "Balance ready"} />
+                <SnapshotRow label="Payroll" value={emp.last_payroll_status || "Paid as per cycle"} />
+                <SnapshotRow label="Tickets" value={emp.open_ticket_count ? `${emp.open_ticket_count} open` : "No open tickets"} />
+                <SnapshotRow label="Assets" value={emp.asset_count ? `${emp.asset_count} assigned` : "No asset alerts"} />
+                <SnapshotRow label="Documents" value={`${documentCount} records`} />
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+      )}
+
       {activeTab === "personal" && (
         <Card>
           <CardHeader><CardTitle>Personal Information</CardTitle></CardHeader>
@@ -707,6 +762,107 @@ export default function EmployeeDetailPage() {
           </CardContent>
         </Card>
       )}
+    </div>
+  );
+}
+
+type Employee360Event = {
+  area: string;
+  title: string;
+  detail: string;
+  date: string;
+  icon: React.ElementType;
+};
+
+function buildEmployee360Events(emp: Record<string, any>): Employee360Event[] {
+  const events: Employee360Event[] = [
+    {
+      area: "Job",
+      title: "Joined organization",
+      detail: `${emp.employment_type || "Employee"} at ${emp.work_location || "assigned work location"}`,
+      date: formatDate(emp.date_of_joining),
+      icon: Briefcase,
+    },
+    {
+      area: "Payroll",
+      title: "Payroll history",
+      detail: emp.last_payroll_status || "Monthly payroll history and payslip status available from Payroll",
+      date: emp.last_payroll_date ? formatDate(emp.last_payroll_date) : "Current cycle",
+      icon: Banknote,
+    },
+    {
+      area: "Attendance",
+      title: "Attendance signal",
+      detail: emp.attendance_status || "Attendance, late marks, and regularization signals tracked",
+      date: "Live",
+      icon: Clock,
+    },
+    {
+      area: "Leave",
+      title: "Leave position",
+      detail: emp.leave_balance ? `${emp.leave_balance} days available` : "Leave balance and approvals connected",
+      date: "Live",
+      icon: CalendarDays,
+    },
+    {
+      area: "Performance",
+      title: "Performance profile",
+      detail: emp.performance_score ? `Latest score ${emp.performance_score}` : "Goals, review cycles, and 360 feedback visible",
+      date: "Latest cycle",
+      icon: Target,
+    },
+    {
+      area: "Helpdesk",
+      title: "Support tickets",
+      detail: emp.open_ticket_count ? `${emp.open_ticket_count} open tickets require attention` : "No open support blockers",
+      date: "Live",
+      icon: HelpCircle,
+    },
+  ];
+
+  (emp.skills || []).slice(0, 3).forEach((skill: { skill_name?: string; proficiency?: string }) => {
+    events.push({
+      area: "Skills",
+      title: skill.skill_name || "Skill",
+      detail: skill.proficiency ? `${skill.proficiency} proficiency` : "Skill mapped to employee profile",
+      date: "Profile",
+      icon: Star,
+    });
+  });
+
+  (emp.documents || []).slice(0, 3).forEach((doc: { document_name?: string; document_type?: string; is_verified?: boolean }) => {
+    events.push({
+      area: "Documents",
+      title: doc.document_name || doc.document_type || "Document",
+      detail: doc.is_verified ? "Verified document" : "Pending verification",
+      date: "Profile",
+      icon: FileText,
+    });
+  });
+
+  return events;
+}
+
+function InsightTile({ icon: Icon, label, value, detail }: { icon: React.ElementType; label: string; value: string | number; detail: string }) {
+  return (
+    <Card>
+      <CardContent className="flex items-center gap-3 p-4">
+        <div className="rounded-lg bg-primary/10 p-2 text-primary"><Icon className="h-4 w-4" /></div>
+        <div>
+          <p className="text-xl font-semibold">{value}</p>
+          <p className="text-xs font-medium text-muted-foreground">{label}</p>
+          <p className="text-xs text-muted-foreground">{detail}</p>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function SnapshotRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-center justify-between gap-3 rounded-md border p-3">
+      <span className="text-muted-foreground">{label}</span>
+      <span className="font-medium">{value}</span>
     </div>
   );
 }

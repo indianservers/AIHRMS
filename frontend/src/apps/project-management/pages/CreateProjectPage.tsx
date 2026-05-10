@@ -41,7 +41,7 @@ export default function CreateProjectPage() {
         due_date: dueDate || undefined,
         budget_amount: budget ? Number(budget) : undefined,
       });
-      navigate(`/project-management/projects/${project.id}`);
+      navigate(`/pms/projects/${project.id}`);
     } catch (err: any) {
       setError(err?.response?.data?.detail || err?.message || "Failed to create project.");
     } finally {
@@ -51,7 +51,7 @@ export default function CreateProjectPage() {
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
-      <Button type="button" variant="ghost" onClick={() => navigate("/project-management/projects")}>
+      <Button type="button" variant="ghost" onClick={() => navigate("/pms/projects")}>
         <ArrowLeft className="h-4 w-4" />Back
       </Button>
       <Card>
@@ -104,7 +104,7 @@ export default function CreateProjectPage() {
               </div>
             </div>
             <div className="flex justify-end gap-2">
-              <Button type="button" variant="outline" onClick={() => navigate("/project-management/projects")}>Cancel</Button>
+              <Button type="button" variant="outline" onClick={() => navigate("/pms/projects")}>Cancel</Button>
               <Button type="submit" disabled={submitting}>{submitting ? "Creating..." : "Create project"}</Button>
             </div>
           </form>

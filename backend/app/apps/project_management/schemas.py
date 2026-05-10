@@ -1,6 +1,6 @@
 """Pydantic schemas for Project Management (KaryaFlow) module."""
 from datetime import date, datetime
-from typing import Optional, List
+from typing import Any, Optional, List
 from decimal import Decimal
 
 from pydantic import BaseModel, Field, validator
@@ -117,6 +117,110 @@ class PMSProjectMemberResponse(PMSProjectMemberBase):
         from_attributes = True
 
 
+# ============= PLANNING OBJECT SCHEMAS =============
+class PMSEpicBase(BaseModel):
+    epic_key: str = Field(..., min_length=1, max_length=60)
+    name: str = Field(..., min_length=1, max_length=180)
+    description: Optional[str] = None
+    status: str = "Planned"
+    owner_user_id: Optional[int] = None
+    color: Optional[str] = None
+    start_date: Optional[date] = None
+    target_date: Optional[date] = None
+
+    @validator("epic_key")
+    def epic_key_uppercase(cls, v):
+        return v.upper()
+
+
+class PMSEpicCreate(PMSEpicBase):
+    pass
+
+
+class PMSEpicUpdate(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    status: Optional[str] = None
+    owner_user_id: Optional[int] = None
+    color: Optional[str] = None
+    start_date: Optional[date] = None
+    target_date: Optional[date] = None
+
+
+class PMSEpicResponse(PMSEpicBase):
+    id: int
+    project_id: int
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
+class PMSComponentBase(BaseModel):
+    name: str = Field(..., min_length=1, max_length=120)
+    description: Optional[str] = None
+    lead_user_id: Optional[int] = None
+    default_assignee_user_id: Optional[int] = None
+    is_active: bool = True
+
+
+class PMSComponentCreate(PMSComponentBase):
+    pass
+
+
+class PMSComponentUpdate(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    lead_user_id: Optional[int] = None
+    default_assignee_user_id: Optional[int] = None
+    is_active: Optional[bool] = None
+
+
+class PMSComponentResponse(PMSComponentBase):
+    id: int
+    project_id: int
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
+class PMSReleaseBase(BaseModel):
+    name: str = Field(..., min_length=1, max_length=120)
+    description: Optional[str] = None
+    status: str = "Planning"
+    release_date: Optional[date] = None
+    owner_user_id: Optional[int] = None
+    readiness_percent: int = 0
+    launch_notes: Optional[str] = None
+
+
+class PMSReleaseCreate(PMSReleaseBase):
+    pass
+
+
+class PMSReleaseUpdate(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    status: Optional[str] = None
+    release_date: Optional[date] = None
+    owner_user_id: Optional[int] = None
+    readiness_percent: Optional[int] = None
+    launch_notes: Optional[str] = None
+
+
+class PMSReleaseResponse(PMSReleaseBase):
+    id: int
+    project_id: int
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
 # ============= BOARD & COLUMN SCHEMAS =============
 class PMSBoardColumnBase(BaseModel):
     name: str = Field(..., min_length=1, max_length=100)
@@ -200,11 +304,45 @@ class PMSSprintUpdate(BaseModel):
 class PMSSprintResponse(PMSSprintBase):
     id: int
     project_id: int
+    committed_task_count: int = 0
+    committed_story_points: int = 0
+    completed_story_points: int = 0
+    scope_change_count: int = 0
+    carry_forward_task_count: int = 0
+    started_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
+    commitment_snapshot: Optional[str] = None
+    completion_summary: Optional[str] = None
     created_at: datetime
     updated_at: Optional[datetime] = None
 
     class Config:
         from_attributes = True
+
+
+class SprintCompleteRequest(BaseModel):
+    carry_forward_sprint_id: Optional[int] = None
+
+
+class SprintBurndownPoint(BaseModel):
+    date: date
+    ideal_remaining_points: float
+    actual_remaining_points: int
+    completed_points: int
+
+
+class SprintBurndownResponse(BaseModel):
+    sprint_id: int
+    committed_story_points: int
+    completed_story_points: int
+    remaining_story_points: int
+    points: List[SprintBurndownPoint] = []
+
+
+class ProjectVelocityResponse(BaseModel):
+    project_id: int
+    average_velocity_points: float
+    sprints: List[dict[str, Any]] = []
 
 
 # ============= MILESTONE SCHEMAS =============
@@ -302,18 +440,39 @@ class PMSTaskBase(BaseModel):
     title: str = Field(..., min_length=1, max_length=220)
     description: Optional[str] = None
     task_key: str = Field(..., min_length=1, max_length=30)
+    work_type: str = "Task"
+    epic_key: Optional[str] = None
+    initiative: Optional[str] = None
+    component: Optional[str] = None
+    severity: Optional[str] = None
+    environment: Optional[str] = None
+    affected_version: Optional[str] = None
+    fix_version: Optional[str] = None
+    release_name: Optional[str] = None
     status: str = "To Do"
     priority: str = "Medium"
     assignee_user_id: Optional[int] = None
     reporter_user_id: Optional[int] = None
     milestone_id: Optional[int] = None
     sprint_id: Optional[int] = None
+    epic_id: Optional[int] = None
+    component_id: Optional[int] = None
+    release_id: Optional[int] = None
     parent_task_id: Optional[int] = None
     start_date: Optional[date] = None
     due_date: Optional[date] = None
     estimated_hours: Optional[Decimal] = None
     actual_hours: Optional[Decimal] = None
+    original_estimate_hours: Optional[Decimal] = None
+    remaining_estimate_hours: Optional[Decimal] = None
     story_points: Optional[int] = None
+    rank: Optional[int] = None
+    security_level: str = "Internal"
+    development_branch: Optional[str] = None
+    development_commits: int = 0
+    development_prs: int = 0
+    development_deployments: int = 0
+    development_build: str = "Pending"
     position: int = 0
     is_client_visible: bool = False
     is_blocking: bool = False
@@ -326,6 +485,15 @@ class PMSTaskCreate(PMSTaskBase):
 class PMSTaskUpdate(BaseModel):
     title: Optional[str] = None
     description: Optional[str] = None
+    work_type: Optional[str] = None
+    epic_key: Optional[str] = None
+    initiative: Optional[str] = None
+    component: Optional[str] = None
+    severity: Optional[str] = None
+    environment: Optional[str] = None
+    affected_version: Optional[str] = None
+    fix_version: Optional[str] = None
+    release_name: Optional[str] = None
     status: Optional[str] = None
     priority: Optional[str] = None
     assignee_user_id: Optional[int] = None
@@ -333,12 +501,24 @@ class PMSTaskUpdate(BaseModel):
     column_id: Optional[int] = None
     milestone_id: Optional[int] = None
     sprint_id: Optional[int] = None
+    epic_id: Optional[int] = None
+    component_id: Optional[int] = None
+    release_id: Optional[int] = None
     parent_task_id: Optional[int] = None
     start_date: Optional[date] = None
     due_date: Optional[date] = None
     estimated_hours: Optional[Decimal] = None
     actual_hours: Optional[Decimal] = None
+    original_estimate_hours: Optional[Decimal] = None
+    remaining_estimate_hours: Optional[Decimal] = None
     story_points: Optional[int] = None
+    rank: Optional[int] = None
+    security_level: Optional[str] = None
+    development_branch: Optional[str] = None
+    development_commits: Optional[int] = None
+    development_prs: Optional[int] = None
+    development_deployments: Optional[int] = None
+    development_build: Optional[str] = None
     position: Optional[int] = None
     is_client_visible: Optional[bool] = None
     is_blocking: Optional[bool] = None
@@ -374,6 +554,103 @@ class PMSTaskDependencyResponse(PMSTaskDependencyBase):
 
     class Config:
         from_attributes = True
+
+
+class PMSTaskDependencyDetail(PMSTaskDependencyResponse):
+    task_key: Optional[str] = None
+    depends_on_task_key: Optional[str] = None
+    task_title: Optional[str] = None
+    depends_on_task_title: Optional[str] = None
+
+
+class TaskBulkUpdateRequest(BaseModel):
+    task_ids: List[int] = Field(..., min_items=1)
+    status: Optional[str] = None
+    assignee_user_id: Optional[int] = None
+    priority: Optional[str] = None
+    sprint_id: Optional[int] = None
+    release_id: Optional[int] = None
+    component_id: Optional[int] = None
+
+
+class TaskBulkUpdateResponse(BaseModel):
+    updated_count: int
+    tasks: List[PMSTaskResponse] = []
+
+
+class PMSSavedFilterBase(BaseModel):
+    name: str = Field(..., min_length=1, max_length=140)
+    view_type: str = "board"
+    query: str = Field(..., min_length=1)
+    is_shared: bool = False
+
+
+class PMSSavedFilterCreate(PMSSavedFilterBase):
+    pass
+
+
+class PMSSavedFilterUpdate(BaseModel):
+    name: Optional[str] = None
+    view_type: Optional[str] = None
+    query: Optional[str] = None
+    is_shared: Optional[bool] = None
+
+
+class PMSSavedFilterResponse(PMSSavedFilterBase):
+    id: int
+    project_id: int
+    user_id: Optional[int] = None
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
+class PMSActivityResponse(BaseModel):
+    id: int
+    project_id: int
+    task_id: Optional[int] = None
+    sprint_id: Optional[int] = None
+    actor_user_id: Optional[int] = None
+    action: str
+    entity_type: str
+    entity_id: Optional[int] = None
+    summary: str
+    metadata_json: Optional[str] = None
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class ReleaseReadinessResponse(BaseModel):
+    release_id: int
+    release_name: str
+    readiness_percent: int
+    health: str
+    total_tasks: int
+    done_tasks: int
+    open_blockers: int
+    overdue_tasks: int
+    severity_counts: dict[str, int] = {}
+
+
+class WorkloadItem(BaseModel):
+    user_id: Optional[int] = None
+    sprint_id: Optional[int] = None
+    task_count: int = 0
+    story_points: int = 0
+    estimated_hours: float = 0
+    overdue_tasks: int = 0
+    capacity_hours: Optional[float] = None
+    load_percent: Optional[float] = None
+
+
+class WorkloadResponse(BaseModel):
+    project_id: int
+    group_by: str
+    items: List[WorkloadItem] = []
 
 
 # ============= FILE ASSET SCHEMAS =============

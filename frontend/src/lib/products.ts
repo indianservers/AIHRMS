@@ -1,0 +1,73 @@
+export type ProductKey = "hrms" | "crm" | "project_management";
+
+export type ProductMeta = {
+  key: ProductKey;
+  name: string;
+  shortName: string;
+  loginPath: string;
+  homePath: string;
+  themeClass: string;
+  searchPlaceholder: string;
+};
+
+export const products: Record<ProductKey, ProductMeta> = {
+  hrms: {
+    key: "hrms",
+    name: "AI HRMS",
+    shortName: "HRMS",
+    loginPath: "/hrms/login",
+    homePath: "/hrms",
+    themeClass: "product-hrms",
+    searchPlaceholder: "Search employees, payroll, policies...  Cmd+K",
+  },
+  crm: {
+    key: "crm",
+    name: "VyaparaCRM",
+    shortName: "CRM",
+    loginPath: "/crm/login",
+    homePath: "/crm",
+    themeClass: "product-crm",
+    searchPlaceholder: "Search leads, deals, contacts...  Cmd+K",
+  },
+  project_management: {
+    key: "project_management",
+    name: "KaryaFlow PMS",
+    shortName: "PMS",
+    loginPath: "/pms/login",
+    homePath: "/pms",
+    themeClass: "product-pms",
+    searchPlaceholder: "Search projects, issues, sprints...  Cmd+K",
+  },
+};
+
+export function normalizeRole(role?: string | null) {
+  return (role || "").toLowerCase().replace(/\s+/g, "_");
+}
+
+export function getProductKeyFromPath(pathname: string): ProductKey | null {
+  if (pathname.startsWith("/crm")) return "crm";
+  if (pathname.startsWith("/pms")) return "project_management";
+  if (pathname.startsWith("/hrms")) return "hrms";
+  return null;
+}
+
+export function getProductKeyForRole(role?: string | null, isSuperuser = false): ProductKey {
+  const value = normalizeRole(role);
+  if (value.startsWith("crm_")) return "crm";
+  if (value.startsWith("pms_")) return "project_management";
+  if (isSuperuser || value) return "hrms";
+  return "hrms";
+}
+
+export function getProductForContext(pathname: string, role?: string | null, isSuperuser = false) {
+  return products[getProductKeyFromPath(pathname) || getProductKeyForRole(role, isSuperuser)];
+}
+
+export function getDefaultPathForUser(role?: string | null, isSuperuser = false) {
+  return products[getProductKeyForRole(role, isSuperuser)].homePath;
+}
+
+export function getLoginPathForContext(pathname: string, role?: string | null, isSuperuser = false) {
+  const productKey = getProductKeyFromPath(pathname) || getProductKeyForRole(role, isSuperuser);
+  return products[productKey].loginPath;
+}

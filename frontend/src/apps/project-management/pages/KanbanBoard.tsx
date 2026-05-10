@@ -339,7 +339,7 @@ const KanbanBoard: React.FC = () => {
                   column={column}
                   tasks={filteredTasks.filter((t) => t.column_id === column.id)}
                   onAddTask={() => setShowCreateModal(true)}
-                  onOpenTask={(task) => navigate(`/project-management/projects/${projectIdNum}/tasks/${task.id}`)}
+                  onOpenTask={(task) => navigate(`/pms/projects/${projectIdNum}/tasks/${task.id}`)}
                 />
               </SortableContext>
             ))}

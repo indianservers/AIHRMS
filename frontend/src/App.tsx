@@ -5,12 +5,12 @@ import { useAuthStore } from "@/store/authStore";
 import AppLayout from "@/components/layout/AppLayout";
 import { canAccessRoute } from "@/lib/roles";
 import { getInstalledAppKeys, type FrontendRoute } from "@/appRegistry";
+import { getDefaultPathForUser, getLoginPathForContext } from "@/lib/products";
 import { hrmsRoutes } from "@/apps/hrms/routes";
 import { crmRoutes } from "@/apps/crm/routes";
 import { projectManagementRoutes } from "@/apps/project-management/routes";
 
 const LoginPage = React.lazy(() => import("@/pages/auth/LoginPage"));
-const SuiteIndexPage = React.lazy(() => import("@/pages/SuiteIndexPage"));
 
 const appRoutes: Record<string, FrontendRoute[]> = {
   hrms: hrmsRoutes,
@@ -20,17 +20,6 @@ const appRoutes: Record<string, FrontendRoute[]> = {
 
 function getEnabledRoutes() {
   return getInstalledAppKeys().flatMap((key) => appRoutes[key] || []);
-}
-
-function getDefaultPath() {
-  return "/";
-}
-
-function getLoginPath(pathname: string) {
-  if (pathname.startsWith("/crm")) return "/crm/login";
-  if (pathname.startsWith("/project-management")) return "/project-management/login";
-  if (pathname.startsWith("/hrms")) return "/hrms/login";
-  return "/login";
 }
 
 function LoadingFallback() {
@@ -45,16 +34,20 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const location = useLocation();
   const { isAuthenticated, isHydrated, user } = useAuthStore();
   if (!isHydrated) return <LoadingFallback />;
-  if (!isAuthenticated) return <Navigate to={getLoginPath(location.pathname)} replace />;
+  if (!isAuthenticated) return <Navigate to={getLoginPathForContext(location.pathname, user?.role, user?.is_superuser)} replace />;
   if (!canAccessRoute(location.pathname, user?.role, user?.is_superuser)) {
-    return <Navigate to={getLoginPath(location.pathname)} replace />;
+    return <Navigate to={getDefaultPathForUser(user?.role, user?.is_superuser)} replace />;
   }
   return <>{children}</>;
 }
 
+function ProductHomeRedirect() {
+  const { user } = useAuthStore();
+  return <Navigate to={getDefaultPathForUser(user?.role, user?.is_superuser)} replace />;
+}
+
 export default function App() {
   const enabledRoutes = getEnabledRoutes();
-  const defaultPath = getDefaultPath();
 
   return (
     <>
@@ -63,7 +56,7 @@ export default function App() {
           <Route path="/login" element={<LoginPage />} />
           <Route path="/hrms/login" element={<LoginPage />} />
           <Route path="/crm/login" element={<LoginPage />} />
-          <Route path="/project-management/login" element={<LoginPage />} />
+          <Route path="/pms/login" element={<LoginPage />} />
           <Route
             path="/"
             element={
@@ -72,12 +65,12 @@ export default function App() {
               </ProtectedRoute>
             }
           >
-            <Route index element={<SuiteIndexPage />} />
+            <Route index element={<ProductHomeRedirect />} />
             {enabledRoutes.map((route) => (
               <Route key={route.path} path={route.path} element={route.element} />
             ))}
           </Route>
-          <Route path="*" element={<Navigate to={defaultPath} replace />} />
+          <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </Suspense>
       <Toaster />

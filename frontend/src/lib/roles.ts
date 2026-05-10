@@ -13,6 +13,7 @@ import {
   GitBranch,
   Globe2,
   GraduationCap,
+  Gauge,
   HelpCircle,
   HeartPulse,
   Landmark,
@@ -29,6 +30,7 @@ import {
   SlidersHorizontal,
   Sparkles,
   Target,
+  Upload,
   UserRound,
   Users,
 } from "lucide-react";
@@ -55,6 +57,27 @@ export function getRoleKey(role?: string | null, isSuperuser = false): RoleKey {
 }
 
 export function getRoleLabel(role?: string | null, isSuperuser = false) {
+  const normalizedRole = normalizeRole(role);
+  const crmLabels: Record<string, string> = {
+    crm_super_admin: "CRM Super Admin",
+    crm_org_admin: "CRM Admin",
+    crm_sales_manager: "Sales Manager",
+    crm_sales_executive: "Sales Executive",
+    crm_support_agent: "Support Agent",
+    crm_marketing_user: "Marketing User",
+    crm_viewer: "CRM Viewer",
+  };
+  const projectLabels: Record<string, string> = {
+    pms_super_admin: "PM Super Admin",
+    pms_org_admin: "PM Admin",
+    pms_project_manager: "Project Manager",
+    pms_team_member: "Team Member",
+    pms_client: "Client Portal",
+    pms_viewer: "Project Viewer",
+  };
+  if (crmLabels[normalizedRole]) return crmLabels[normalizedRole];
+  if (projectLabels[normalizedRole]) return projectLabels[normalizedRole];
+
   const key = getRoleKey(role, isSuperuser);
   const labels: Record<RoleKey, string> = {
     admin: "Admin Console",
@@ -118,6 +141,7 @@ const hrNav: RoleNavItem[] = [
   { label: "BGV", icon: ShieldCheck, to: "/background-verification", group: "Compliance" },
   { label: "Helpdesk", icon: HelpCircle, to: "/helpdesk", group: "Compliance" },
   { label: "Reports", icon: BarChart3, to: "/reports", group: "Platform" },
+  { label: "Advanced Analytics", icon: Gauge, to: "/advanced-analytics", group: "Platform", badge: "AI" },
   { label: "Company", icon: Building2, to: "/company", group: "Platform" },
   { label: "Org Chart", icon: GitBranch, to: "/org-chart", group: "Platform" },
   { label: "Onboarding", icon: ClipboardCheck, to: "/onboarding", group: "Platform" },
@@ -156,6 +180,7 @@ const adminNav: RoleNavItem[] = [
   { label: "Custom Fields", icon: SlidersHorizontal, to: "/custom-fields", group: "Platform" },
   { label: "Enterprise", icon: Network, to: "/enterprise", group: "Platform" },
   { label: "Reports", icon: BarChart3, to: "/reports", group: "Platform" },
+  { label: "Advanced Analytics", icon: Gauge, to: "/advanced-analytics", group: "Platform", badge: "AI" },
   { label: "Onboarding", icon: ClipboardCheck, to: "/onboarding", group: "Platform" },
   { label: "Documents", icon: FileText, to: "/documents", group: "Platform" },
   { label: "Assets", icon: Package, to: "/assets", group: "Platform" },
@@ -168,6 +193,7 @@ const ceoNav: RoleNavItem[] = [
   { label: "Inbox", icon: Inbox, to: "/workflow", group: "Core HR" },
   { label: "Notifications", icon: Bell, to: "/notifications", group: "Core HR" },
   { label: "Reports", icon: BarChart3, to: "/reports", group: "Finance" },
+  { label: "Advanced Analytics", icon: Gauge, to: "/advanced-analytics", group: "Finance", badge: "AI" },
   { label: "Payroll", icon: DollarSign, to: "/payroll", group: "Finance" },
   { label: "Benefits", icon: HeartPulse, to: "/benefits", group: "Finance" },
   { label: "Performance", icon: Target, to: "/performance", group: "Talent" },
@@ -197,6 +223,7 @@ const managerNav: RoleNavItem[] = [
   { label: "Engagement", icon: Megaphone, to: "/engagement", group: "Talent" },
   { label: "Helpdesk", icon: HelpCircle, to: "/helpdesk", group: "Insights" },
   { label: "Reports", icon: BarChart3, to: "/reports", group: "Insights" },
+  { label: "Advanced Analytics", icon: Gauge, to: "/advanced-analytics", group: "Insights", badge: "AI" },
   { label: "Org Chart", icon: GitBranch, to: "/org-chart", group: "Insights" },
   { label: "AI Assistant", icon: Sparkles, to: "/ai-assistant", badge: "AI", group: "Insights" },
 ];
@@ -228,6 +255,8 @@ const crmNav: RoleNavItem[] = [
   { label: "Companies", icon: Building2, to: "/crm/companies", group: "CRM" },
   { label: "Deals", icon: DollarSign, to: "/crm/deals", group: "Sales" },
   { label: "Pipeline", icon: GitBranch, to: "/crm/pipeline", group: "Sales", badge: "Drag" },
+  { label: "Lead-to-Cash", icon: GitBranch, to: "/crm/lead-to-cash", group: "Sales", badge: "Flow" },
+  { label: "Forecasting", icon: BarChart3, to: "/crm/forecasting", group: "Sales", badge: "Quota" },
   { label: "Activities", icon: Clock, to: "/crm/activities", group: "Sales" },
   { label: "Tasks", icon: ClipboardCheck, to: "/crm/tasks", group: "Sales" },
   { label: "Calendar", icon: CalendarDays, to: "/crm/calendar", group: "Sales" },
@@ -236,55 +265,62 @@ const crmNav: RoleNavItem[] = [
   { label: "Quotations", icon: FileText, to: "/crm/quotations", group: "Growth" },
   { label: "Tickets", icon: HelpCircle, to: "/crm/tickets", group: "Support" },
   { label: "Files", icon: FileText, to: "/crm/files", group: "Support" },
+  { label: "Customer 360", icon: Users, to: "/crm/customer-360", group: "Support", badge: "360" },
   { label: "Reports", icon: BarChart3, to: "/crm/reports", group: "Insights" },
   { label: "Automation", icon: Sparkles, to: "/crm/automation", group: "Insights" },
+  { label: "Import & Export", icon: Upload, to: "/crm/import-export", group: "Insights" },
   { label: "CRM Settings", icon: Settings, to: "/crm/settings", group: "Insights" },
   { label: "CRM Admin", icon: ShieldCheck, to: "/crm/admin", group: "Insights" },
 ];
 
 const projectManagementNav: RoleNavItem[] = [
-  { label: "PM Dashboard", icon: LayoutDashboard, to: "/project-management", group: "Project Management", exact: true },
-  { label: "Command Center", icon: Globe2, to: "/project-management/command-center", group: "Project Management", badge: "New" },
-  { label: "Enterprise Engine", icon: ShieldCheck, to: "/project-management/enterprise-engine", group: "Project Management", badge: "Pro" },
-  { label: "Product Launch", icon: Package, to: "/project-management/product-launch", group: "Project Management", badge: "Launch" },
-  { label: "Impact Work Hub", icon: Target, to: "/project-management/work-hub", group: "Project Management", badge: "AI" },
-  { label: "AI Planner", icon: Sparkles, to: "/project-management/ai-planner", group: "Project Management" },
-  { label: "Live Work", icon: Sparkles, to: "/project-management/live", group: "Project Management", badge: "Realtime" },
-  { label: "Software Delivery", icon: GitBranch, to: "/project-management/software", group: "Project Management", badge: "Agile" },
-  { label: "Backlog", icon: Inbox, to: "/project-management/backlog", group: "Project Management", badge: "Drag" },
-  { label: "Backlog Grooming", icon: ClipboardCheck, to: "/project-management/backlog-grooming", group: "Project Management" },
-  { label: "Issues", icon: ClipboardCheck, to: "/project-management/issues", group: "Project Management" },
-  { label: "Issue Navigator", icon: Search, to: "/project-management/navigator", group: "Project Management" },
-  { label: "Issue Navigator Pro", icon: Search, to: "/project-management/issue-navigator-pro", group: "Project Management" },
-  { label: "Dashboards", icon: BarChart3, to: "/project-management/dashboards", group: "Project Management" },
-  { label: "Projects", icon: Target, to: "/project-management/projects", group: "Project Management" },
-  { label: "Kanban", icon: GitBranch, to: "/project-management/projects", group: "Project Management" },
-  { label: "Goals", icon: Target, to: "/project-management/goals", group: "Project Planning" },
-  { label: "Roadmap", icon: CalendarDays, to: "/project-management/roadmap", group: "Project Planning" },
-  { label: "Timeline Plus", icon: CalendarDays, to: "/project-management/timeline-plus", group: "Project Planning", badge: "Deps" },
-  { label: "Dependencies", icon: Network, to: "/project-management/dependencies", group: "Project Planning" },
-  { label: "Plans", icon: Network, to: "/project-management/plans", group: "Project Planning", badge: "Scale" },
-  { label: "Releases", icon: Package, to: "/project-management/releases", group: "Project Planning" },
-  { label: "Forms", icon: FileText, to: "/project-management/forms", group: "Project Planning" },
-  { label: "Templates", icon: ClipboardCheck, to: "/project-management/templates", group: "Project Planning" },
-  { label: "Calendar", icon: CalendarDays, to: "/project-management/calendar", group: "Project Planning" },
-  { label: "Gantt", icon: BarChart3, to: "/project-management/gantt", group: "Project Planning" },
-  { label: "Sprints", icon: Timer, to: "/project-management/sprints", group: "Project Planning" },
-  { label: "Sprint Lifecycle", icon: Timer, to: "/project-management/sprint-lifecycle", group: "Project Planning" },
-  { label: "Components", icon: Package, to: "/project-management/components", group: "Project Admin" },
-  { label: "Workflows", icon: GitBranch, to: "/project-management/workflows", group: "Project Admin" },
-  { label: "Blueprints", icon: GitBranch, to: "/project-management/blueprints", group: "Project Admin" },
-  { label: "Resource Utilization", icon: Users, to: "/project-management/resource-utilization", group: "Project Admin" },
-  { label: "Apps & Integrations", icon: Network, to: "/project-management/apps", group: "Project Admin" },
-  { label: "Teams Live", icon: Users, to: "/project-management/teams-live", group: "Project Admin", badge: "Drag" },
-  { label: "Files", icon: FileText, to: "/project-management/files", group: "Project Collaboration" },
-  { label: "Time Tracking", icon: Clock, to: "/project-management/time-tracking", group: "Project Collaboration" },
-  { label: "Reports", icon: BarChart3, to: "/project-management/reports", group: "Project Collaboration" },
-  { label: "Automation AI", icon: Sparkles, to: "/project-management/automation", group: "Project Collaboration", badge: "AI" },
-  { label: "Client Portal", icon: Users, to: "/project-management/client-portal", group: "Project Collaboration" },
-  { label: "PM Settings", icon: Settings, to: "/project-management/settings", group: "Project Admin" },
-  { label: "Security", icon: ShieldCheck, to: "/project-management/security", group: "Project Admin" },
-  { label: "PM Admin", icon: ShieldCheck, to: "/project-management/admin", group: "Project Admin" },
+  { label: "PM Dashboard", icon: LayoutDashboard, to: "/pms", group: "Project Management", exact: true },
+  { label: "Command Center", icon: Globe2, to: "/pms/command-center", group: "Project Management", badge: "New" },
+  { label: "Enterprise Engine", icon: ShieldCheck, to: "/pms/enterprise-engine", group: "Project Management", badge: "Pro" },
+  { label: "Product Launch", icon: Package, to: "/pms/product-launch", group: "Project Management", badge: "Launch" },
+  { label: "Dependency Management", icon: Network, to: "/pms/dependency-management", group: "Project Management", badge: "Path" },
+  { label: "Resource Planning", icon: Users, to: "/pms/resource-planning", group: "Project Management", badge: "Load" },
+  { label: "Agile Execution", icon: Timer, to: "/pms/agile-execution", group: "Project Management", badge: "Sprint" },
+  { label: "Project Financials", icon: DollarSign, to: "/pms/project-financials", group: "Project Management", badge: "Cost" },
+  { label: "Risk Register", icon: ShieldCheck, to: "/pms/risk-register", group: "Project Management", badge: "RAID" },
+  { label: "Impact Work Hub", icon: Target, to: "/pms/work-hub", group: "Project Management", badge: "AI" },
+  { label: "AI Planner", icon: Sparkles, to: "/pms/ai-planner", group: "Project Management" },
+  { label: "Live Work", icon: Sparkles, to: "/pms/live", group: "Project Management", badge: "Realtime" },
+  { label: "Software Delivery", icon: GitBranch, to: "/pms/software", group: "Project Management", badge: "Agile" },
+  { label: "Backlog", icon: Inbox, to: "/pms/backlog", group: "Project Management", badge: "Drag" },
+  { label: "Backlog Grooming", icon: ClipboardCheck, to: "/pms/backlog-grooming", group: "Project Management" },
+  { label: "Issues", icon: ClipboardCheck, to: "/pms/issues", group: "Project Management" },
+  { label: "Issue Navigator", icon: Search, to: "/pms/navigator", group: "Project Management" },
+  { label: "Issue Navigator Pro", icon: Search, to: "/pms/issue-navigator-pro", group: "Project Management" },
+  { label: "Dashboards", icon: BarChart3, to: "/pms/dashboards", group: "Project Management" },
+  { label: "Projects", icon: Target, to: "/pms/projects", group: "Project Management" },
+  { label: "Kanban", icon: GitBranch, to: "/pms/projects", group: "Project Management" },
+  { label: "Goals", icon: Target, to: "/pms/goals", group: "Project Planning" },
+  { label: "Roadmap", icon: CalendarDays, to: "/pms/roadmap", group: "Project Planning" },
+  { label: "Timeline Plus", icon: CalendarDays, to: "/pms/timeline-plus", group: "Project Planning", badge: "Deps" },
+  { label: "Dependencies", icon: Network, to: "/pms/dependencies", group: "Project Planning" },
+  { label: "Plans", icon: Network, to: "/pms/plans", group: "Project Planning", badge: "Scale" },
+  { label: "Releases", icon: Package, to: "/pms/releases", group: "Project Planning" },
+  { label: "Forms", icon: FileText, to: "/pms/forms", group: "Project Planning" },
+  { label: "Templates", icon: ClipboardCheck, to: "/pms/templates", group: "Project Planning" },
+  { label: "Calendar", icon: CalendarDays, to: "/pms/calendar", group: "Project Planning" },
+  { label: "Gantt", icon: BarChart3, to: "/pms/gantt", group: "Project Planning" },
+  { label: "Sprints", icon: Timer, to: "/pms/sprints", group: "Project Planning" },
+  { label: "Sprint Lifecycle", icon: Timer, to: "/pms/sprint-lifecycle", group: "Project Planning" },
+  { label: "Components", icon: Package, to: "/pms/components", group: "Project Admin" },
+  { label: "Workflows", icon: GitBranch, to: "/pms/workflows", group: "Project Admin" },
+  { label: "Blueprints", icon: GitBranch, to: "/pms/blueprints", group: "Project Admin" },
+  { label: "Resource Utilization", icon: Users, to: "/pms/resource-utilization", group: "Project Admin" },
+  { label: "Apps & Integrations", icon: Network, to: "/pms/apps", group: "Project Admin" },
+  { label: "Teams Live", icon: Users, to: "/pms/teams-live", group: "Project Admin", badge: "Drag" },
+  { label: "Files", icon: FileText, to: "/pms/files", group: "Project Collaboration" },
+  { label: "Time Tracking", icon: Clock, to: "/pms/time-tracking", group: "Project Collaboration" },
+  { label: "Reports", icon: BarChart3, to: "/pms/reports", group: "Project Collaboration" },
+  { label: "Automation AI", icon: Sparkles, to: "/pms/automation", group: "Project Collaboration", badge: "AI" },
+  { label: "Client Portal", icon: Users, to: "/pms/client-portal", group: "Project Collaboration" },
+  { label: "PM Settings", icon: Settings, to: "/pms/settings", group: "Project Admin" },
+  { label: "Security", icon: ShieldCheck, to: "/pms/security", group: "Project Admin" },
+  { label: "PM Admin", icon: ShieldCheck, to: "/pms/admin", group: "Project Admin" },
 ];
 
 function withPrefix(items: RoleNavItem[], prefix: string) {
@@ -297,7 +333,7 @@ function withPrefix(items: RoleNavItem[], prefix: string) {
 export function getActiveModule(pathname: string) {
   if (pathname === "/" || pathname === "") return "suite";
   if (pathname.startsWith("/crm")) return "crm";
-  if (pathname.startsWith("/project-management")) return "project_management";
+  if (pathname.startsWith("/pms")) return "project_management";
   return "hrms";
 }
 
@@ -325,13 +361,13 @@ export function getRoleNav(role?: string | null, isSuperuser = false, pathname =
   if (activeModule === "suite") {
     const suiteNav: RoleNavItem[] = [];
     if (installedApps.includes("hrms") && isHrmsRole(role, isSuperuser)) {
-      suiteNav.push({ label: "AI HRMS", icon: Building2, to: "/hrms/dashboard", group: "Applications", exact: true });
+      suiteNav.push({ label: "AI HRMS", icon: Building2, to: "/hrms", group: "Applications", exact: true });
     }
     if (installedApps.includes("crm") && isCrmRole(role)) {
       suiteNav.push({ label: "VyaparaCRM", icon: Briefcase, to: "/crm", group: "Applications", exact: true });
     }
     if (installedApps.includes("project_management") && isProjectManagementRole(role)) {
-      suiteNav.push({ label: "KaryaFlow", icon: Target, to: "/project-management", group: "Applications", exact: true });
+      suiteNav.push({ label: "KaryaFlow", icon: Target, to: "/pms", group: "Applications", exact: true });
     }
     return suiteNav;
   }
@@ -365,6 +401,7 @@ const routeAccess: Record<string, RoleKey[]> = {
   "/employee-directory": ["admin", "ceo", "hr", "manager", "employee"],
   "/employees": ["admin", "ceo", "hr", "manager"],
   "/reports": ["admin", "ceo", "hr", "manager"],
+  "/advanced-analytics": ["admin", "ceo", "hr", "manager"],
   "/logs": ["admin"],
   "/recruitment": ["admin", "hr", "manager"],
   "/company": ["admin", "ceo", "hr"],
@@ -375,14 +412,15 @@ const routeAccess: Record<string, RoleKey[]> = {
   "/exit": ["admin", "hr"],
   "/ai-assistant": ["admin", "ceo", "hr", "manager", "employee"],
   "/crm": ["admin", "ceo", "hr", "manager"],
-  "/project-management": ["admin", "ceo", "hr", "manager", "employee"],
+  "/pms": ["admin", "ceo", "hr", "manager", "employee"],
 };
 
 export function canAccessRoute(pathname: string, role?: string | null, isSuperuser = false) {
   if (pathname === "/") return true;
   if (pathname === "/hrms") return isHrmsRole(role, isSuperuser);
   if (pathname.startsWith("/crm")) return isCrmRole(role);
-  if (pathname.startsWith("/project-management")) return isProjectManagementRole(role);
+  if (pathname.startsWith("/pms")) return isProjectManagementRole(role);
+  if (pathname.startsWith("/hrms/") && !isHrmsRole(role, isSuperuser)) return false;
   const normalizedPathname = pathname.startsWith("/hrms/")
     ? pathname.replace(/^\/hrms/, "")
     : pathname;

@@ -15,10 +15,10 @@ export default function ESSPortalPage() {
   const leaveBalance = useQuery({ queryKey: ["ess-leave-balance"], queryFn: () => leaveApi.balance(new Date().getFullYear()).then((r) => r.data), retry: false });
 
   const actions = [
-    ["Profile", "Photo, data completeness, change requests", UserRound, "/profile"],
-    ["Apply Leave", "Request leave and track approvals", CalendarDays, "/leave"],
-    ["Attendance", "Monthly view and regularization", Clock, "/attendance"],
-    ["Helpdesk", "Raise HR or IT support ticket", HelpCircle, "/helpdesk"],
+    ["Profile", "Photo, data completeness, change requests", UserRound, "/hrms/profile"],
+    ["Apply Leave", "Request leave and track approvals", CalendarDays, "/hrms/leave"],
+    ["Attendance", "Monthly view and regularization", Clock, "/hrms/attendance"],
+    ["Helpdesk", "Raise HR or IT support ticket", HelpCircle, "/hrms/helpdesk"],
   ];
 
   return (
@@ -112,7 +112,7 @@ export default function ESSPortalPage() {
           <CardHeader><CardTitle className="text-base"><Ticket className="mr-2 inline h-4 w-4" />Helpdesk</CardTitle></CardHeader>
           <CardContent className="space-y-3">
             <p className="text-sm text-muted-foreground">Raise HR, payroll, IT, document, or asset support requests and track replies.</p>
-            <Button asChild><a href="/helpdesk"><HelpCircle className="h-4 w-4" />Raise ticket</a></Button>
+            <Button asChild><a href="/hrms/helpdesk"><HelpCircle className="h-4 w-4" />Raise ticket</a></Button>
           </CardContent>
         </Card>
 

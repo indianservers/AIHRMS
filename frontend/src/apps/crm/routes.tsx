@@ -20,6 +20,10 @@ export const crmRoutes: FrontendRoute[] = [
   { path: "crm/files", element: <CRMWorkspacePage kind="files" /> },
   { path: "crm/reports", element: <CRMWorkspacePage kind="reports" /> },
   { path: "crm/automation", element: <CRMWorkspacePage kind="automation" /> },
+  { path: "crm/lead-to-cash", element: <CRMWorkspacePage kind="leadCash" /> },
+  { path: "crm/forecasting", element: <CRMWorkspacePage kind="forecasting" /> },
+  { path: "crm/customer-360", element: <CRMWorkspacePage kind="customer360" /> },
+  { path: "crm/import-export", element: <CRMWorkspacePage kind="importExport" /> },
   { path: "crm/settings", element: <CRMWorkspacePage kind="settings" /> },
   { path: "crm/admin", element: <CRMWorkspacePage kind="admin" /> },
 ];

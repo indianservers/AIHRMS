@@ -37,7 +37,7 @@ export default function GanttPage() {
           <h1 className="page-title">Gantt</h1>
           <p className="page-description">Timeline planning with start/end dates and dependency placeholders.</p>
         </div>
-        {projects[0] ? <Button asChild variant="outline"><Link to={`/project-management/projects/${projects[0].id}/board`}>Open board</Link></Button> : null}
+        {projects[0] ? <Button asChild variant="outline"><Link to={`/pms/projects/${projects[0].id}/board`}>Open board</Link></Button> : null}
       </div>
       <Card>
         <CardContent className="overflow-x-auto p-5">

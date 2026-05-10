@@ -167,12 +167,12 @@ export default function EmployeesPage() {
       id: "actions",
       cell: (info) => (
         <div className="flex items-center gap-1">
-          <Link to={`/employees/${info.row.original.id}`}>
+          <Link to={`/hrms/employees/${info.row.original.id}`}>
             <Button variant="ghost" size="icon" className="h-8 w-8">
               <Eye className="h-3.5 w-3.5" />
             </Button>
           </Link>
-          <Link to={`/employees/${info.row.original.id}?edit=true`}>
+          <Link to={`/hrms/employees/${info.row.original.id}?edit=true`}>
             <Button variant="ghost" size="icon" className="h-8 w-8">
               <Edit className="h-3.5 w-3.5" />
             </Button>
@@ -243,7 +243,7 @@ export default function EmployeesPage() {
             <Download className="h-4 w-4 mr-2" />
             Export
           </Button>
-          <Link to="/employees/new">
+          <Link to="/hrms/employees/new">
             <Button size="sm">
               <Plus className="h-4 w-4 mr-2" />
               Add Employee
@@ -321,7 +321,7 @@ export default function EmployeesPage() {
                   <td colSpan={7} className="px-4 py-12 text-center text-muted-foreground">
                     <Users className="h-10 w-10 mx-auto mb-2 opacity-30" />
                     <p>No employees found</p>
-                    <Link to="/employees/new">
+                    <Link to="/hrms/employees/new">
                       <Button variant="link" size="sm">Add your first employee</Button>
                     </Link>
                   </td>

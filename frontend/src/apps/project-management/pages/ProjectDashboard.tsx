@@ -50,8 +50,8 @@ export default function ProjectDashboard() {
           <p className="page-description">{project.description || "Project workspace overview"}</p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Button asChild variant="outline"><Link to={`/project-management/projects/${id}/milestones`}><Milestone className="h-4 w-4" />Milestones</Link></Button>
-          <Button asChild><Link to={`/project-management/projects/${id}/board`}><Kanban className="h-4 w-4" />Open board</Link></Button>
+          <Button asChild variant="outline"><Link to={`/pms/projects/${id}/milestones`}><Milestone className="h-4 w-4" />Milestones</Link></Button>
+          <Button asChild><Link to={`/pms/projects/${id}/board`}><Kanban className="h-4 w-4" />Open board</Link></Button>
         </div>
       </div>
 

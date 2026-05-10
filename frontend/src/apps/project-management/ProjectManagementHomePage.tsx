@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Plus, Kanban, Globe2, Sparkles } from "lucide-react";
+import { ProductWorkflowCenter } from "@/components/product/ProductWorkflowCenter";
 import { useProjectStore, useUIStore } from "./store";
 import { projectsAPI } from "./services/api";
 import { PMSProject } from "./types";
@@ -41,11 +42,11 @@ const ProjectManagementHomePage: React.FC = () => {
 
   const handleSelectProject = (project: PMSProject) => {
     setSelectedProject(project);
-    navigate(`/project-management/projects/${project.id}`);
+    navigate(`/pms/projects/${project.id}`);
   };
 
   const handleCreateProject = () => {
-    navigate("/project-management/projects/new");
+    navigate("/pms/projects/new");
   };
 
   if (loading) {
@@ -82,14 +83,14 @@ const ProjectManagementHomePage: React.FC = () => {
               New Project
             </button>
             <button
-              onClick={() => navigate("/project-management/command-center")}
+              onClick={() => navigate("/pms/command-center")}
               className="border border-blue-200 bg-white px-5 py-3 text-blue-700 rounded-lg hover:bg-blue-50 transition-all flex items-center gap-2 font-medium"
             >
               <Globe2 size={20} />
               Command Center
             </button>
             <button
-              onClick={() => navigate("/project-management/product-launch")}
+              onClick={() => navigate("/pms/product-launch")}
               className="border border-amber-200 bg-amber-50 px-5 py-3 text-amber-800 rounded-lg hover:bg-amber-100 transition-all flex items-center gap-2 font-medium"
             >
               <Globe2 size={20} />
@@ -112,14 +113,14 @@ const ProjectManagementHomePage: React.FC = () => {
               <p className="mt-1 text-sm text-gray-600">Open the command center or product launch workspace for the complete project experience.</p>
             </div>
             <button
-              onClick={() => navigate("/project-management/product-launch")}
+              onClick={() => navigate("/pms/product-launch")}
               className="inline-flex items-center justify-center gap-2 rounded-lg bg-amber-500 px-5 py-3 text-sm font-semibold text-white hover:bg-amber-600"
             >
               <Globe2 className="h-4 w-4" />
               Open Product Launch
             </button>
             <button
-              onClick={() => navigate("/project-management/command-center")}
+              onClick={() => navigate("/pms/command-center")}
               className="inline-flex items-center justify-center gap-2 rounded-lg bg-gray-900 px-5 py-3 text-sm font-semibold text-white hover:bg-gray-800"
             >
               <Globe2 className="h-4 w-4" />
@@ -212,6 +213,10 @@ const ProjectManagementHomePage: React.FC = () => {
             ))}
           </div>
         )}
+
+        <div className="mt-8">
+          <ProductWorkflowCenter product="pms" />
+        </div>
       </div>
     </div>
   );

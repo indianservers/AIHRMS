@@ -32,7 +32,7 @@ export default function ProjectsList() {
 
   const openProject = (project: PMSProject) => {
     setSelectedProject(project);
-    navigate(`/project-management/projects/${project.id}`);
+    navigate(`/pms/projects/${project.id}`);
   };
 
   return (
@@ -43,7 +43,7 @@ export default function ProjectsList() {
           <p className="page-description">Track active work, ownership, progress, budgets, and delivery risk.</p>
         </div>
         <Button asChild>
-          <Link to="/project-management/projects/new"><Plus className="h-4 w-4" />New project</Link>
+          <Link to="/pms/projects/new"><Plus className="h-4 w-4" />New project</Link>
         </Button>
       </div>
 
@@ -88,7 +88,7 @@ export default function ProjectsList() {
               </div>
               <div className="mt-4 flex items-center justify-between text-xs text-muted-foreground">
                 <span className="inline-flex items-center gap-1"><CalendarDays className="h-3.5 w-3.5" />{formatDate(project.due_date || null)}</span>
-                <Link to={`/project-management/projects/${project.id}/board`} onClick={(event) => event.stopPropagation()} className="inline-flex items-center gap-1 font-medium text-primary">
+                <Link to={`/pms/projects/${project.id}/board`} onClick={(event) => event.stopPropagation()} className="inline-flex items-center gap-1 font-medium text-primary">
                   <Kanban className="h-3.5 w-3.5" />Board
                 </Link>
               </div>

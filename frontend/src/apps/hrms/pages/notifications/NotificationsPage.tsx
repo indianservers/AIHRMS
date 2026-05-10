@@ -23,6 +23,12 @@ type Notification = {
   delivery_logs?: Array<{ id: number; channel: string; status: string }>;
 };
 
+function hrmsActionUrl(url: string) {
+  if (url.startsWith("/hrms")) return url;
+  if (url.startsWith("/crm") || url.startsWith("/pms")) return "/hrms";
+  return url.startsWith("/") ? `/hrms${url}` : `/hrms/${url}`;
+}
+
 export default function NotificationsPage() {
   usePageTitle("Notifications");
   const qc = useQueryClient();
@@ -118,7 +124,7 @@ export default function NotificationsPage() {
                       </Button>
                     )}
                     {item.action_url && (
-                      <Link to={item.action_url}>
+                      <Link to={hrmsActionUrl(item.action_url)}>
                         <Button size="sm">
                           <ExternalLink className="h-4 w-4" />
                           Open

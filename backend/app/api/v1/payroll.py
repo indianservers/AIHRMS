@@ -2664,12 +2664,16 @@ def review_unlock_request(
     request.review_remarks = data.remarks
     if action == "approve":
         request.status = "Approved"
+        run = _get_payroll_run_or_404(db, request.payroll_run_id)
+        crud_payroll.coerce_payroll_run_status(run)
+        if run.status == crud_payroll.PAYROLL_RUN_STATUS_LOCKED:
+            run.status = crud_payroll.PAYROLL_RUN_STATUS_CALCULATED
         _audit(
             db,
             request.payroll_run_id,
             "unlock_review_approved",
             current_user.id,
-            "Payroll run remains locked; state machine does not allow backward transitions. "
+            "Payroll run unlocked for controlled correction. "
             f"Remarks: {data.remarks or ''}",
         )
     elif action == "reject":

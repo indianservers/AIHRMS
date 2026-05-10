@@ -7,6 +7,7 @@ import {
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { ProductWorkflowCenter } from "@/components/product/ProductWorkflowCenter";
 import { attendanceApi, documentsApi, employeeApi, engagementApi, leaveApi, payrollApi, reportsApi } from "@/services/api";
 import { formatCurrency } from "@/lib/utils";
 import { useAuthStore } from "@/store/authStore";
@@ -154,17 +155,17 @@ export default function DashboardPage() {
   });
 
   const employeeActions = [
-    { label: "Check Attendance", detail: "Clock in, clock out, regularize", icon: Clock, href: "/attendance" },
-    { label: "Apply Leave", detail: "Balances and leave requests", icon: CalendarDays, href: "/leave" },
-    { label: "Download Payslip", detail: "Monthly salary slip", icon: DollarSign, href: "/payroll" },
-    { label: "Raise Ticket", detail: "HR helpdesk support", icon: HelpCircle, href: "/helpdesk" },
+    { label: "Check Attendance", detail: "Clock in, clock out, regularize", icon: Clock, href: "/hrms/attendance" },
+    { label: "Apply Leave", detail: "Balances and leave requests", icon: CalendarDays, href: "/hrms/leave" },
+    { label: "Download Payslip", detail: "Monthly salary slip", icon: DollarSign, href: "/hrms/payroll" },
+    { label: "Raise Ticket", detail: "HR helpdesk support", icon: HelpCircle, href: "/hrms/helpdesk" },
   ];
 
   const managerActions = [
-    { label: "Leave Approvals", detail: `${pendingLeave?.pending ?? dashboard?.leaves?.pending_approvals ?? 0} requests pending`, icon: CalendarDays, href: "/leave" },
-    { label: "Team Performance", detail: "Goals, reviews, feedback", icon: Target, href: "/performance" },
-    { label: "Team Attendance", detail: "Monthly presence trends", icon: Clock, href: "/attendance" },
-    { label: "Open Helpdesk", detail: "Resolve employee issues", icon: HelpCircle, href: "/helpdesk" },
+    { label: "Leave Approvals", detail: `${pendingLeave?.pending ?? dashboard?.leaves?.pending_approvals ?? 0} requests pending`, icon: CalendarDays, href: "/hrms/leave" },
+    { label: "Team Performance", detail: "Goals, reviews, feedback", icon: Target, href: "/hrms/performance" },
+    { label: "Team Attendance", detail: "Monthly presence trends", icon: Clock, href: "/hrms/attendance" },
+    { label: "Open Helpdesk", detail: "Resolve employee issues", icon: HelpCircle, href: "/hrms/helpdesk" },
   ];
 
   const ceoMetrics = [
@@ -361,9 +362,9 @@ export default function DashboardPage() {
             </CardHeader>
             <CardContent className="space-y-3">
               {[
-                ["Reports & Analytics", "/reports", BarChart3],
-                ["Company Setup", "/company", Building2],
-                ["AI Workforce Notes", "/ai-assistant", Sparkles],
+                ["Reports & Analytics", "/hrms/reports", BarChart3],
+                ["Company Setup", "/hrms/company", Building2],
+                ["AI Workforce Notes", "/hrms/ai-assistant", Sparkles],
               ].map(([label, href, Icon]) => (
                 <a key={label as string} href={href as string} className="flex items-center justify-between rounded-lg border p-3 hover:bg-muted/50">
                   <span className="flex items-center gap-3 text-sm font-medium">
@@ -511,10 +512,10 @@ export default function DashboardPage() {
       {/* Quick actions */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         {[
-          { label: "Add Employee", icon: Users, href: "/employees/new", color: "bg-blue-600 hover:bg-blue-700" },
-          { label: "Run Payroll", icon: DollarSign, href: "/payroll", color: "bg-green-600 hover:bg-green-700" },
-          { label: "Leave Approvals", icon: CalendarDays, href: "/leave", color: "bg-yellow-600 hover:bg-yellow-700" },
-          { label: "View Reports", icon: TrendingUp, href: "/reports", color: "bg-purple-600 hover:bg-purple-700" },
+          { label: "Add Employee", icon: Users, href: "/hrms/employees/new", color: "bg-blue-600 hover:bg-blue-700" },
+          { label: "Run Payroll", icon: DollarSign, href: "/hrms/payroll", color: "bg-green-600 hover:bg-green-700" },
+          { label: "Leave Approvals", icon: CalendarDays, href: "/hrms/leave", color: "bg-yellow-600 hover:bg-yellow-700" },
+          { label: "View Reports", icon: TrendingUp, href: "/hrms/reports", color: "bg-purple-600 hover:bg-purple-700" },
         ].map((action) => (
           <a
             key={action.label}
@@ -526,6 +527,8 @@ export default function DashboardPage() {
           </a>
         ))}
       </div>
+
+      <ProductWorkflowCenter product="hrms" />
     </div>
   );
 }

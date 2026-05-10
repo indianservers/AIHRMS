@@ -1,18 +1,23 @@
 import { useState } from "react";
-import { Outlet } from "react-router-dom";
+import { Outlet, useLocation } from "react-router-dom";
 import Sidebar from "./Sidebar";
 import Topbar from "./Topbar";
 import BackToTop from "@/components/app/BackToTop";
 import Breadcrumbs from "@/components/app/Breadcrumbs";
 import ErrorBoundary from "@/components/app/ErrorBoundary";
 import SessionTimeoutWarning from "@/components/app/SessionTimeoutWarning";
+import { useAuthStore } from "@/store/authStore";
+import { getProductForContext } from "@/lib/products";
 
 export default function AppLayout() {
+  const location = useLocation();
+  const { user } = useAuthStore();
+  const product = getProductForContext(location.pathname, user?.role, user?.is_superuser);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
   return (
-    <div className="flex h-screen overflow-hidden bg-background">
+    <div className={`product-shell ${product.themeClass} flex h-screen overflow-hidden bg-background`} data-product={product.key}>
       {/* Sidebar */}
       <Sidebar
         open={sidebarOpen}

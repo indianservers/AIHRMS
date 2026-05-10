@@ -153,7 +153,7 @@ export default function AddEmployeePage() {
     onSuccess: (res) => {
       setSubmitError(null);
       toast({ title: "Employee created successfully!", variant: "default" });
-      navigate(`/employees/${res.data.id}`);
+      navigate(`/hrms/employees/${res.data.id}`);
     },
     onError: (err: unknown) => {
       const message = getEmployeeErrorMessage(err);
@@ -211,7 +211,7 @@ export default function AddEmployeePage() {
   return (
     <div className="mx-auto max-w-5xl space-y-6">
       <div className="flex items-center gap-4">
-        <Button variant="ghost" size="sm" onClick={() => navigate("/employees")}>
+        <Button variant="ghost" size="sm" onClick={() => navigate("/hrms/employees")}>
           <ChevronLeft className="h-4 w-4 mr-1" />
           Back
         </Button>
@@ -219,7 +219,7 @@ export default function AddEmployeePage() {
           <h1 className="page-title">Add New Employee</h1>
           <p className="page-description">Create a new employee record. Empty branch or designation lists can be managed from Settings.</p>
         </div>
-        <Button variant="outline" size="sm" onClick={() => navigate("/settings")} className="ml-auto">
+        <Button variant="outline" size="sm" onClick={() => navigate("/hrms/settings")} className="ml-auto">
           <Settings className="mr-2 h-4 w-4" />
           Settings
         </Button>

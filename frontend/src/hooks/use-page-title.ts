@@ -1,11 +1,15 @@
 import { useEffect } from "react";
+import { useLocation } from "react-router-dom";
+import { getProductForContext } from "@/lib/products";
 
 export function usePageTitle(title: string) {
-  useEffect(() => {
-    document.title = `${title} - Business Suite`;
-    return () => {
-      document.title = "Business Suite";
-    };
-  }, [title]);
-}
+  const location = useLocation();
+  const product = getProductForContext(location.pathname);
 
+  useEffect(() => {
+    document.title = `${title} - ${product.name}`;
+    return () => {
+      document.title = product.name;
+    };
+  }, [product.name, title]);
+}

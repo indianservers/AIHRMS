@@ -79,6 +79,53 @@
 }
 
 @layer components {
+  .product-shell.product-hrms {
+    --background: 0 0% 100%;
+    --foreground: 222.2 84% 4.9%;
+    --primary: 221.2 83.2% 53.3%;
+    --ring: 221.2 83.2% 53.3%;
+    --sidebar-background: 224 71.4% 4.1%;
+    --sidebar-primary: 217.2 91.2% 59.8%;
+    --sidebar-accent: 216 34% 17%;
+    --sidebar-border: 215 27.9% 16.9%;
+  }
+
+  .product-shell.product-crm {
+    --background: 160 30% 98%;
+    --foreground: 164 86% 8%;
+    --primary: 160 84% 32%;
+    --primary-foreground: 0 0% 100%;
+    --ring: 160 84% 32%;
+    --secondary: 150 28% 93%;
+    --muted: 150 24% 94%;
+    --accent: 158 35% 90%;
+    --sidebar-background: 166 92% 10%;
+    --sidebar-foreground: 150 25% 96%;
+    --sidebar-primary: 160 84% 39%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 164 56% 17%;
+    --sidebar-accent-foreground: 150 25% 96%;
+    --sidebar-border: 164 42% 20%;
+  }
+
+  .product-shell.product-pms {
+    --background: 250 35% 98%;
+    --foreground: 252 70% 10%;
+    --primary: 258 70% 54%;
+    --primary-foreground: 0 0% 100%;
+    --ring: 258 70% 54%;
+    --secondary: 250 28% 94%;
+    --muted: 250 24% 94%;
+    --accent: 252 36% 91%;
+    --sidebar-background: 254 48% 13%;
+    --sidebar-foreground: 252 35% 96%;
+    --sidebar-primary: 258 70% 60%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 254 40% 22%;
+    --sidebar-accent-foreground: 252 35% 96%;
+    --sidebar-border: 254 30% 26%;
+  }
+
   .page-title {
     @apply text-2xl font-semibold tracking-tight text-foreground;
   }

@@ -129,23 +129,26 @@ def _calculate_statutory_amounts(
 
     if not profile or profile.pf_applicable:
         pf_rule = _active_rule(db, PFRule, calculation_date)
-        if pf_rule:
-            pf_wage = min(Decimal(basic or 0), Decimal(pf_rule.wage_ceiling or 0))
-            employee_pf = _rounded_money(pf_wage * Decimal(pf_rule.employee_rate or 0) / Decimal("100"), pf_rule.rounding_rule)
-            employer_pf = _rounded_money(pf_wage * Decimal(pf_rule.employer_rate or 0) / Decimal("100"), pf_rule.rounding_rule)
-            amounts["pf_employee"] = employee_pf
-            amounts["pf_employer"] = employer_pf
-            lines.append(PayrollStatutoryContributionLine(
-                employee_id=employee_id,
-                component="PF",
-                wage_base=pf_wage,
-                employee_amount=employee_pf,
-                employer_amount=employer_pf,
-                admin_charge=_rounded_money(pf_wage * Decimal(pf_rule.admin_charge_rate or 0) / Decimal("100"), pf_rule.rounding_rule),
-                edli_amount=_rounded_money(pf_wage * Decimal(pf_rule.edli_rate or 0) / Decimal("100"), pf_rule.rounding_rule),
-                rule_id=pf_rule.id,
-                rule_type="PF",
-            ))
+        pf_wage_ceiling = Decimal(pf_rule.wage_ceiling or 0) if pf_rule else Decimal("15000")
+        pf_employee_rate = Decimal(pf_rule.employee_rate or 0) if pf_rule else Decimal("12")
+        pf_employer_rate = Decimal(pf_rule.employer_rate or 0) if pf_rule else Decimal("12")
+        pf_rounding_rule = pf_rule.rounding_rule if pf_rule else "Nearest Rupee"
+        pf_wage = min(Decimal(basic or 0), pf_wage_ceiling)
+        employee_pf = _rounded_money(pf_wage * pf_employee_rate / Decimal("100"), pf_rounding_rule)
+        employer_pf = _rounded_money(pf_wage * pf_employer_rate / Decimal("100"), pf_rounding_rule)
+        amounts["pf_employee"] = employee_pf
+        amounts["pf_employer"] = employer_pf
+        lines.append(PayrollStatutoryContributionLine(
+            employee_id=employee_id,
+            component="PF",
+            wage_base=pf_wage,
+            employee_amount=employee_pf,
+            employer_amount=employer_pf,
+            admin_charge=_rounded_money(pf_wage * Decimal(pf_rule.admin_charge_rate or 0) / Decimal("100"), pf_rounding_rule) if pf_rule else Decimal("0.00"),
+            edli_amount=_rounded_money(pf_wage * Decimal(pf_rule.edli_rate or 0) / Decimal("100"), pf_rounding_rule) if pf_rule else Decimal("0.00"),
+            rule_id=pf_rule.id if pf_rule else None,
+            rule_type="PF",
+        ))
 
     if not profile or profile.esi_applicable:
         esi_rule = _active_rule(db, ESIRule, calculation_date)
@@ -330,14 +333,15 @@ def run_payroll(db: Session, month: int, year: int, run_by_user_id: int) -> Payr
             PayrollAttendanceInput.source_status.in_(["Approved", "Locked"]),
         ).order_by(PayrollAttendanceInput.id.desc()).first()
 
-        raw_present_days = db.query(Attendance).filter(
+        attendance_query = db.query(Attendance).filter(
             and_(
                 Attendance.employee_id == emp.id,
-                Attendance.status.in_(["Present", "WFH", "Half-day"]),
                 Attendance.attendance_date >= period_start,
                 Attendance.attendance_date <= period_end,
             )
-        ).count()
+        )
+        raw_attendance_days = attendance_query.count()
+        raw_present_days = attendance_query.filter(Attendance.status.in_(["Present", "WFH", "Half-day"])).count()
 
         if attendance_input:
             total_working_days = int(attendance_input.working_days or total_working_days)
@@ -345,8 +349,9 @@ def run_payroll(db: Session, month: int, year: int, run_by_user_id: int) -> Payr
             lop_days = Decimal(attendance_input.lop_days or 0)
             present_days = Decimal(attendance_input.present_days or 0)
         else:
-            # Simple payroll calculation
-            present_days = Decimal(str(raw_present_days))
+            # If attendance has not been captured for the period, treat the employee as payable.
+            # Once attendance rows exist, the present/WFH/Half-day count drives LOP.
+            present_days = Decimal(str(raw_present_days if raw_attendance_days else total_working_days))
             paid_days = min(present_days, Decimal(str(total_working_days)))
             lop_days = max(Decimal("0"), Decimal(str(total_working_days)) - paid_days)
 

@@ -14,7 +14,7 @@ export type FrontendAppModule = {
   routes: FrontendRoute[];
 };
 
-const rawInstalledApps = import.meta.env.VITE_INSTALLED_APPS || "hrms";
+const rawInstalledApps = import.meta.env.VITE_INSTALLED_APPS || "hrms,crm,project_management";
 const validAppKeys: FrontendAppKey[] = ["hrms", "crm", "project_management"];
 
 export function normalizeAppKey(value: string) {
@@ -26,8 +26,4 @@ export function getInstalledAppKeys(): FrontendAppKey[] {
     .split(",")
     .map(normalizeAppKey)
     .filter((key: string): key is FrontendAppKey => validAppKeys.includes(key as FrontendAppKey));
-}
-
-export function getSuiteName() {
-  return "Business Suite";
 }

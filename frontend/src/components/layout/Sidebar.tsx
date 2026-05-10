@@ -1,11 +1,11 @@
 import { Fragment } from "react";
-import { NavLink, useLocation } from "react-router-dom";
+import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import { cn } from "@/lib/utils";
 import { ChevronLeft, ChevronRight, Sparkles, UserCircle, X, LogOut } from "lucide-react";
 import { useAuthStore } from "@/store/authStore";
 import { Button } from "@/components/ui/button";
 import { getRoleLabel, getRoleNav } from "@/lib/roles";
-import { getSuiteName } from "@/appRegistry";
+import { getProductForContext } from "@/lib/products";
 
 interface SidebarProps {
   open: boolean;
@@ -16,10 +16,22 @@ interface SidebarProps {
 
 export default function Sidebar({ open, collapsed, onClose, onToggleCollapse }: SidebarProps) {
   const location = useLocation();
+  const navigate = useNavigate();
   const { user, logout } = useAuthStore();
   const navItems = getRoleNav(user?.role, user?.is_superuser, location.pathname);
   const roleLabel = getRoleLabel(user?.role, user?.is_superuser);
-  const suiteName = getSuiteName();
+  const product = getProductForContext(location.pathname, user?.role, user?.is_superuser);
+  const profilePath = location.pathname.startsWith("/hrms")
+    ? "/hrms/profile"
+    : location.pathname.startsWith("/crm")
+      ? "/crm"
+      : location.pathname.startsWith("/pms")
+        ? "/pms"
+        : "/";
+  const handleLogout = () => {
+    logout();
+    navigate(product.loginPath, { replace: true });
+  };
 
   return (
     <>
@@ -42,7 +54,7 @@ export default function Sidebar({ open, collapsed, onClose, onToggleCollapse }: 
                 <Sparkles className="h-4 w-4 text-white" />
               </div>
               <div>
-                <p className="text-sm font-bold text-sidebar-foreground">{suiteName}</p>
+                <p className="text-sm font-bold text-sidebar-foreground">{product.name}</p>
                 <p className="text-[10px] text-sidebar-foreground/50">{roleLabel}</p>
               </div>
             </div>
@@ -135,7 +147,7 @@ export default function Sidebar({ open, collapsed, onClose, onToggleCollapse }: 
         {/* User section */}
         <div className="border-t border-sidebar-border p-4">
           <NavLink
-            to="/hrms/profile"
+            to={profilePath}
             end
             className={({ isActive }) =>
               cn(
@@ -157,7 +169,7 @@ export default function Sidebar({ open, collapsed, onClose, onToggleCollapse }: 
             )}
           </NavLink>
           <button
-            onClick={logout}
+            onClick={handleLogout}
             className={cn(
               "nav-link nav-link-inactive w-full mt-1 text-red-400 hover:bg-red-900/20 hover:text-red-300",
               collapsed && "justify-center px-2"

@@ -288,7 +288,7 @@ export default function EmployeeDirectoryPage() {
               )}
               <Button variant="outline" size="sm" className="h-8" onClick={() => setSelectedId(employee.id)}><Eye className="mr-2 h-3.5 w-3.5" />Card</Button>
               <Button variant="ghost" size="sm" className="h-8" onClick={() => setReportEmployee(employee)}>Report</Button>
-              {canManage && <Link to={`/employees/${employee.id}`}><Button variant="ghost" size="sm" className="h-8">Open</Button></Link>}
+              {canManage && <Link to={`/hrms/employees/${employee.id}`}><Button variant="ghost" size="sm" className="h-8">Open</Button></Link>}
             </div>
           </div>
         </div>

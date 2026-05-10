@@ -1,10 +1,11 @@
 import { Link, useLocation } from "react-router-dom";
 import { ChevronRight } from "lucide-react";
+import { getProductForContext } from "@/lib/products";
 
 const labels: Record<string, string> = {
   hrms: "HRMS",
   crm: "CRM",
-  "project-management": "Project Management",
+  pms: "PMS",
   dashboard: "Dashboard",
   employees: "Employees",
   attendance: "Attendance",
@@ -25,16 +26,28 @@ const labels: Record<string, string> = {
   exit: "Exit",
   profile: "Profile",
   "ai-assistant": "AI Assistant",
+  "advanced-analytics": "Advanced Analytics",
+  "lead-to-cash": "Lead-to-Cash",
+  forecasting: "Forecasting",
+  "customer-360": "Customer 360",
+  "import-export": "Import & Export",
+  "dependency-management": "Dependency Management",
+  "resource-planning": "Resource Planning",
+  "agile-execution": "Agile Execution",
+  "project-financials": "Project Financials",
+  "risk-register": "Risk Register",
 };
 
 export default function Breadcrumbs() {
   const location = useLocation();
+  const product = getProductForContext(location.pathname);
   const parts = location.pathname.split("/").filter(Boolean);
   if (!parts.length) return null;
   return (
     <nav className="mb-4 flex items-center gap-1 text-xs text-muted-foreground">
-      <Link to="/" className="hover:text-foreground">Apps</Link>
+      <Link to={product.homePath} className="hover:text-foreground">{product.shortName}</Link>
       {parts.map((part, index) => {
+        if (index === 0 && pathProductLabel(part)) return null;
         const path = `/${parts.slice(0, index + 1).join("/")}`;
         const active = index === parts.length - 1;
         return (
@@ -50,4 +63,8 @@ export default function Breadcrumbs() {
       })}
     </nav>
   );
+}
+
+function pathProductLabel(part: string) {
+  return part === "hrms" || part === "crm" || part === "pms";
 }

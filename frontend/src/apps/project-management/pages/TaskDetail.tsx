@@ -42,7 +42,7 @@ export default function TaskDetail() {
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
-      <Button variant="ghost" onClick={() => navigate(`/project-management/projects/${projectId}/board`)}>
+      <Button variant="ghost" onClick={() => navigate(`/pms/projects/${projectId}/board`)}>
         <ArrowLeft className="h-4 w-4" />Back to board
       </Button>
       <div className="grid gap-6 lg:grid-cols-[1fr_22rem]">

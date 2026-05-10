@@ -1,4 +1,5 @@
 import React from "react";
+import { Navigate, useLocation } from "react-router-dom";
 import type { FrontendRoute } from "@/appRegistry";
 
 const DashboardPage = React.lazy(() => import("@/apps/hrms/pages/dashboard/DashboardPage"));
@@ -18,6 +19,7 @@ const RecruitmentPage = React.lazy(() => import("@/apps/hrms/pages/recruitment/R
 const PerformancePage = React.lazy(() => import("@/apps/hrms/pages/performance/PerformancePage"));
 const HelpdeskPage = React.lazy(() => import("@/apps/hrms/pages/helpdesk/HelpdeskPage"));
 const ReportsPage = React.lazy(() => import("@/apps/hrms/pages/reports/ReportsPage"));
+const AdvancedAnalyticsPage = React.lazy(() => import("@/apps/hrms/pages/analytics/AdvancedAnalyticsPage"));
 const AdminLogsPage = React.lazy(() => import("@/apps/hrms/pages/logs/AdminLogsPage"));
 const CompanyPage = React.lazy(() => import("@/apps/hrms/pages/company/CompanyPage"));
 const OrgChartPage = React.lazy(() => import("@/apps/hrms/pages/company/OrgChartPage"));
@@ -65,6 +67,7 @@ const moduleRoutes: FrontendRoute[] = [
   { path: "engagement", element: <EngagementPage /> },
   { path: "helpdesk", element: <HelpdeskPage /> },
   { path: "reports", element: <ReportsPage /> },
+  { path: "advanced-analytics", element: <AdvancedAnalyticsPage /> },
   { path: "logs", element: <AdminLogsPage /> },
   { path: "company", element: <CompanyPage /> },
   { path: "org-chart", element: <OrgChartPage /> },
@@ -77,12 +80,20 @@ const moduleRoutes: FrontendRoute[] = [
   { path: "profile", element: <ProfilePage /> },
 ];
 
+function LegacyHrmsRedirect() {
+  const location = useLocation();
+  return <Navigate to={`/hrms${location.pathname}${location.search}${location.hash}`} replace />;
+}
+
 export const hrmsRoutes: FrontendRoute[] = [
+  { path: "hrms", element: <DashboardPage /> },
   ...moduleRoutes.map((route) => ({
     ...route,
     path: `hrms/${route.path}`,
   })),
-  // Backward-compatible aliases while old links/bookmarks are migrated.
-  ...moduleRoutes,
+  ...moduleRoutes.map((route) => ({
+    path: route.path,
+    element: <LegacyHrmsRedirect />,
+  })),
 ];
 

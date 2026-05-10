@@ -10,6 +10,12 @@ COMMON_PERMISSIONS = [
     ("reports_view", "View reports", "reports"),
     ("workflow_view", "View workflow inbox", "workflow"),
     ("notification_view", "View notification inbox", "notification"),
+    ("pms_view", "View project management records", "project_management"),
+    ("pms_manage_projects", "Manage projects and members", "project_management"),
+    ("pms_manage_tasks", "Manage tasks, boards, and milestones", "project_management"),
+    ("pms_time_manage", "Manage time logs and approvals", "project_management"),
+    ("pms_client_portal", "Access project client portal", "project_management"),
+    ("pms_admin", "Manage project settings and admin areas", "project_management"),
 ]
 
 COMMON_ROLES = [
@@ -53,4 +59,3 @@ def init_common_db(db: Session) -> None:
         )
 
     db.commit()
-

@@ -11,13 +11,13 @@ export default function KeyboardShortcuts() {
       if (event.key === "?" && !event.ctrlKey && !event.metaKey) setOpen(true);
       if (event.key === "Escape") setOpen(false);
       if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) return;
-      if (event.key.toLowerCase() === "c" && window.location.pathname.startsWith("/project-management")) navigate("/project-management/projects/new");
-      if (event.key === "/" && window.location.pathname.startsWith("/project-management")) {
+      if (event.key.toLowerCase() === "c" && window.location.pathname.startsWith("/pms")) navigate("/pms/projects/new");
+      if (event.key === "/" && window.location.pathname.startsWith("/pms")) {
         event.preventDefault();
-        navigate("/project-management/issue-navigator-pro");
+        navigate("/pms/issue-navigator-pro");
       }
-      if (event.key.toLowerCase() === "a" && window.location.pathname.startsWith("/project-management")) navigate("/project-management/enterprise-engine");
-      if (event.key.toLowerCase() === "m" && window.location.pathname.startsWith("/project-management")) navigate("/project-management/backlog-grooming");
+      if (event.key.toLowerCase() === "a" && window.location.pathname.startsWith("/pms")) navigate("/pms/enterprise-engine");
+      if (event.key.toLowerCase() === "m" && window.location.pathname.startsWith("/pms")) navigate("/pms/backlog-grooming");
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);

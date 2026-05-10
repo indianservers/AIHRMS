@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, useLocation, useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { useForm } from "react-hook-form";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -27,7 +27,7 @@ const moduleLogins = {
     authModule: "hrms",
     tagline: "Human Resource Management",
     description: "Enter your HRMS credentials",
-    afterLogin: "/hrms/dashboard",
+    afterLogin: "/hrms",
     accent: "blue",
     demoLogins: [
       { label: "HRMS Admin", email: "admin@aihrms.com", password: "Admin@123456", description: "HRMS configuration and system access" },
@@ -56,7 +56,7 @@ const moduleLogins = {
     authModule: "project_management",
     tagline: "Project Management Software",
     description: "Enter your PMS credentials",
-    afterLogin: "/project-management",
+    afterLogin: "/pms",
     accent: "violet",
     demoLogins: [
       { label: "PMS Admin", email: "admin@karyaflow.com", password: "Password@123", description: "Project settings, users, workflows, reports" },
@@ -67,9 +67,42 @@ const moduleLogins = {
   },
 } as const;
 
+const loginThemes = {
+  hrms: {
+    page: "from-slate-900 via-blue-950 to-slate-900",
+    glow: "from-blue-900/20",
+    logo: "bg-blue-600 shadow-blue-500/25",
+    text: "text-blue-200",
+    textSoft: "text-blue-200/70",
+    textMuted: "text-blue-200/60",
+    button: "bg-blue-600 hover:bg-blue-500 shadow-blue-500/25",
+    ring: "focus-visible:ring-blue-400",
+  },
+  crm: {
+    page: "from-emerald-950 via-teal-950 to-slate-950",
+    glow: "from-emerald-700/20",
+    logo: "bg-emerald-600 shadow-emerald-500/25",
+    text: "text-emerald-100",
+    textSoft: "text-emerald-100/70",
+    textMuted: "text-emerald-100/60",
+    button: "bg-emerald-600 hover:bg-emerald-500 shadow-emerald-500/25",
+    ring: "focus-visible:ring-emerald-400",
+  },
+  project_management: {
+    page: "from-violet-950 via-indigo-950 to-slate-950",
+    glow: "from-violet-700/20",
+    logo: "bg-violet-600 shadow-violet-500/25",
+    text: "text-violet-100",
+    textSoft: "text-violet-100/70",
+    textMuted: "text-violet-100/60",
+    button: "bg-violet-600 hover:bg-violet-500 shadow-violet-500/25",
+    ring: "focus-visible:ring-violet-400",
+  },
+} as const;
+
 function getLoginModule(pathname: string): keyof typeof moduleLogins {
   if (pathname.startsWith("/crm")) return "crm";
-  if (pathname.startsWith("/project-management")) return "project_management";
+  if (pathname.startsWith("/pms")) return "project_management";
   return "hrms";
 }
 
@@ -78,6 +111,7 @@ export default function LoginPage() {
   const location = useLocation();
   const loginModule = getLoginModule(location.pathname);
   const loginConfig = moduleLogins[loginModule];
+  const loginTheme = loginThemes[loginModule];
   const { setTokens, setUser } = useAuthStore();
   const [showPassword, setShowPassword] = useState(false);
   const [loginPhase, setLoginPhase] = useState<"credentials" | "mfa">("credentials");
@@ -173,25 +207,25 @@ export default function LoginPage() {
   const ssoUrl = (provider: SsoProvider) => `${apiBaseUrl}/auth/sso/initiate/${provider.id}?next=${encodeURIComponent(loginConfig.afterLogin)}`;
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 via-blue-950 to-slate-900 p-4">
+    <div className={`min-h-screen flex items-center justify-center bg-gradient-to-br ${loginTheme.page} p-4`}>
       {/* Background pattern */}
-      <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-blue-900/20 via-transparent to-transparent" />
+      <div className={`absolute inset-0 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] ${loginTheme.glow} via-transparent to-transparent`} />
 
       <div className="relative w-full max-w-md space-y-6">
         {/* Logo */}
         <div className="text-center space-y-2">
-          <div className="inline-flex h-16 w-16 items-center justify-center rounded-2xl bg-blue-600 shadow-lg shadow-blue-500/25 mx-auto">
+          <div className={`inline-flex h-16 w-16 items-center justify-center rounded-2xl shadow-lg ${loginTheme.logo} mx-auto`}>
             <Sparkles className="h-8 w-8 text-white" />
           </div>
           <h1 className="text-3xl font-bold text-white">{loginConfig.product}</h1>
-          <p className="text-blue-200/70 text-sm">{loginConfig.tagline}</p>
+          <p className={`${loginTheme.textSoft} text-sm`}>{loginConfig.tagline}</p>
         </div>
 
         {/* Card */}
         <Card className="border-white/10 bg-white/5 backdrop-blur-xl shadow-2xl">
           <CardHeader className="space-y-1 pb-4">
             <CardTitle className="text-white text-xl">Sign in</CardTitle>
-            <CardDescription className="text-blue-200/60">
+            <CardDescription className={loginTheme.textMuted}>
               {loginConfig.description}
             </CardDescription>
           </CardHeader>
@@ -227,14 +261,14 @@ export default function LoginPage() {
             ) : (
             <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="email" className="text-blue-100">
+                <Label htmlFor="email" className={loginTheme.text}>
                   Email address
                 </Label>
                 <Input
                   id="email"
                   type="email"
                   placeholder={loginConfig.demoLogins[0].email}
-                  className="bg-white/10 border-white/20 text-white placeholder:text-white/30 focus-visible:ring-blue-400"
+                  className={`bg-white/10 border-white/20 text-white placeholder:text-white/30 ${loginTheme.ring}`}
                   {...register("email")}
                 />
                 {errors.email && (
@@ -243,7 +277,7 @@ export default function LoginPage() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="password" className="text-blue-100">
+                <Label htmlFor="password" className={loginTheme.text}>
                   Password
                 </Label>
                 <div className="relative">
@@ -251,7 +285,7 @@ export default function LoginPage() {
                     id="password"
                     type={showPassword ? "text" : "password"}
                     placeholder="Enter your password"
-                    className="bg-white/10 border-white/20 text-white placeholder:text-white/30 focus-visible:ring-blue-400 pr-10"
+                    className={`bg-white/10 border-white/20 text-white placeholder:text-white/30 ${loginTheme.ring} pr-10`}
                     {...register("password")}
                   />
                   <button
@@ -269,7 +303,7 @@ export default function LoginPage() {
 
               <Button
                 type="submit"
-                className="w-full bg-blue-600 hover:bg-blue-500 text-white font-semibold shadow-lg shadow-blue-500/25 h-11"
+                className={`w-full text-white font-semibold shadow-lg ${loginTheme.button} h-11`}
                 disabled={isSubmitting}
               >
                 {isSubmitting ? (
@@ -319,16 +353,11 @@ export default function LoginPage() {
                 </button>
               ))}
             </div>
-            <div className="mt-4 grid grid-cols-3 gap-2 text-center text-[11px]">
-              <Link className="rounded-md border border-white/10 bg-white/5 px-2 py-2 text-blue-100 hover:bg-white/10" to="/hrms/login">HRMS Login</Link>
-              <Link className="rounded-md border border-white/10 bg-white/5 px-2 py-2 text-blue-100 hover:bg-white/10" to="/crm/login">CRM Login</Link>
-              <Link className="rounded-md border border-white/10 bg-white/5 px-2 py-2 text-blue-100 hover:bg-white/10" to="/project-management/login">PMS Login</Link>
-            </div>
           </CardContent>
         </Card>
 
         <p className="text-center text-blue-200/40 text-xs">
-          &copy; 2024 Business Suite. All rights reserved.
+          &copy; 2024 {loginConfig.product}. All rights reserved.
         </p>
       </div>
     </div>

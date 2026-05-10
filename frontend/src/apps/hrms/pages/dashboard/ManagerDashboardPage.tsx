@@ -50,7 +50,7 @@ export default function ManagerDashboardPage() {
               ["Regularization", data?.pending_regularizations ?? 0, ClipboardCheck],
               ["Change Requests", data?.pending_change_requests ?? 0, Users],
             ].map(([label, value, Icon]) => (
-              <a key={label as string} href={label === "Leave" ? "/leave" : label === "Regularization" ? "/attendance" : "/employees"} className="rounded-lg border p-4 hover:bg-muted/50">
+              <a key={label as string} href={label === "Leave" ? "/hrms/leave" : label === "Regularization" ? "/hrms/attendance" : "/hrms/employees"} className="rounded-lg border p-4 hover:bg-muted/50">
                 <Icon className="mb-3 h-5 w-5 text-primary" />
                 <p className="text-2xl font-semibold">{value as number}</p>
                 <p className="text-xs text-muted-foreground">{label as string}</p>
@@ -63,7 +63,7 @@ export default function ManagerDashboardPage() {
           <CardHeader><CardTitle className="text-base">Birthdays & Anniversaries This Week</CardTitle></CardHeader>
           <CardContent className="space-y-3">
             {[...(data?.moments_this_week?.birthdays || []).map((item: any) => ({ ...item, type: "Birthday" })), ...(data?.moments_this_week?.anniversaries || []).map((item: any) => ({ ...item, type: "Anniversary" }))].slice(0, 6).map((item: any) => (
-              <a key={`${item.type}-${item.employee_id}`} href={`/employees/${item.employee_id}`} className="flex items-center justify-between rounded-lg border p-3 hover:bg-muted/50">
+              <a key={`${item.type}-${item.employee_id}`} href={`/hrms/employees/${item.employee_id}`} className="flex items-center justify-between rounded-lg border p-3 hover:bg-muted/50">
                 <div>
                   <p className="text-sm font-medium">{item.name}</p>
                   <p className="text-xs text-muted-foreground">{item.type}{item.years ? ` â€¢ ${item.years} years` : ""}</p>
@@ -104,7 +104,7 @@ export default function ManagerDashboardPage() {
         <CardHeader><CardTitle className="text-base">Direct Reports & Support</CardTitle></CardHeader>
         <CardContent className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
           {(data?.team || []).map((item: { id: number; name: string; employee_id: string; status: string }) => (
-            <a key={item.id} href={`/employees/${item.id}`} className="flex items-center gap-3 rounded-lg border p-3 hover:bg-muted/50">
+            <a key={item.id} href={`/hrms/employees/${item.id}`} className="flex items-center gap-3 rounded-lg border p-3 hover:bg-muted/50">
               <div className="flex h-10 w-10 items-center justify-center rounded-full bg-muted text-sm font-semibold">{item.name.slice(0, 1)}</div>
               <div className="min-w-0 flex-1">
                 <p className="truncate text-sm font-medium">{item.name}</p>
@@ -113,7 +113,7 @@ export default function ManagerDashboardPage() {
               <Badge variant="outline">{item.status}</Badge>
             </a>
           ))}
-          <a href="/helpdesk" className="flex items-center gap-3 rounded-lg border p-3 hover:bg-muted/50">
+          <a href="/hrms/helpdesk" className="flex items-center gap-3 rounded-lg border p-3 hover:bg-muted/50">
             <HelpCircle className="h-5 w-5 text-primary" />
             <div><p className="text-sm font-medium">{data?.open_helpdesk_tickets ?? 0} open tickets</p><p className="text-xs text-muted-foreground">Resolve team support requests</p></div>
           </a>

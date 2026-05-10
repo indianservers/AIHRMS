@@ -184,7 +184,7 @@ export default function OrgChartPage() {
             return <path key={`l-${node.position_id}`} d={`M ${(parent.x || 0) + NODE_W / 2} ${(parent.y || 0) + NODE_H} V ${(parent.y || 0) + NODE_H + GAP_Y / 2} H ${(node.x || 0) + NODE_W / 2} V ${node.y || 0}`} fill="none" stroke="#94a3b8" strokeWidth="1.5" />;
           })}
           {nodes.map((node) => (
-            <g key={node.position_id} transform={`translate(${node.x || 0},${node.y || 0})`} onClick={() => node.incumbent_employee_id && navigate(`/employees/${node.incumbent_employee_id}`)} className={node.incumbent_employee_id ? "cursor-pointer" : ""}>
+            <g key={node.position_id} transform={`translate(${node.x || 0},${node.y || 0})`} onClick={() => node.incumbent_employee_id && navigate(`/hrms/employees/${node.incumbent_employee_id}`)} className={node.incumbent_employee_id ? "cursor-pointer" : ""}>
               <rect width={NODE_W} height={NODE_H} rx="8" fill={node.is_vacant ? "#fffbeb" : "#eff6ff"} stroke={node.is_vacant ? "#f59e0b" : "#2563eb"} strokeWidth="1.8" strokeDasharray={node.is_vacant ? "8 5" : undefined} />
               <text x="14" y="24" fontSize="14" fontWeight="700" fill="#111827">{node.title.slice(0, 28)}</text>
               <text x="14" y="46" fontSize="12" fill="#334155">{(node.employee_name || "Vacant position").slice(0, 31)}</text>
