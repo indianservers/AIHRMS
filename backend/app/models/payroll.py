@@ -611,6 +611,49 @@ class LeaveEncashmentLine(Base):
     policy = relationship("LeaveEncashmentPolicy")
 
 
+class LeaveEncashmentRequest(Base):
+    __tablename__ = "leave_encashment_requests"
+
+    id = Column(Integer, primary_key=True, index=True)
+    organization_id = Column(Integer, nullable=True, index=True)
+    employee_id = Column(Integer, ForeignKey("employees.id", ondelete="CASCADE"), nullable=False, index=True)
+    leave_type_id = Column(Integer, ForeignKey("leave_types.id", ondelete="CASCADE"), nullable=False, index=True)
+    days_to_encash = Column(Numeric(6, 2), nullable=False)
+    encashment_rate = Column(Numeric(12, 2), default=0)
+    amount = Column(Numeric(12, 2), default=0)
+    status = Column(String(30), default="draft", index=True)
+    requested_at = Column(DateTime(timezone=True), server_default=func.now())
+    approved_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    approved_at = Column(DateTime(timezone=True))
+    payroll_run_id = Column(Integer, ForeignKey("payroll_runs.id", ondelete="SET NULL"), nullable=True, index=True)
+    leave_encashment_line_id = Column(Integer, ForeignKey("leave_encashment_lines.id", ondelete="SET NULL"), nullable=True, index=True)
+    remarks = Column(Text)
+
+    employee = relationship("Employee")
+    leave_type = relationship("LeaveType")
+    payroll_run = relationship("PayrollRun")
+    leave_encashment_line = relationship("LeaveEncashmentLine")
+
+
+class PayrollLWPEntry(Base):
+    __tablename__ = "payroll_lwp_entries"
+
+    id = Column(Integer, primary_key=True, index=True)
+    organization_id = Column(Integer, nullable=True, index=True)
+    employee_id = Column(Integer, ForeignKey("employees.id", ondelete="CASCADE"), nullable=False, index=True)
+    payroll_month = Column(String(7), nullable=False, index=True)
+    lwp_days = Column(Numeric(6, 2), default=0)
+    source = Column(String(40), default="leave", index=True)
+    amount_deducted = Column(Numeric(12, 2), default=0)
+    payroll_run_id = Column(Integer, ForeignKey("payroll_runs.id", ondelete="SET NULL"), nullable=True, index=True)
+    payroll_attendance_input_id = Column(Integer, ForeignKey("payroll_attendance_inputs.id", ondelete="SET NULL"), nullable=True, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    employee = relationship("Employee")
+    payroll_run = relationship("PayrollRun")
+    payroll_attendance_input = relationship("PayrollAttendanceInput")
+
+
 class StatutoryChallan(Base):
     __tablename__ = "statutory_challans"
 
@@ -679,6 +722,24 @@ class StatutoryFilingSubmission(Base):
     submitted_by = Column(Integer, ForeignKey("users.id"))
     portal_reference = Column(String(200))
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    payroll_run = relationship("PayrollRun")
+
+
+class StatutoryExport(Base):
+    __tablename__ = "statutory_exports"
+
+    id = Column(Integer, primary_key=True, index=True)
+    organization_id = Column(Integer, ForeignKey("companies.id", ondelete="SET NULL"), nullable=True, index=True)
+    payroll_run_id = Column(Integer, ForeignKey("payroll_runs.id", ondelete="CASCADE"), nullable=False, index=True)
+    export_type = Column(String(40), nullable=False, index=True)
+    file_path = Column(String(500), nullable=False)
+    total_employees = Column(Integer, default=0)
+    total_amount = Column(Numeric(14, 2), default=0)
+    generated_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    generated_at = Column(DateTime(timezone=True), server_default=func.now())
+    downloaded_at = Column(DateTime(timezone=True))
+    download_count = Column(Integer, default=0)
 
     payroll_run = relationship("PayrollRun")
 
@@ -1157,6 +1218,25 @@ class PayrollExportBatch(Base):
     payroll_run = relationship("PayrollRun", back_populates="export_batches")
 
 
+class PayrollBankExport(Base):
+    __tablename__ = "payroll_bank_exports"
+
+    id = Column(Integer, primary_key=True, index=True)
+    organization_id = Column(Integer, ForeignKey("companies.id", ondelete="SET NULL"), nullable=True, index=True)
+    payroll_run_id = Column(Integer, ForeignKey("payroll_runs.id", ondelete="CASCADE"), nullable=False, index=True)
+    export_type = Column(String(20), nullable=False, index=True)
+    bank_name = Column(String(120))
+    total_employees = Column(Integer, default=0)
+    total_amount = Column(Numeric(14, 2), default=0)
+    file_path = Column(String(500), nullable=False)
+    generated_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    generated_at = Column(DateTime(timezone=True), server_default=func.now())
+    downloaded_at = Column(DateTime(timezone=True))
+    download_count = Column(Integer, default=0)
+
+    payroll_run = relationship("PayrollRun")
+
+
 class PayrollRunAuditLog(Base):
     __tablename__ = "payroll_run_audit_logs"
 
@@ -1333,14 +1413,21 @@ class FullFinalSettlement(Base):
     __tablename__ = "full_final_settlements"
 
     id = Column(Integer, primary_key=True, index=True)
+    organization_id = Column(Integer, nullable=True, index=True)
     employee_id = Column(Integer, ForeignKey("employees.id", ondelete="CASCADE"), nullable=False, index=True)
     exit_record_id = Column(Integer, ForeignKey("exit_records.id", ondelete="SET NULL"), nullable=True)
     settlement_date = Column(Date, nullable=False)
+    last_working_date = Column(Date)
     status = Column(String(30), default="Draft", index=True)
+    unpaid_salary = Column(Numeric(12, 2), default=0)
     leave_encashment_amount = Column(Numeric(12, 2), default=0)
     notice_recovery_amount = Column(Numeric(12, 2), default=0)
     gratuity_amount = Column(Numeric(12, 2), default=0)
     loan_recovery_amount = Column(Numeric(12, 2), default=0)
+    reimbursement_payable = Column(Numeric(12, 2), default=0)
+    bonus_payable = Column(Numeric(12, 2), default=0)
+    other_earnings = Column(Numeric(12, 2), default=0)
+    other_deductions = Column(Numeric(12, 2), default=0)
     other_payables = Column(Numeric(12, 2), default=0)
     other_recoveries = Column(Numeric(12, 2), default=0)
     net_payable = Column(Numeric(14, 2), default=0)
@@ -1348,8 +1435,13 @@ class FullFinalSettlement(Base):
     prepared_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     approved_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     approved_at = Column(DateTime(timezone=True))
+    rejected_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    rejected_at = Column(DateTime(timezone=True))
+    submitted_at = Column(DateTime(timezone=True))
+    paid_at = Column(DateTime(timezone=True))
     remarks = Column(Text)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
     lines = relationship("FullFinalSettlementLine", back_populates="settlement", cascade="all, delete-orphan")
 
@@ -1363,6 +1455,7 @@ class FullFinalSettlementLine(Base):
     component_name = Column(String(120), nullable=False)
     amount = Column(Numeric(12, 2), nullable=False)
     source = Column(String(80))
+    is_manual_adjustment = Column(Boolean, default=False)
     remarks = Column(Text)
 
     settlement = relationship("FullFinalSettlement", back_populates="lines")
@@ -1416,3 +1509,76 @@ class TaxDeclarationProof(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     declaration = relationship("TaxDeclaration", back_populates="proofs")
+
+
+class TaxDeclarationCategory(Base):
+    __tablename__ = "tax_declaration_categories"
+    __table_args__ = (
+        Index("idx_tax_declaration_category_fy_code", "organization_id", "financial_year", "code"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    organization_id = Column(Integer, nullable=True, index=True)
+    financial_year = Column(String(20), nullable=False, index=True)
+    code = Column(String(50), nullable=False, index=True)
+    name = Column(String(150), nullable=False)
+    section = Column(String(80), nullable=False)
+    max_limit = Column(Numeric(14, 2), default=0)
+    requires_proof = Column(Boolean, default=True)
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    items = relationship("EmployeeTaxDeclarationItem", back_populates="category")
+
+
+class EmployeeTaxDeclaration(Base):
+    __tablename__ = "employee_tax_declarations"
+    __table_args__ = (
+        Index("idx_employee_tax_declaration_employee_fy", "employee_id", "financial_year"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    organization_id = Column(Integer, nullable=True, index=True)
+    employee_id = Column(Integer, ForeignKey("employees.id", ondelete="CASCADE"), nullable=False, index=True)
+    financial_year = Column(String(20), nullable=False, index=True)
+    status = Column(String(30), default="draft", index=True)
+    submitted_at = Column(DateTime(timezone=True))
+    reviewed_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    reviewed_at = Column(DateTime(timezone=True))
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    employee = relationship("Employee")
+    items = relationship("EmployeeTaxDeclarationItem", back_populates="declaration", cascade="all, delete-orphan")
+
+
+class EmployeeTaxDeclarationItem(Base):
+    __tablename__ = "employee_tax_declaration_items"
+
+    id = Column(Integer, primary_key=True, index=True)
+    declaration_id = Column(Integer, ForeignKey("employee_tax_declarations.id", ondelete="CASCADE"), nullable=False, index=True)
+    category_id = Column(Integer, ForeignKey("tax_declaration_categories.id", ondelete="CASCADE"), nullable=False, index=True)
+    declared_amount = Column(Numeric(14, 2), default=0)
+    approved_amount = Column(Numeric(14, 2), default=0)
+    remarks = Column(Text)
+    status = Column(String(30), default="draft", index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    declaration = relationship("EmployeeTaxDeclaration", back_populates="items")
+    category = relationship("TaxDeclarationCategory", back_populates="items")
+    proofs = relationship("EmployeeTaxProof", back_populates="declaration_item", cascade="all, delete-orphan")
+
+
+class EmployeeTaxProof(Base):
+    __tablename__ = "employee_tax_proofs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    declaration_item_id = Column(Integer, ForeignKey("employee_tax_declaration_items.id", ondelete="CASCADE"), nullable=False, index=True)
+    file_name = Column(String(255), nullable=False)
+    file_path = Column(String(500), nullable=False)
+    file_type = Column(String(120))
+    uploaded_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    declaration_item = relationship("EmployeeTaxDeclarationItem", back_populates="proofs")

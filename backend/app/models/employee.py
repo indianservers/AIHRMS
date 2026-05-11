@@ -72,6 +72,9 @@ class Employee(Base):
     work_location = Column(String(50), default="Office")  # Office, Remote, Hybrid
     shift_id = Column(Integer, ForeignKey("shifts.id", ondelete="SET NULL"), nullable=True)
     probation_period_months = Column(Integer, default=6)
+    probation_start_date = Column(Date)
+    probation_end_date = Column(Date)
+    probation_status = Column(String(30), default="on_probation", index=True)
     desk_code = Column(String(50))
     timezone = Column(String(80), default="Asia/Kolkata")
     manager_chain_path = Column(String(500))
@@ -241,16 +244,59 @@ class EmployeeChangeRequest(Base):
     __tablename__ = "employee_change_requests"
 
     id = Column(Integer, primary_key=True, index=True)
+    organization_id = Column(Integer, nullable=True, index=True)
     employee_id = Column(Integer, ForeignKey("employees.id", ondelete="CASCADE"), nullable=False, index=True)
     request_type = Column(String(60), nullable=False, index=True)
+    field_name = Column(String(120), nullable=True, index=True)
     effective_date = Column(Date)
     field_changes_json = Column(JSON, nullable=False)
+    old_value_json = Column(JSON)
+    new_value_json = Column(JSON)
+    document_path = Column(String(500))
     status = Column(String(30), default="Pending", index=True)
     reason = Column(Text)
     requested_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     reviewed_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     reviewed_at = Column(DateTime(timezone=True))
     review_remarks = Column(Text)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    employee = relationship("Employee")
+
+
+class ProbationReview(Base):
+    __tablename__ = "probation_reviews"
+
+    id = Column(Integer, primary_key=True, index=True)
+    organization_id = Column(Integer, nullable=True, index=True)
+    employee_id = Column(Integer, ForeignKey("employees.id", ondelete="CASCADE"), nullable=False, index=True)
+    manager_id = Column(Integer, ForeignKey("employees.id", ondelete="SET NULL"), nullable=True, index=True)
+    review_date = Column(Date, nullable=False)
+    performance_rating = Column(Integer)
+    conduct_rating = Column(Integer)
+    attendance_rating = Column(Integer)
+    recommendation = Column(String(30), nullable=False)
+    comments = Column(Text)
+    status = Column(String(30), default="pending", index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    employee = relationship("Employee", foreign_keys=[employee_id])
+    manager = relationship("Employee", foreign_keys=[manager_id])
+
+
+class ProbationAction(Base):
+    __tablename__ = "probation_actions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    organization_id = Column(Integer, nullable=True, index=True)
+    employee_id = Column(Integer, ForeignKey("employees.id", ondelete="CASCADE"), nullable=False, index=True)
+    action_type = Column(String(30), nullable=False, index=True)
+    effective_date = Column(Date, nullable=False)
+    extended_until = Column(Date)
+    remarks = Column(Text)
+    letter_generated = Column(Boolean, default=False)
+    created_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     employee = relationship("Employee")

@@ -28,12 +28,17 @@ const CHANGE_FIELDS = [
   "personal_email",
   "present_address",
   "permanent_address",
+  "emergency_contact_name",
+  "emergency_contact_number",
+  "emergency_contact_relation",
+  "marital_status",
   "bank_name",
   "bank_branch",
   "account_number",
   "ifsc_code",
   "pan_number",
   "aadhaar_number",
+  "family_information",
 ] as const;
 
 const DOCUMENT_TYPES = [
@@ -54,12 +59,17 @@ const emptyChangeDraft: ChangeDraft = {
   personal_email: "",
   present_address: "",
   permanent_address: "",
+  emergency_contact_name: "",
+  emergency_contact_number: "",
+  emergency_contact_relation: "",
+  marital_status: "",
   bank_name: "",
   bank_branch: "",
   account_number: "",
   ifsc_code: "",
   pan_number: "",
   aadhaar_number: "",
+  family_information: "",
 };
 
 export default function ProfilePage() {
@@ -110,6 +120,9 @@ export default function ProfilePage() {
     ifsc_code: "IFSC",
     pan_number: "PAN",
     aadhaar_number: "Aadhaar",
+    marital_status: "Marital status",
+    emergency_contact_relation: "Emergency relation",
+    family_information: "Nominee / family details",
     profile_photo_url: "Profile photo",
     date_of_birth: "Date of birth",
   } as Record<string, string>), []);
@@ -183,11 +196,10 @@ export default function ProfilePage() {
   });
 
   const changeRequest = useMutation({
-    mutationFn: () => employeeApi.createChangeRequest({
-      employee_id: employeeId,
-      request_type: "Profile Update",
-      effective_date: new Date().toISOString().slice(0, 10),
-      field_changes_json: proposedChanges,
+    mutationFn: () => employeeApi.createProfileChangeRequest(employeeId, {
+      requestType: "Profile Update",
+      effectiveDate: new Date().toISOString().slice(0, 10),
+      fieldChanges: proposedChanges,
       reason: changeReason || "Employee self-service profile update",
     }),
     onSuccess: () => {
@@ -221,11 +233,14 @@ export default function ProfilePage() {
 
   const reviewChange = useMutation({
     mutationFn: ({ id, status }: { id: number; status: "Approved" | "Rejected" }) =>
-      employeeApi.reviewChangeRequest(id, {
-        status,
-        apply_changes: status === "Approved",
-        review_remarks: reviewRemarks[id] || undefined,
-      }),
+      status === "Approved"
+        ? employeeApi.approveProfileChangeRequest(id, {
+            applyChanges: true,
+            remarks: reviewRemarks[id] || undefined,
+          })
+        : employeeApi.rejectProfileChangeRequest(id, {
+            remarks: reviewRemarks[id] || undefined,
+          }),
     onSuccess: () => {
       toast({ title: "Change request reviewed" });
       qc.invalidateQueries({ queryKey: ["pending-profile-change-reviews"] });
@@ -389,6 +404,9 @@ export default function ProfilePage() {
                 <div><p className="text-muted-foreground">Employee ID</p><p className="font-medium">{employee.data.employee_id}</p></div>
                 <div><p className="text-muted-foreground">Email</p><p className="font-medium">{employee.data.personal_email || "-"}</p></div>
                 <div><p className="text-muted-foreground">Phone</p><p className="font-medium">{employee.data.phone_number || "-"}</p></div>
+                <div><p className="text-muted-foreground">Marital status</p><p className="font-medium">{employee.data.marital_status || "-"}</p></div>
+                <div><p className="text-muted-foreground">Emergency contact</p><p className="font-medium">{employee.data.emergency_contact_name || "-"}</p></div>
+                <div><p className="text-muted-foreground">Emergency phone</p><p className="font-medium">{employee.data.emergency_contact_number || "-"}</p></div>
                 <div><p className="text-muted-foreground">PAN</p><p className="font-medium">{employee.data.pan_number || "-"}</p></div>
                 <div><p className="text-muted-foreground">Aadhaar</p><p className="font-medium">{employee.data.aadhaar_number || "-"}</p></div>
                 <div><p className="text-muted-foreground">Bank</p><p className="font-medium">{employee.data.bank_name || "-"}</p></div>
@@ -413,6 +431,10 @@ export default function ProfilePage() {
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
               <div className="space-y-1.5"><Label>Phone</Label><Input value={changeDraft.phone_number} onChange={(e) => updateChange("phone_number", e.target.value)} /></div>
               <div className="space-y-1.5"><Label>Personal email</Label><Input type="email" value={changeDraft.personal_email} onChange={(e) => updateChange("personal_email", e.target.value)} /></div>
+              <div className="space-y-1.5"><Label>Marital status</Label><Input value={changeDraft.marital_status} onChange={(e) => updateChange("marital_status", e.target.value)} /></div>
+              <div className="space-y-1.5"><Label>Emergency contact</Label><Input value={changeDraft.emergency_contact_name} onChange={(e) => updateChange("emergency_contact_name", e.target.value)} /></div>
+              <div className="space-y-1.5"><Label>Emergency phone</Label><Input value={changeDraft.emergency_contact_number} onChange={(e) => updateChange("emergency_contact_number", e.target.value)} /></div>
+              <div className="space-y-1.5"><Label>Emergency relation</Label><Input value={changeDraft.emergency_contact_relation} onChange={(e) => updateChange("emergency_contact_relation", e.target.value)} /></div>
               <div className="space-y-1.5"><Label>PAN</Label><Input value={changeDraft.pan_number} onChange={(e) => updateChange("pan_number", e.target.value.toUpperCase())} /></div>
               <div className="space-y-1.5"><Label>Aadhaar</Label><Input value={changeDraft.aadhaar_number} onChange={(e) => updateChange("aadhaar_number", e.target.value)} /></div>
               <div className="space-y-1.5"><Label>Bank name</Label><Input value={changeDraft.bank_name} onChange={(e) => updateChange("bank_name", e.target.value)} /></div>
@@ -422,6 +444,10 @@ export default function ProfilePage() {
               <div className="space-y-1.5 md:col-span-2 lg:col-span-1"><Label>Reason</Label><Input value={changeReason} onChange={(e) => setChangeReason(e.target.value)} /></div>
               <div className="space-y-1.5 md:col-span-2 lg:col-span-3"><Label>Present address</Label><Input value={changeDraft.present_address} onChange={(e) => updateChange("present_address", e.target.value)} /></div>
               <div className="space-y-1.5 md:col-span-2 lg:col-span-3"><Label>Permanent address</Label><Input value={changeDraft.permanent_address} onChange={(e) => updateChange("permanent_address", e.target.value)} /></div>
+              <div className="space-y-1.5 md:col-span-2 lg:col-span-3">
+                <Label>Nominee / family details</Label>
+                <textarea value={changeDraft.family_information} onChange={(e) => updateChange("family_information", e.target.value)} rows={3} className="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm" />
+              </div>
             </div>
             <div className="rounded-md border">
               <div className="grid grid-cols-[0.8fr_1fr_1fr] gap-3 border-b bg-muted/50 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">

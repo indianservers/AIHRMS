@@ -524,6 +524,77 @@ class PayrollExportBatchSchema(BaseModel):
         from_attributes = True
 
 
+class PayrollBankAdviceGenerateRequest(BaseModel):
+    export_type: str = "pdf"
+    bank_name: Optional[str] = None
+    bank_format_id: Optional[int] = None
+
+
+class PayrollBankAdviceRowSchema(BaseModel):
+    payroll_record_id: int
+    employee_id: int
+    employee_code: Optional[str] = None
+    employee_name: str
+    account_holder_name: str
+    bank_name: Optional[str] = None
+    account_number_masked: Optional[str] = None
+    ifsc: Optional[str] = None
+    net_payable: Decimal
+    narration: str
+    validation_errors: List[str] = []
+
+
+class PayrollBankAdvicePreviewSchema(BaseModel):
+    payroll_run_id: int
+    payroll_month: str
+    status: str
+    company_name: str
+    bank_name: Optional[str] = None
+    total_employees: int
+    total_amount: Decimal
+    validation_errors: List[str] = []
+    rows: List[PayrollBankAdviceRowSchema]
+
+
+class PayrollBankExportSchema(BaseModel):
+    id: int
+    organization_id: Optional[int] = None
+    payroll_run_id: int
+    export_type: str
+    bank_name: Optional[str] = None
+    total_employees: int
+    total_amount: Decimal
+    file_path: str
+    generated_by: Optional[int] = None
+    generated_at: Optional[datetime] = None
+    downloaded_at: Optional[datetime] = None
+    download_count: int = 0
+
+    class Config:
+        from_attributes = True
+
+
+class StatutoryExportGenerateRequest(BaseModel):
+    payroll_run_id: int
+
+
+class StatutoryExportSchema(BaseModel):
+    id: int
+    organization_id: Optional[int] = None
+    payroll_run_id: int
+    export_type: str
+    file_path: str
+    total_employees: int
+    total_amount: Decimal
+    generated_by: Optional[int] = None
+    generated_at: Optional[datetime] = None
+    downloaded_at: Optional[datetime] = None
+    download_count: int = 0
+
+    class Config:
+        from_attributes = True
+
+
 class PayrollRunAuditLogSchema(BaseModel):
     id: int
     payroll_run_id: Optional[int] = None

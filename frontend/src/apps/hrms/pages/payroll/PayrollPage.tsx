@@ -10,7 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { payrollApi, statutoryComplianceApi } from "@/services/api";
+import { leavePayrollApi, payrollApi, statutoryComplianceApi } from "@/services/api";
 import { assetUrl, formatCurrency, formatDate, statusColor } from "@/lib/utils";
 import { toast } from "@/hooks/use-toast";
 import { usePageTitle } from "@/hooks/use-page-title";
@@ -110,6 +110,84 @@ interface LegalEntity {
   is_default?: boolean;
 }
 
+interface LwpFeedRow {
+  employeeId: number;
+  employeeName: string;
+  employeeCode?: string;
+  payrollMonth: string;
+  leaveLwpDays: number;
+  attendanceLwpDays: number;
+  manualLwpDays: number;
+  lwpDays: number;
+  estimatedDeduction: number;
+}
+
+interface LwpEntry {
+  id: number;
+  employeeName: string;
+  employeeCode?: string;
+  payrollMonth: string;
+  lwpDays: number;
+  source: string;
+  amountDeducted: number;
+  payrollRunId?: number | null;
+}
+
+interface BankAdviceRow {
+  payrollRecordId?: number;
+  payroll_record_id?: number;
+  employeeCode?: string;
+  employee_code?: string;
+  employeeName?: string;
+  employee_name?: string;
+  bankName?: string;
+  bank_name?: string;
+  accountNumberMasked?: string;
+  account_number_masked?: string;
+  ifsc?: string;
+  netPayable?: number;
+  net_payable?: number;
+  validationErrors?: string[];
+  validation_errors?: string[];
+}
+
+interface BankAdvicePreview {
+  payrollRunId?: number;
+  payroll_run_id?: number;
+  payrollMonth?: string;
+  payroll_month?: string;
+  status: string;
+  companyName?: string;
+  company_name?: string;
+  bankName?: string;
+  bank_name?: string;
+  totalEmployees?: number;
+  total_employees?: number;
+  totalAmount?: number;
+  total_amount?: number;
+  validationErrors?: string[];
+  validation_errors?: string[];
+  rows: BankAdviceRow[];
+}
+
+interface BankAdviceExport {
+  id: number;
+  exportType?: string;
+  export_type?: string;
+  bankName?: string;
+  bank_name?: string;
+  totalEmployees?: number;
+  total_employees?: number;
+  totalAmount?: number;
+  total_amount?: number;
+  filePath?: string;
+  file_path?: string;
+  generatedAt?: string;
+  generated_at?: string;
+  downloadCount?: number;
+  download_count?: number;
+}
+
 const MONTHS = [
   "January","February","March","April","May","June",
   "July","August","September","October","November","December"
@@ -138,6 +216,7 @@ export default function PayrollPage() {
   const [taxAmount, setTaxAmount] = useState("150000");
   const [taxProofUrl, setTaxProofUrl] = useState("");
   const [inputPeriodId, setInputPeriodId] = useState("");
+  const [lwpMonth, setLwpMonth] = useState(`${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}`);
   const [lopEmployeeId, setLopEmployeeId] = useState("");
   const [lopDays, setLopDays] = useState("1");
   const [otEmployeeId, setOtEmployeeId] = useState("");
@@ -150,6 +229,7 @@ export default function PayrollPage() {
   const [lwfEmployeeAmount, setLwfEmployeeAmount] = useState("10");
   const [lwfEmployerAmount, setLwfEmployerAmount] = useState("20");
   const [paymentBatchId, setPaymentBatchId] = useState("");
+  const [bankAdviceBankName, setBankAdviceBankName] = useState("Payroll Bank");
   const [templateName, setTemplateName] = useState("Default Salary Template");
   const [templateCode, setTemplateCode] = useState("DEFAULT-SALARY");
   const [legalName, setLegalName] = useState("Indian Servers Pvt Ltd");
@@ -263,6 +343,12 @@ export default function PayrollPage() {
     enabled: !!selectedInputPeriod,
   });
 
+  const { data: lwpFeed } = useQuery({
+    queryKey: ["lwp-feed", lwpMonth],
+    queryFn: () => leavePayrollApi.lwpFeed(lwpMonth).then((r) => r.data as { preview: LwpFeedRow[]; entries: LwpEntry[] }),
+    enabled: !isEmployee,
+  });
+
   const { data: worksheetRows } = useQuery({
     queryKey: ["payroll-worksheet", selectedRun?.id],
     queryFn: () => payrollApi.runWorksheet(selectedRun!.id).then((r) => r.data),
@@ -273,6 +359,18 @@ export default function PayrollPage() {
     queryKey: ["payment-batches", selectedRun?.id],
     queryFn: () => payrollApi.paymentBatches({ payroll_run_id: selectedRun!.id }).then((r) => r.data),
     enabled: !!selectedRun,
+  });
+
+  const { data: bankAdvicePreview, isLoading: loadingBankAdvice } = useQuery({
+    queryKey: ["bank-advice-preview", selectedRun?.id, bankAdviceBankName],
+    queryFn: () => payrollApi.bankAdvicePreview(selectedRun!.id, { bank_name: bankAdviceBankName }).then((r) => r.data as BankAdvicePreview),
+    enabled: !!selectedRun && activeTab === "run",
+  });
+
+  const { data: bankAdviceExports } = useQuery({
+    queryKey: ["bank-advice-exports", selectedRun?.id],
+    queryFn: () => payrollApi.bankAdviceExports(selectedRun!.id).then((r) => r.data as BankAdviceExport[]),
+    enabled: !!selectedRun && activeTab === "run",
   });
 
   const { data: accountingJournals } = useQuery({
@@ -369,6 +467,19 @@ export default function PayrollPage() {
       qc.invalidateQueries({ queryKey: ["overtime-lines"] });
     },
     onError: () => toast({ title: "Could not reconcile attendance", variant: "destructive" }),
+  });
+
+  const lwpSyncMutation = useMutation({
+    mutationFn: () => leavePayrollApi.lwpSync({ month: lwpMonth, approveInputs: true, includeAttendanceAbsence: true }),
+    onSuccess: () => {
+      toast({ title: "LWP feed synced to payroll inputs" });
+      qc.invalidateQueries({ queryKey: ["lwp-feed"] });
+      qc.invalidateQueries({ queryKey: ["payroll-inputs"] });
+    },
+    onError: (e: unknown) => {
+      const msg = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail || "Could not sync LWP feed";
+      toast({ title: "LWP sync failed", description: msg, variant: "destructive" });
+    },
   });
 
   const worksheetMutation = useMutation({
@@ -656,6 +767,42 @@ export default function PayrollPage() {
     },
   });
 
+  const bankAdviceMutation = useMutation({
+    mutationFn: (exportType: "pdf" | "xlsx" | "txt") =>
+      payrollApi.generateBankAdvice(selectedRun!.id, {
+        export_type: exportType,
+        bank_name: bankAdviceBankName,
+      }),
+    onSuccess: (response) => {
+      toast({ title: "Bank advice generated", description: response.data.file_path });
+      qc.invalidateQueries({ queryKey: ["bank-advice-preview"] });
+      qc.invalidateQueries({ queryKey: ["bank-advice-exports"] });
+    },
+    onError: (e: unknown) => {
+      const detail = (e as { response?: { data?: { detail?: string | { message?: string; validation_errors?: string[] } } } })?.response?.data?.detail;
+      const description = typeof detail === "string" ? detail : detail?.validation_errors?.slice(0, 3).join("; ") || detail?.message || "Could not generate bank advice";
+      toast({ title: "Bank advice failed", description, variant: "destructive" });
+    },
+  });
+
+  const bankAdviceDownloadMutation = useMutation({
+    mutationFn: (exportItem: BankAdviceExport) => payrollApi.downloadBankAdviceExport(exportItem.id).then((response) => ({ response, exportItem })),
+    onSuccess: ({ response, exportItem }) => {
+      const blob = new Blob([response.data]);
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      const exportType = exportItem.export_type || exportItem.exportType || "txt";
+      link.href = url;
+      link.download = `bank-advice-${exportItem.id}.${exportType}`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+      qc.invalidateQueries({ queryKey: ["bank-advice-exports"] });
+    },
+    onError: () => toast({ title: "Could not download bank advice", variant: "destructive" }),
+  });
+
   const journalMutation = useMutation({
     mutationFn: (runId: number) => payrollApi.generateAccountingJournal(runId),
     onSuccess: () => {
@@ -705,6 +852,9 @@ export default function PayrollPage() {
   };
   const selectedPayslipRecord = (runRecords as PayslipRecord[] | undefined || []).find((record) => record.id === selectedRecordId);
   const selectedRunStatus = normalizeRunStatus(selectedRun?.status);
+  const bankAdviceValidationErrors = bankAdvicePreview?.validation_errors || bankAdvicePreview?.validationErrors || [];
+  const bankAdviceRows = bankAdvicePreview?.rows || [];
+  const canGenerateBankAdvice = !!selectedRun && ["approved", "locked", "paid"].includes(selectedRunStatus) && bankAdviceValidationErrors.length === 0;
   const worksheetAction = (row: PayrollWorksheetRow, action: "hold" | "skip" | "clear" | "approve") => {
     if (!selectedRun) return;
     const needsReason = action === "hold" || action === "skip";
@@ -1430,7 +1580,7 @@ export default function PayrollPage() {
           )}
 
           {selectedRun && (
-            <div className="grid gap-4 lg:grid-cols-2">
+            <div className="grid gap-4 xl:grid-cols-3">
               <Card>
                 <CardHeader>
                   <div className="flex items-center justify-between gap-3">
@@ -1458,6 +1608,91 @@ export default function PayrollPage() {
                     <Button variant="outline" onClick={() => paymentStatusMutation.mutate()} disabled={!paymentBatchId}>
                       Check import
                     </Button>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <CardTitle className="text-base">Bank Advice</CardTitle>
+                      <CardDescription>Preview salary payment lines and export PDF, Excel, or NEFT text files.</CardDescription>
+                    </div>
+                    <Badge variant={bankAdviceValidationErrors.length ? "destructive" : "outline"}>
+                      {loadingBankAdvice ? "Checking" : `${bankAdviceValidationErrors.length} issues`}
+                    </Badge>
+                  </div>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
+                    <Input placeholder="Bank name" value={bankAdviceBankName} onChange={(event) => setBankAdviceBankName(event.target.value)} />
+                    <div className="flex gap-2">
+                      {(["pdf", "xlsx", "txt"] as const).map((type) => (
+                        <Button
+                          key={type}
+                          variant="outline"
+                          size="sm"
+                          onClick={() => bankAdviceMutation.mutate(type)}
+                          disabled={!canGenerateBankAdvice || bankAdviceMutation.isPending}
+                        >
+                          {type.toUpperCase()}
+                        </Button>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-3 gap-2 text-sm">
+                    <div className="rounded-md border p-2">
+                      <p className="text-xs text-muted-foreground">Employees</p>
+                      <p className="font-semibold">{bankAdvicePreview?.total_employees ?? bankAdvicePreview?.totalEmployees ?? 0}</p>
+                    </div>
+                    <div className="col-span-2 rounded-md border p-2">
+                      <p className="text-xs text-muted-foreground">Total payable</p>
+                      <p className="font-semibold">{formatCurrency(bankAdvicePreview?.total_amount ?? bankAdvicePreview?.totalAmount ?? 0)}</p>
+                    </div>
+                  </div>
+                  {bankAdviceValidationErrors.length > 0 && (
+                    <div className="max-h-24 overflow-auto rounded-md border border-destructive/30 bg-destructive/5 p-2 text-xs text-destructive">
+                      {bankAdviceValidationErrors.slice(0, 6).map((error) => <p key={error}>{error}</p>)}
+                    </div>
+                  )}
+                  <div className="max-h-48 overflow-auto rounded-md border">
+                    <table className="w-full text-xs">
+                      <thead className="bg-muted/50">
+                        <tr>
+                          {["Employee", "Bank", "Account", "IFSC", "Net"].map((h) => <th key={h} className="px-2 py-2 text-left">{h}</th>)}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {bankAdviceRows.slice(0, 6).map((row) => (
+                          <tr key={row.payroll_record_id || row.payrollRecordId} className="border-t">
+                            <td className="px-2 py-2">{row.employee_name || row.employeeName}</td>
+                            <td className="px-2 py-2">{row.bank_name || row.bankName || "-"}</td>
+                            <td className="px-2 py-2">{row.account_number_masked || row.accountNumberMasked || "-"}</td>
+                            <td className="px-2 py-2">{row.ifsc || "-"}</td>
+                            <td className="px-2 py-2">{formatCurrency(row.net_payable ?? row.netPayable ?? 0)}</td>
+                          </tr>
+                        ))}
+                        {!loadingBankAdvice && bankAdviceRows.length === 0 && (
+                          <tr><td className="px-2 py-4 text-center text-muted-foreground" colSpan={5}>No payable payroll records found.</td></tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                  <div className="space-y-2">
+                    <p className="text-xs font-medium text-muted-foreground">Export history</p>
+                    {(bankAdviceExports || []).slice(0, 4).map((item) => (
+                      <div key={item.id} className="flex items-center justify-between rounded-md border p-2 text-xs">
+                        <div>
+                          <p className="font-medium">{(item.export_type || item.exportType || "").toUpperCase()} - {formatCurrency(item.total_amount ?? item.totalAmount ?? 0)}</p>
+                          <p className="text-muted-foreground">{formatDate(item.generated_at || item.generatedAt || "")}</p>
+                        </div>
+                        <Button variant="ghost" size="sm" onClick={() => bankAdviceDownloadMutation.mutate(item)} disabled={bankAdviceDownloadMutation.isPending}>
+                          <Download className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    ))}
+                    {(bankAdviceExports || []).length === 0 && <p className="text-xs text-muted-foreground">No bank advice exports generated yet.</p>}
                   </div>
                 </CardContent>
               </Card>
@@ -1663,6 +1898,70 @@ export default function PayrollPage() {
                     <p className="text-2xl font-semibold">{count}</p>
                   </div>
                 ))}
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+                <div>
+                  <CardTitle className="text-base">LWP Payroll Feed</CardTitle>
+                  <CardDescription>Preview approved leave-without-pay and absence deductions before syncing them into payroll inputs.</CardDescription>
+                </div>
+                <div className="flex flex-wrap items-end gap-2">
+                  <div className="space-y-1.5">
+                    <Label>Payroll month</Label>
+                    <Input type="month" value={lwpMonth} onChange={(event) => setLwpMonth(event.target.value)} />
+                  </div>
+                  <Button onClick={() => lwpSyncMutation.mutate()} disabled={!lwpMonth || lwpSyncMutation.isPending}>
+                    Sync LWP
+                  </Button>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid gap-3 md:grid-cols-3">
+                {[
+                  ["Preview rows", lwpFeed?.preview?.length || 0],
+                  ["Synced entries", lwpFeed?.entries?.length || 0],
+                  ["Estimated deduction", formatCurrency((lwpFeed?.preview || []).reduce((sum, row) => sum + Number(row.estimatedDeduction || 0), 0))],
+                ].map(([label, value]) => (
+                  <div key={label} className="rounded-md border p-3 text-sm">
+                    <p className="text-muted-foreground">{label}</p>
+                    <p className="mt-1 text-xl font-semibold">{value}</p>
+                  </div>
+                ))}
+              </div>
+              <div className="overflow-x-auto rounded-md border">
+                <table className="w-full text-sm">
+                  <thead className="border-b bg-muted/50">
+                    <tr>
+                      {["Employee", "Leave LWP", "Attendance LWP", "Manual LOP", "Total LWP", "Estimated deduction"].map((h) => (
+                        <th key={h} className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground">{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {!(lwpFeed?.preview || []).length ? (
+                      <tr><td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">No LWP found for this month</td></tr>
+                    ) : (
+                      lwpFeed!.preview.map((row) => (
+                        <tr key={row.employeeId} className="border-b">
+                          <td className="px-4 py-3">
+                            <p className="font-medium">{row.employeeName}</p>
+                            <p className="text-xs text-muted-foreground">{row.employeeCode || `#${row.employeeId}`}</p>
+                          </td>
+                          <td className="px-4 py-3">{Number(row.leaveLwpDays || 0).toFixed(2)}</td>
+                          <td className="px-4 py-3">{Number(row.attendanceLwpDays || 0).toFixed(2)}</td>
+                          <td className="px-4 py-3">{Number(row.manualLwpDays || 0).toFixed(2)}</td>
+                          <td className="px-4 py-3 font-semibold">{Number(row.lwpDays || 0).toFixed(2)}</td>
+                          <td className="px-4 py-3">{formatCurrency(row.estimatedDeduction || 0)}</td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
               </div>
             </CardContent>
           </Card>

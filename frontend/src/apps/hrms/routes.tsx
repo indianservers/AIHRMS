@@ -8,13 +8,17 @@ const EmployeesPage = React.lazy(() => import("@/apps/hrms/pages/employees/Emplo
 const EmployeeDirectoryPage = React.lazy(() => import("@/apps/hrms/pages/employees/EmployeeDirectoryPage"));
 const EmployeeDetailPage = React.lazy(() => import("@/apps/hrms/pages/employees/EmployeeDetailPage"));
 const AddEmployeePage = React.lazy(() => import("@/apps/hrms/pages/employees/AddEmployeePage"));
+const ProbationPage = React.lazy(() => import("@/apps/hrms/pages/employees/ProbationPage"));
 const AttendancePage = React.lazy(() => import("@/apps/hrms/pages/attendance/AttendancePage"));
+const ShiftRosterPage = React.lazy(() => import("@/apps/hrms/pages/attendance/ShiftRosterPage"));
 const TimesheetsPage = React.lazy(() => import("@/apps/hrms/pages/timesheets/TimesheetsPage"));
 const WorkflowInboxPage = React.lazy(() => import("@/apps/hrms/pages/workflow/WorkflowInboxPage"));
 const WorkflowDesignerPage = React.lazy(() => import("@/apps/hrms/pages/workflow/WorkflowDesignerPage"));
 const NotificationsPage = React.lazy(() => import("@/apps/hrms/pages/notifications/NotificationsPage"));
 const LeavePage = React.lazy(() => import("@/apps/hrms/pages/leave/LeavePage"));
 const PayrollPage = React.lazy(() => import("@/apps/hrms/pages/payroll/PayrollPage"));
+const FnFSettlementPage = React.lazy(() => import("@/apps/hrms/pages/payroll/FnFSettlementPage"));
+const InvestmentDeclarationPage = React.lazy(() => import("@/apps/hrms/pages/payroll/InvestmentDeclarationPage"));
 const RecruitmentPage = React.lazy(() => import("@/apps/hrms/pages/recruitment/RecruitmentPage"));
 const PerformancePage = React.lazy(() => import("@/apps/hrms/pages/performance/PerformancePage"));
 const HelpdeskPage = React.lazy(() => import("@/apps/hrms/pages/helpdesk/HelpdeskPage"));
@@ -48,13 +52,17 @@ const moduleRoutes: FrontendRoute[] = [
   { path: "employees", element: <EmployeesPage /> },
   { path: "employees/new", element: <AddEmployeePage /> },
   { path: "employees/:id", element: <EmployeeDetailPage /> },
+  { path: "probation", element: <ProbationPage /> },
   { path: "attendance", element: <AttendancePage /> },
+  { path: "attendance/shift-roster", element: <ShiftRosterPage /> },
   { path: "timesheets", element: <TimesheetsPage /> },
   { path: "workflow", element: <WorkflowInboxPage /> },
   { path: "workflow-designer", element: <WorkflowDesignerPage /> },
   { path: "notifications", element: <NotificationsPage /> },
   { path: "leave", element: <LeavePage /> },
   { path: "payroll", element: <PayrollPage /> },
+  { path: "fnf-settlements", element: <FnFSettlementPage /> },
+  { path: "investment-declaration", element: <InvestmentDeclarationPage /> },
   { path: "recruitment", element: <RecruitmentPage /> },
   { path: "performance", element: <PerformancePage /> },
   { path: "benefits", element: <BenefitsPage /> },

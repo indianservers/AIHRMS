@@ -51,6 +51,10 @@ async def lifespan(app: FastAPI):
                 from app.apps.crm.seed import seed_crm_demo_data
 
                 seed_crm_demo_data(db, organization_id=1)
+        if is_app_enabled("project_management"):
+            from app.apps.project_management.schema import ensure_pms_schema
+
+            ensure_pms_schema(db)
     finally:
         db.close()
 

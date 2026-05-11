@@ -49,6 +49,27 @@ class ShiftRosterAssignment(Base):
     shift = relationship("Shift", back_populates="roster_assignments")
 
 
+class ShiftRoster(Base):
+    __tablename__ = "shift_rosters"
+    __table_args__ = (
+        Index("idx_shift_roster_org_date", "organization_id", "roster_date"),
+        Index("idx_shift_roster_employee_date", "employee_id", "roster_date"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    organization_id = Column(Integer, ForeignKey("companies.id", ondelete="SET NULL"), nullable=True, index=True)
+    employee_id = Column(Integer, ForeignKey("employees.id", ondelete="CASCADE"), nullable=False, index=True)
+    shift_id = Column(Integer, ForeignKey("shifts.id", ondelete="CASCADE"), nullable=False, index=True)
+    roster_date = Column(Date, nullable=False, index=True)
+    status = Column(String(20), default="draft", index=True)
+    assigned_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    shift = relationship("Shift")
+    employee = relationship("Employee")
+
+
 class Holiday(Base):
     __tablename__ = "holidays"
 

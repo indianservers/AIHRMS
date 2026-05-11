@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { leaveApi } from "@/services/api";
+import { leaveApi, leavePayrollApi } from "@/services/api";
 import { formatDate, statusColor } from "@/lib/utils";
 import { toast } from "@/hooks/use-toast";
 import { useAuthStore } from "@/store/authStore";
@@ -65,6 +65,19 @@ interface ApplyForm {
   leave_mode?: string;
 }
 
+interface LeaveEncashmentRequest {
+  id: number;
+  employeeName?: string;
+  employeeCode?: string;
+  leaveTypeName?: string;
+  daysToEncash: number;
+  encashmentRate: number;
+  amount: number;
+  status: string;
+  requestedAt?: string;
+  remarks?: string | null;
+}
+
 export default function LeavePage() {
   usePageTitle("Leave");
   const qc = useQueryClient();
@@ -76,6 +89,10 @@ export default function LeavePage() {
   const [calendarMonth, setCalendarMonth] = useState(() => new Date());
   const [calendarScope, setCalendarScope] = useState<"mine" | "team" | "all">(canApproveLeave ? "team" : "mine");
   const [reviewRemarks, setReviewRemarks] = useState<Record<number, string>>({});
+  const [encashLeaveTypeId, setEncashLeaveTypeId] = useState("");
+  const [encashDays, setEncashDays] = useState("");
+  const [encashRemarks, setEncashRemarks] = useState("");
+  const [encashReviewRemarks, setEncashReviewRemarks] = useState<Record<number, string>>({});
 
   const { data: balances, isLoading: loadingBalance } = useQuery({
     queryKey: ["leave-balance"],
@@ -97,6 +114,18 @@ export default function LeavePage() {
   const { data: leaveTypes } = useQuery({
     queryKey: ["leave-types"],
     queryFn: () => leaveApi.types().then((r) => r.data as LeaveType[]),
+  });
+
+  const { data: encashmentRequests } = useQuery({
+    queryKey: ["leave-encashment-requests"],
+    queryFn: () => leavePayrollApi.encashmentRequests().then((r) => r.data as LeaveEncashmentRequest[]),
+  });
+
+  const { data: pendingEncashmentRequests } = useQuery({
+    queryKey: ["leave-encashment-requests", "submitted"],
+    queryFn: () => leavePayrollApi.encashmentRequests({ status: "submitted" }).then((r) => r.data as LeaveEncashmentRequest[]),
+    enabled: canApproveLeave,
+    retry: false,
   });
 
   const calendarStart = new Date(calendarMonth.getFullYear(), calendarMonth.getMonth(), 1);
@@ -166,8 +195,47 @@ export default function LeavePage() {
     },
   });
 
+  const requestEncashmentMutation = useMutation({
+    mutationFn: () =>
+      leavePayrollApi.requestEncashment({
+        leaveTypeId: Number(encashLeaveTypeId),
+        daysToEncash: Number(encashDays),
+        remarks: encashRemarks || undefined,
+      }),
+    onSuccess: () => {
+      toast({ title: "Leave encashment requested" });
+      setEncashLeaveTypeId("");
+      setEncashDays("");
+      setEncashRemarks("");
+      qc.invalidateQueries({ queryKey: ["leave-encashment-requests"] });
+      qc.invalidateQueries({ queryKey: ["leave-balance"] });
+    },
+    onError: (e: unknown) => {
+      const msg = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail || "Failed to request leave encashment";
+      toast({ title: "Request failed", description: msg, variant: "destructive" });
+    },
+  });
+
+  const reviewEncashmentMutation = useMutation({
+    mutationFn: ({ id, action }: { id: number; action: "approve" | "reject" }) => {
+      const payload = { remarks: encashReviewRemarks[id] || undefined };
+      return action === "approve" ? leavePayrollApi.approveEncashment(id, payload) : leavePayrollApi.rejectEncashment(id, payload);
+    },
+    onSuccess: () => {
+      toast({ title: "Encashment request updated" });
+      setEncashReviewRemarks({});
+      qc.invalidateQueries({ queryKey: ["leave-encashment-requests"] });
+      qc.invalidateQueries({ queryKey: ["leave-balance"] });
+    },
+    onError: (e: unknown) => {
+      const msg = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail || "Failed to update encashment request";
+      toast({ title: "Action failed", description: msg, variant: "destructive" });
+    },
+  });
+
   const tabs: Array<"my" | "approvals" | "calendar"> = canApproveLeave ? ["my", "approvals", "calendar"] : ["my", "calendar"];
   const pendingApprovals = allRequests || [];
+  const pendingEncashments = pendingEncashmentRequests || [];
   const calendarDays = calendarData?.days || [];
   const monthLabel = calendarMonth.toLocaleDateString(undefined, { month: "long", year: "numeric" });
 
@@ -285,6 +353,63 @@ export default function LeavePage() {
         </Card>
       )}
 
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Leave Encashment</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-[1fr_120px_1.4fr_auto]">
+            <select
+              value={encashLeaveTypeId}
+              onChange={(event) => setEncashLeaveTypeId(event.target.value)}
+              className="flex h-10 rounded-md border border-input bg-background px-3 py-2 text-sm"
+            >
+              <option value="">Select encashable leave</option>
+              {leaveTypes?.map((type) => (
+                <option key={type.id} value={type.id}>{type.name}</option>
+              ))}
+            </select>
+            <Input value={encashDays} onChange={(event) => setEncashDays(event.target.value)} placeholder="Days" type="number" min="0" step="0.5" />
+            <Input value={encashRemarks} onChange={(event) => setEncashRemarks(event.target.value)} placeholder="Remarks" />
+            <Button
+              onClick={() => requestEncashmentMutation.mutate()}
+              disabled={!encashLeaveTypeId || !encashDays || requestEncashmentMutation.isPending}
+            >
+              Request
+            </Button>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="border-b bg-muted/50">
+                <tr>
+                  {["Leave type", "Days", "Rate", "Amount", "Status", "Requested", "Remarks"].map((h) => (
+                    <th key={h} className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground">{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {!encashmentRequests?.length ? (
+                  <tr><td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">No leave encashment requests yet</td></tr>
+                ) : (
+                  encashmentRequests.slice(0, 5).map((item) => (
+                    <tr key={item.id} className="border-b">
+                      <td className="px-4 py-3 font-medium">{item.leaveTypeName || "-"}</td>
+                      <td className="px-4 py-3">{Number(item.daysToEncash).toFixed(2)}</td>
+                      <td className="px-4 py-3">₹{Number(item.encashmentRate || 0).toLocaleString("en-IN")}</td>
+                      <td className="px-4 py-3 font-semibold">₹{Number(item.amount || 0).toLocaleString("en-IN")}</td>
+                      <td className="px-4 py-3"><span className={`rounded-full px-2 py-0.5 text-xs font-medium ${statusColor(item.status)}`}>{item.status}</span></td>
+                      <td className="px-4 py-3 text-muted-foreground">{item.requestedAt ? formatDate(item.requestedAt) : "-"}</td>
+                      <td className="max-w-[220px] truncate px-4 py-3 text-muted-foreground">{item.remarks || "-"}</td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </CardContent>
+      </Card>
+
       <div className="flex gap-2 overflow-x-auto border-b">
         {tabs.map((tab) => (
           <button
@@ -315,6 +440,40 @@ export default function LeavePage() {
             </div>
           </CardHeader>
           <CardContent className="p-0">
+            <div className="border-b p-4">
+              <div className="mb-3 flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium">Pending Leave Encashment</p>
+                  <p className="text-xs text-muted-foreground">Approved requests become payroll earnings in the next open pay period.</p>
+                </div>
+                <span className="rounded-full bg-muted px-2 py-1 text-xs">{pendingEncashments.length}</span>
+              </div>
+              {pendingEncashments.length === 0 ? (
+                <p className="rounded-md border border-dashed px-3 py-4 text-center text-sm text-muted-foreground">No pending encashment approvals</p>
+              ) : (
+                <div className="space-y-2">
+                  {pendingEncashments.map((item) => (
+                    <div key={item.id} className="grid gap-2 rounded-md border p-3 lg:grid-cols-[1fr_120px_140px_1fr_auto] lg:items-center">
+                      <div>
+                        <p className="text-sm font-medium">{item.employeeName || item.employeeCode || "Employee"}</p>
+                        <p className="text-xs text-muted-foreground">{item.leaveTypeName} - {Number(item.daysToEncash).toFixed(2)} day(s)</p>
+                      </div>
+                      <p className="text-sm font-semibold">₹{Number(item.amount || 0).toLocaleString("en-IN")}</p>
+                      <p className="text-xs text-muted-foreground">Rate ₹{Number(item.encashmentRate || 0).toLocaleString("en-IN")}</p>
+                      <Input
+                        value={encashReviewRemarks[item.id] || ""}
+                        onChange={(event) => setEncashReviewRemarks((current) => ({ ...current, [item.id]: event.target.value }))}
+                        placeholder="Approval remarks"
+                      />
+                      <div className="flex gap-2">
+                        <Button size="sm" onClick={() => reviewEncashmentMutation.mutate({ id: item.id, action: "approve" })} disabled={reviewEncashmentMutation.isPending}>Approve</Button>
+                        <Button size="sm" variant="outline" onClick={() => reviewEncashmentMutation.mutate({ id: item.id, action: "reject" })} disabled={reviewEncashmentMutation.isPending}>Reject</Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead className="border-b bg-muted/50">

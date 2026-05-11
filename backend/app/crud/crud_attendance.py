@@ -4,7 +4,7 @@ from typing import List, Optional, Tuple
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, func
 from app.crud.base import CRUDBase
-from app.models.attendance import Attendance, AttendanceRegularization, Holiday, Shift, ShiftRosterAssignment, ShiftWeeklyOff, OvertimeRequest
+from app.models.attendance import Attendance, AttendanceRegularization, Holiday, Shift, ShiftRoster, ShiftRosterAssignment, ShiftWeeklyOff, OvertimeRequest
 
 
 class CRUDAttendance(CRUDBase):
@@ -13,6 +13,18 @@ class CRUDAttendance(CRUDBase):
 
     def get_shift_for_day(self, db: Session, employee_id: int, work_date: date) -> Optional[Shift]:
         from app.models.employee import Employee
+
+        published_roster = (
+            db.query(ShiftRoster)
+            .filter(
+                ShiftRoster.employee_id == employee_id,
+                ShiftRoster.roster_date == work_date,
+                ShiftRoster.status == "published",
+            )
+            .first()
+        )
+        if published_roster:
+            return published_roster.shift
 
         roster = (
             db.query(ShiftRosterAssignment)

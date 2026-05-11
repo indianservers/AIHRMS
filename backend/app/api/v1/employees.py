@@ -14,7 +14,7 @@ from app.core.masking import mask_employee_detail, mask_employee_list_item
 from app.crud.crud_employee import crud_employee
 from app.models.audit import AuditLog
 from app.models.user import Role, User
-from app.models.employee import Employee, EmployeeDocument, EmployeeChangeRequest
+from app.models.employee import Employee, EmployeeDocument, EmployeeEducation, EmployeeExperience, EmployeeChangeRequest
 from app.api.v1.notifications import create_notification
 from app.schemas.notification import NotificationCreate
 from app.schemas.employee import (
@@ -125,6 +125,16 @@ def _role_key(user: User) -> str:
     if name in {"manager", "team_lead", "department_head"}:
         return "manager"
     return "employee"
+
+
+def _org_id(user: User) -> int | None:
+    return getattr(user, "organization_id", None) or getattr(user, "company_id", None)
+
+
+def _has_permission(user: User, permission: str) -> bool:
+    if user.is_superuser:
+        return True
+    return permission in {p.name for p in (user.role.permissions if user.role else [])}
 
 
 def _can_manage_directory(user: User) -> bool:
@@ -268,6 +278,102 @@ def _to_directory_item(employee: Employee, current_user: User) -> EmployeeDirect
         is_direct_report=bool(current_user.employee and employee.reporting_manager_id == current_user.employee.id),
         contact_masked=not can_contact,
     )
+
+
+PROFILE_CHANGE_FIELDS = {
+    "present_address",
+    "permanent_address",
+    "present_city",
+    "present_state",
+    "present_pincode",
+    "permanent_city",
+    "permanent_state",
+    "permanent_pincode",
+    "phone_number",
+    "alternate_phone",
+    "personal_email",
+    "emergency_contact_name",
+    "emergency_contact_number",
+    "emergency_contact_relation",
+    "bank_name",
+    "bank_branch",
+    "account_number",
+    "account_type",
+    "ifsc_code",
+    "marital_status",
+    "family_information",
+    "health_information",
+    "pan_number",
+    "aadhaar_number",
+}
+
+SENSITIVE_PROFILE_FIELDS = {"bank_name", "bank_branch", "account_number", "account_type", "ifsc_code", "pan_number", "aadhaar_number"}
+
+
+def _employee_current_values(employee: Employee | None, changes: dict) -> dict:
+    if not employee:
+        return {}
+    values = {}
+    for field in changes.keys():
+        if hasattr(employee, field):
+            values[field] = getattr(employee, field)
+        elif field in {"education_details", "experience_details", "document_details", "nominee_details"}:
+            values[field] = None
+    return values
+
+
+def _serialize_change_request(item: EmployeeChangeRequest, employee: Employee | None = None) -> dict:
+    changes = item.field_changes_json or {}
+    old_values = item.old_value_json or _employee_current_values(employee, changes)
+    return {
+        "id": item.id,
+        "organization_id": item.organization_id,
+        "employee_id": item.employee_id,
+        "request_type": item.request_type,
+        "field_name": item.field_name,
+        "effective_date": item.effective_date,
+        "field_changes_json": changes,
+        "old_value_json": old_values,
+        "new_value_json": item.new_value_json or changes,
+        "document_path": item.document_path,
+        "reason": item.reason,
+        "status": item.status,
+        "requested_by": item.requested_by,
+        "reviewed_by": item.reviewed_by,
+        "reviewed_at": item.reviewed_at,
+        "review_remarks": item.review_remarks,
+        "created_at": item.created_at,
+        "employee_name": f"{employee.first_name} {employee.last_name}" if employee else None,
+        "employee_code": employee.employee_id if employee else None,
+        "current_values_json": old_values,
+    }
+
+
+def _apply_profile_change(db: Session, employee: Employee, changes: dict) -> None:
+    for field, value in (changes or {}).items():
+        if field in PROFILE_CHANGE_FIELDS and hasattr(employee, field):
+            setattr(employee, field, value)
+        elif field == "education_details":
+            rows = value if isinstance(value, list) else [value]
+            for row in rows:
+                if isinstance(row, dict) and row.get("degree"):
+                    db.add(EmployeeEducation(employee_id=employee.id, **{key: row.get(key) for key in [
+                        "degree", "specialization", "institution", "board_university", "pass_year", "percentage_cgpa", "document_url",
+                    ] if key in row}))
+        elif field == "experience_details":
+            rows = value if isinstance(value, list) else [value]
+            for row in rows:
+                if isinstance(row, dict) and row.get("company_name"):
+                    db.add(EmployeeExperience(employee_id=employee.id, **{key: row.get(key) for key in [
+                        "company_name", "designation", "from_date", "to_date", "is_current", "responsibilities", "relieving_letter_url",
+                    ] if key in row}))
+        elif field == "document_details":
+            rows = value if isinstance(value, list) else [value]
+            for row in rows:
+                if isinstance(row, dict) and row.get("document_type"):
+                    db.add(EmployeeDocument(employee_id=employee.id, **{key: row.get(key) for key in [
+                        "document_type", "document_name", "document_number", "file_url", "expiry_date",
+                    ] if key in row}))
 
 
 def _rate_limit_directory_search(current_user: User) -> None:
@@ -965,12 +1071,25 @@ def create_employee_change_request(
     if not current_user.is_superuser and not any(p.name == "employee_update" for p in (current_user.role.permissions if current_user.role else [])):
         if not current_user.employee or current_user.employee.id != data.employee_id:
             raise HTTPException(status_code=403, detail="Not authorized to request changes for this employee")
-    if not db.query(Employee).filter(
+    employee = db.query(Employee).filter(
         Employee.id == data.employee_id,
         Employee.deleted_at.is_(None),
-    ).first():
+    ).first()
+    if not employee:
         raise HTTPException(status_code=404, detail="Employee not found")
-    item = EmployeeChangeRequest(**data.model_dump(), requested_by=current_user.id)
+    changes = data.field_changes_json or {}
+    if not isinstance(changes, dict) or not changes:
+        raise HTTPException(status_code=400, detail="field_changes_json must contain at least one field")
+    if SENSITIVE_PROFILE_FIELDS.intersection(changes.keys()) and not (
+        current_user.employee and current_user.employee.id == employee.id
+    ) and not (_has_permission(current_user, "employee_update") or _has_permission(current_user, "payroll_run")):
+        raise HTTPException(status_code=403, detail="Sensitive profile changes require HR/payroll access")
+    values = data.model_dump()
+    values["organization_id"] = _org_id(current_user)
+    values["field_name"] = data.field_name or (next(iter(changes.keys())) if len(changes) == 1 else "multiple")
+    values["old_value_json"] = _employee_current_values(employee, changes)
+    values["new_value_json"] = changes
+    item = EmployeeChangeRequest(**values, requested_by=current_user.id)
     db.add(item)
     db.commit()
     db.refresh(item)
@@ -1028,23 +1147,9 @@ def list_employee_change_requests(
             for field in changes.keys()
             if employee and hasattr(employee, field)
         }
-        payload.append({
-            "id": item.id,
-            "employee_id": item.employee_id,
-            "request_type": item.request_type,
-            "effective_date": item.effective_date,
-            "field_changes_json": changes,
-            "reason": item.reason,
-            "status": item.status,
-            "requested_by": item.requested_by,
-            "reviewed_by": item.reviewed_by,
-            "reviewed_at": item.reviewed_at,
-            "review_remarks": item.review_remarks,
-            "created_at": item.created_at,
-            "employee_name": f"{employee.first_name} {employee.last_name}" if employee else None,
-            "employee_code": employee.employee_id if employee else None,
-            "current_values_json": current_values,
-        })
+        if item.old_value_json is None and current_values:
+            item.old_value_json = current_values
+        payload.append(_serialize_change_request(item, employee))
     return payload
 
 
@@ -1110,16 +1215,19 @@ def review_employee_change_request(
     item.reviewed_at = datetime.now(timezone.utc)
     item.review_remarks = data.review_remarks
     if data.status == "Approved" and data.apply_changes:
-        allowed_fields = {
-            "present_address", "permanent_address", "phone_number", "personal_email",
-            "bank_name", "bank_branch", "account_number", "ifsc_code", "pan_number",
-            "aadhaar_number", "branch_id", "department_id", "designation_id",
-            "business_unit_id", "cost_center_id", "location_id", "grade_band_id",
-            "position_id", "reporting_manager_id", "status", "worker_type",
+        changes = item.field_changes_json or {}
+        if SENSITIVE_PROFILE_FIELDS.intersection(changes.keys()) and not (
+            current_user.is_superuser or _has_permission(current_user, "employee_update") or _has_permission(current_user, "payroll_run")
+        ):
+            raise HTTPException(status_code=403, detail="Sensitive profile changes require HR/payroll approval")
+        org_fields = {
+            "branch_id", "department_id", "designation_id", "business_unit_id", "cost_center_id",
+            "location_id", "grade_band_id", "position_id", "reporting_manager_id", "status", "worker_type",
         }
-        for field, value in (item.field_changes_json or {}).items():
-            if field in allowed_fields and hasattr(employee, field):
+        for field, value in changes.items():
+            if field in org_fields and hasattr(employee, field):
                 setattr(employee, field, value)
+        _apply_profile_change(db, employee, changes)
     db.commit()
     db.refresh(item)
     return item

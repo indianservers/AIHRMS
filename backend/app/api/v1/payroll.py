@@ -4,7 +4,7 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
-from sqlalchemy import and_
+from sqlalchemy import and_, func
 import ast
 import calendar
 import csv
@@ -38,7 +38,8 @@ from app.models.payroll import (
     AccountingLedger, PayrollGLMapping, PayrollJournalEntry, PayrollJournalLine,
     StatutoryFileValidation, StatutoryTemplateFile,
     StatutoryChallan, StatutoryReturnFile,
-    TaxDeclarationCycle, TaxDeclaration, TaxDeclarationProof, EmployeeSalary
+    TaxDeclarationCycle, TaxDeclaration, TaxDeclarationProof, EmployeeSalary,
+    EmployeeTaxDeclaration, EmployeeTaxDeclarationItem
 )
 from app.schemas.payroll import (
     SalaryComponentCreate, SalaryComponentSchema,
@@ -3191,6 +3192,20 @@ def tax_projection(cycle_id: int = Query(...), employee_id: Optional[int] = Quer
     declarations = db.query(TaxDeclaration).filter(TaxDeclaration.employee_id == emp_id, TaxDeclaration.cycle_id == cycle_id).all()
     declared = sum((item.declared_amount or Decimal("0")) for item in declarations)
     approved = sum((item.approved_amount or Decimal("0")) for item in declarations)
+    cycle = db.query(TaxDeclarationCycle).filter(TaxDeclarationCycle.id == cycle_id).first()
+    if cycle:
+        approved += Decimal(
+            db.query(func.coalesce(func.sum(EmployeeTaxDeclarationItem.approved_amount), 0))
+            .join(EmployeeTaxDeclaration, EmployeeTaxDeclaration.id == EmployeeTaxDeclarationItem.declaration_id)
+            .filter(
+                EmployeeTaxDeclaration.employee_id == emp_id,
+                EmployeeTaxDeclaration.financial_year == cycle.financial_year,
+                EmployeeTaxDeclaration.status.in_(["approved", "partially_approved"]),
+                EmployeeTaxDeclarationItem.status == "approved",
+            )
+            .scalar()
+            or 0
+        )
     taxable_income = max(Decimal("0"), annual_ctc - approved)
     projected_tds = taxable_income * Decimal("0.10") if taxable_income else Decimal("0")
     return {

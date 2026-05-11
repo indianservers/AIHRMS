@@ -126,6 +126,7 @@ class PMSEpicBase(BaseModel):
     owner_user_id: Optional[int] = None
     color: Optional[str] = None
     start_date: Optional[date] = None
+    end_date: Optional[date] = None
     target_date: Optional[date] = None
 
     @validator("epic_key")
@@ -144,11 +145,13 @@ class PMSEpicUpdate(BaseModel):
     owner_user_id: Optional[int] = None
     color: Optional[str] = None
     start_date: Optional[date] = None
+    end_date: Optional[date] = None
     target_date: Optional[date] = None
 
 
 class PMSEpicResponse(PMSEpicBase):
     id: int
+    organization_id: Optional[int] = None
     project_id: int
     created_at: datetime
     updated_at: Optional[datetime] = None
@@ -299,6 +302,11 @@ class PMSSprintUpdate(BaseModel):
     end_date: Optional[date] = None
     capacity_hours: Optional[Decimal] = None
     velocity_points: Optional[int] = None
+    review_notes: Optional[str] = None
+    retrospective_notes: Optional[str] = None
+    what_went_well: Optional[str] = None
+    what_did_not_go_well: Optional[str] = None
+    outcome: Optional[str] = None
 
 
 class PMSSprintResponse(PMSSprintBase):
@@ -311,8 +319,14 @@ class PMSSprintResponse(PMSSprintBase):
     carry_forward_task_count: int = 0
     started_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None
+    completed_by_user_id: Optional[int] = None
     commitment_snapshot: Optional[str] = None
     completion_summary: Optional[str] = None
+    review_notes: Optional[str] = None
+    retrospective_notes: Optional[str] = None
+    what_went_well: Optional[str] = None
+    what_did_not_go_well: Optional[str] = None
+    outcome: Optional[str] = None
     created_at: datetime
     updated_at: Optional[datetime] = None
 
@@ -322,6 +336,36 @@ class PMSSprintResponse(PMSSprintBase):
 
 class SprintCompleteRequest(BaseModel):
     carry_forward_sprint_id: Optional[int] = None
+    incomplete_action: str = Field("move_to_next_sprint", pattern="^(move_to_backlog|move_to_next_sprint|keep_in_sprint)$")
+    review_notes: Optional[str] = None
+    retrospective_notes: Optional[str] = None
+    what_went_well: Optional[str] = None
+    what_did_not_go_well: Optional[str] = None
+    outcome: Optional[str] = None
+    action_items: List[dict[str, Any]] = []
+    create_action_item_tasks: bool = False
+
+
+class PMSSprintRetroActionItemResponse(BaseModel):
+    id: int
+    sprint_id: int
+    title: str
+    owner_user_id: Optional[int] = None
+    due_date: Optional[date] = None
+    created_task_id: Optional[int] = None
+    status: str = "Open"
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
+class PMSSprintReviewResponse(BaseModel):
+    sprint: PMSSprintResponse
+    action_items: List[PMSSprintRetroActionItemResponse] = []
+    completed_tasks: List[dict[str, Any]] = []
+    incomplete_tasks: List[dict[str, Any]] = []
 
 
 class SprintBurndownPoint(BaseModel):
@@ -465,7 +509,7 @@ class PMSTaskBase(BaseModel):
     actual_hours: Optional[Decimal] = None
     original_estimate_hours: Optional[Decimal] = None
     remaining_estimate_hours: Optional[Decimal] = None
-    story_points: Optional[int] = None
+    story_points: Optional[int] = Field(None, ge=0)
     rank: Optional[int] = None
     security_level: str = "Internal"
     development_branch: Optional[str] = None
@@ -511,7 +555,7 @@ class PMSTaskUpdate(BaseModel):
     actual_hours: Optional[Decimal] = None
     original_estimate_hours: Optional[Decimal] = None
     remaining_estimate_hours: Optional[Decimal] = None
-    story_points: Optional[int] = None
+    story_points: Optional[int] = Field(None, ge=0)
     rank: Optional[int] = None
     security_level: Optional[str] = None
     development_branch: Optional[str] = None
@@ -529,6 +573,9 @@ class PMSTaskResponse(PMSTaskBase):
     project_id: int
     board_id: Optional[int] = None
     column_id: Optional[int] = None
+    subtask_count: int = 0
+    completed_subtask_count: int = 0
+    attachment_count: int = 0
     completed_at: Optional[datetime] = None
     created_at: datetime
     updated_at: Optional[datetime] = None
@@ -541,6 +588,7 @@ class PMSTaskResponse(PMSTaskBase):
 class PMSTaskDependencyBase(BaseModel):
     depends_on_task_id: int
     dependency_type: str = "Finish To Start"
+    lag_days: int = 0
 
 
 class PMSTaskDependencyCreate(PMSTaskDependencyBase):
@@ -561,6 +609,12 @@ class PMSTaskDependencyDetail(PMSTaskDependencyResponse):
     depends_on_task_key: Optional[str] = None
     task_title: Optional[str] = None
     depends_on_task_title: Optional[str] = None
+    source_task_id: Optional[int] = None
+    target_task_id: Optional[int] = None
+    source_task_key: Optional[str] = None
+    target_task_key: Optional[str] = None
+    source_task_title: Optional[str] = None
+    target_task_title: Optional[str] = None
 
 
 class TaskBulkUpdateRequest(BaseModel):
@@ -581,24 +635,37 @@ class TaskBulkUpdateResponse(BaseModel):
 class PMSSavedFilterBase(BaseModel):
     name: str = Field(..., min_length=1, max_length=140)
     view_type: str = "board"
-    query: str = Field(..., min_length=1)
+    entity_type: str = "task"
+    query: Optional[str] = None
+    filters: Optional[dict[str, Any]] = None
+    sort: Optional[dict[str, Any]] = None
+    columns: Optional[Any] = None
+    visibility: str = "private"
+    is_default: bool = False
     is_shared: bool = False
 
 
 class PMSSavedFilterCreate(PMSSavedFilterBase):
-    pass
+    project_id: Optional[int] = None
 
 
 class PMSSavedFilterUpdate(BaseModel):
     name: Optional[str] = None
     view_type: Optional[str] = None
+    entity_type: Optional[str] = None
     query: Optional[str] = None
+    filters: Optional[dict[str, Any]] = None
+    sort: Optional[dict[str, Any]] = None
+    columns: Optional[Any] = None
+    visibility: Optional[str] = None
+    is_default: Optional[bool] = None
     is_shared: Optional[bool] = None
 
 
 class PMSSavedFilterResponse(PMSSavedFilterBase):
     id: int
-    project_id: int
+    organization_id: Optional[int] = None
+    project_id: Optional[int] = None
     user_id: Optional[int] = None
     created_at: datetime
     updated_at: Optional[datetime] = None
@@ -678,10 +745,13 @@ class PMSFileAssetUpdate(BaseModel):
 class PMSFileAssetResponse(PMSFileAssetBase):
     id: int
     uploaded_by_user_id: Optional[int] = None
+    uploaded_by_name: Optional[str] = None
     project_id: Optional[int] = None
     task_id: Optional[int] = None
     milestone_id: Optional[int] = None
     version_number: int = 1
+    download_url: Optional[str] = None
+    preview_url: Optional[str] = None
     created_at: datetime
     updated_at: Optional[datetime] = None
 
@@ -692,6 +762,7 @@ class PMSFileAssetResponse(PMSFileAssetBase):
 # ============= COMMENT SCHEMAS =============
 class PMSCommentBase(BaseModel):
     body: str = Field(..., min_length=1)
+    body_format: str = "markdown"
     is_internal: bool = True
 
 
@@ -701,10 +772,12 @@ class PMSCommentCreate(PMSCommentBase):
     task_id: Optional[int] = None
     milestone_id: Optional[int] = None
     parent_comment_id: Optional[int] = None
+    mentioned_user_ids: List[int] = []
 
 
 class PMSCommentUpdate(BaseModel):
     body: Optional[str] = None
+    body_format: Optional[str] = None
     is_internal: Optional[bool] = None
 
 
@@ -718,6 +791,7 @@ class PMSCommentResponse(PMSCommentBase):
     is_edited: bool = False
     created_at: datetime
     updated_at: Optional[datetime] = None
+    mentions: List[dict[str, Any]] = []
 
     class Config:
         from_attributes = True
@@ -740,7 +814,10 @@ class PMSTimeLogCreate(PMSTimeLogBase):
 
 
 class PMSTimeLogUpdate(BaseModel):
-    duration_minutes: Optional[int] = None
+    log_date: Optional[date] = None
+    start_time: Optional[datetime] = None
+    end_time: Optional[datetime] = None
+    duration_minutes: Optional[int] = Field(None, gt=0)
     description: Optional[str] = None
     is_billable: Optional[bool] = None
     approval_status: Optional[str] = None
@@ -749,12 +826,105 @@ class PMSTimeLogUpdate(BaseModel):
 
 class PMSTimeLogResponse(PMSTimeLogBase):
     id: int
+    timesheet_id: Optional[int] = None
     user_id: int
     project_id: int
     start_time: Optional[datetime] = None
     end_time: Optional[datetime] = None
     approved_by_user_id: Optional[int] = None
     approved_at: Optional[datetime] = None
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
+class PMSTimesheetEntryInput(BaseModel):
+    project_id: int
+    task_id: Optional[int] = None
+    log_date: date
+    duration_minutes: int = Field(..., ge=0)
+    description: Optional[str] = None
+    is_billable: bool = False
+    time_log_id: Optional[int] = None
+
+
+class PMSTimesheetCreate(BaseModel):
+    week_start_date: date
+    user_id: Optional[int] = None
+    entries: List[PMSTimesheetEntryInput] = []
+
+
+class PMSTimesheetUpdate(BaseModel):
+    week_start_date: Optional[date] = None
+    entries: List[PMSTimesheetEntryInput] = []
+
+
+class PMSTimesheetRejectRequest(BaseModel):
+    rejection_reason: str = Field(..., min_length=1)
+
+
+class PMSTimesheetResponse(BaseModel):
+    id: int
+    organization_id: Optional[int] = None
+    user_id: int
+    week_start_date: date
+    status: str
+    submitted_at: Optional[datetime] = None
+    approved_by_user_id: Optional[int] = None
+    approved_at: Optional[datetime] = None
+    rejection_reason: Optional[str] = None
+    total_minutes: int = 0
+    billable_minutes: int = 0
+    non_billable_minutes: int = 0
+    daily_totals: dict[str, int] = {}
+    entries: List[dict[str, Any]] = []
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
+class PMSRiskBase(BaseModel):
+    project_id: int
+    linked_task_id: Optional[int] = None
+    title: str = Field(..., min_length=1, max_length=220)
+    description: Optional[str] = None
+    category: Optional[str] = None
+    probability: int = Field(3, ge=1, le=5)
+    impact: int = Field(3, ge=1, le=5)
+    status: str = "open"
+    owner_user_id: Optional[int] = None
+    mitigation_plan: Optional[str] = None
+    contingency_plan: Optional[str] = None
+    due_date: Optional[date] = None
+
+
+class PMSRiskCreate(PMSRiskBase):
+    pass
+
+
+class PMSRiskUpdate(BaseModel):
+    project_id: Optional[int] = None
+    linked_task_id: Optional[int] = None
+    title: Optional[str] = Field(None, min_length=1, max_length=220)
+    description: Optional[str] = None
+    category: Optional[str] = None
+    probability: Optional[int] = Field(None, ge=1, le=5)
+    impact: Optional[int] = Field(None, ge=1, le=5)
+    status: Optional[str] = None
+    owner_user_id: Optional[int] = None
+    mitigation_plan: Optional[str] = None
+    contingency_plan: Optional[str] = None
+    due_date: Optional[date] = None
+
+
+class PMSRiskResponse(PMSRiskBase):
+    id: int
+    organization_id: Optional[int] = None
+    risk_score: int
     created_at: datetime
     updated_at: Optional[datetime] = None
 
@@ -828,6 +998,7 @@ class ProjectMetrics(BaseModel):
     total_tasks: int = 0
     completed_tasks: int = 0
     overdue_tasks: int = 0
+    high_risks: int = 0
     pending_approvals: int = 0
     team_utilization: float = 0.0
     hours_logged_this_week: Decimal = Decimal(0)

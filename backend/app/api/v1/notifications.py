@@ -139,6 +139,7 @@ def create_manual_notification(
 
 
 @router.put("/{notification_id}/read", response_model=NotificationSchema)
+@router.patch("/{notification_id}/read", response_model=NotificationSchema)
 def mark_notification_read(
     notification_id: int,
     db: Session = Depends(get_db),

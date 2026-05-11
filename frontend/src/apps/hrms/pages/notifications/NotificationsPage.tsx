@@ -25,7 +25,7 @@ type Notification = {
 
 function hrmsActionUrl(url: string) {
   if (url.startsWith("/hrms")) return url;
-  if (url.startsWith("/crm") || url.startsWith("/pms")) return "/hrms";
+  if (url.startsWith("/crm") || url.startsWith("/pms")) return url;
   return url.startsWith("/") ? `/hrms${url}` : `/hrms/${url}`;
 }
 

@@ -7,13 +7,18 @@ const ProjectDashboard = React.lazy(() => import("./pages/ProjectDashboard"));
 const KanbanBoard = React.lazy(() => import("./pages/KanbanBoard"));
 const ProjectsList = React.lazy(() => import("./pages/ProjectsList"));
 const CreateProjectPage = React.lazy(() => import("./pages/CreateProjectPage"));
+const TaskListPage = React.lazy(() => import("./pages/TaskListPage"));
 const TaskDetail = React.lazy(() => import("./pages/TaskDetail"));
 const MilestonesPage = React.lazy(() => import("./pages/MilestonesPage"));
 const TimeTrackingPage = React.lazy(() => import("./pages/TimeTrackingPage"));
+const TimesheetsPage = React.lazy(() => import("./pages/TimesheetsPage"));
 const ReportsPage = React.lazy(() => import("./pages/ReportsPage"));
 const CalendarPage = React.lazy(() => import("./pages/CalendarPage"));
 const GanttPage = React.lazy(() => import("./pages/GanttPage"));
 const SprintsPage = React.lazy(() => import("./pages/SprintsPage"));
+const BacklogPage = React.lazy(() => import("./pages/BacklogPage"));
+const RoadmapPage = React.lazy(() => import("./pages/RoadmapPage"));
+const WorkloadPage = React.lazy(() => import("./pages/WorkloadPage"));
 const FilesPage = React.lazy(() => import("./pages/FilesPage"));
 const ClientPortalPage = React.lazy(() => import("./pages/ClientPortalPage"));
 const AdminPage = React.lazy(() => import("./pages/AdminPage"));
@@ -27,6 +32,8 @@ const CommandCenterPage = React.lazy(() => import("./pages/CommandCenterPage"));
 const EnterpriseEnginePage = React.lazy(() => import("./pages/EnterpriseEnginePage"));
 const ProductLaunchPage = React.lazy(() => import("./pages/ProductLaunchPage"));
 const PMSOperationsPage = React.lazy(() => import("./pages/PMSOperationsPage"));
+const PortfolioPage = React.lazy(() => import("./pages/PortfolioPage"));
+const RisksPage = React.lazy(() => import("./pages/RisksPage"));
 
 /**
  * KaryaFlow Routes
@@ -38,11 +45,13 @@ export const projectManagementRoutes: FrontendRoute[] = [
   { path: "pms/command-center", element: <CommandCenterPage /> },
   { path: "pms/enterprise-engine", element: <EnterpriseEnginePage /> },
   { path: "pms/product-launch", element: <ProductLaunchPage /> },
+  { path: "pms/portfolio", element: <PortfolioPage /> },
   { path: "pms/dependency-management", element: <PMSOperationsPage mode="dependencies" /> },
   { path: "pms/resource-planning", element: <PMSOperationsPage mode="resources" /> },
   { path: "pms/agile-execution", element: <PMSOperationsPage mode="agile" /> },
   { path: "pms/project-financials", element: <PMSOperationsPage mode="financials" /> },
-  { path: "pms/risk-register", element: <PMSOperationsPage mode="risk" /> },
+  { path: "pms/risk-register", element: <RisksPage /> },
+  { path: "pms/risks", element: <RisksPage /> },
   
   // Projects
   { path: "pms/projects", element: <ProjectsList /> },
@@ -56,8 +65,11 @@ export const projectManagementRoutes: FrontendRoute[] = [
   { path: "pms/projects/:projectId/milestones", element: <MilestonesPage /> },
   { path: "pms/projects/:projectId/files", element: <FilesPage /> },
   { path: "pms/projects/:projectId/reports", element: <ReportsPage /> },
+  { path: "pms/projects/:projectId/risks", element: <RisksPage /> },
   
   // Tasks
+  { path: "pms/tasks", element: <TaskListPage /> },
+  { path: "pms/tasks/:taskId", element: <TaskDetail /> },
   { path: "pms/projects/:projectId/tasks/:taskId", element: <TaskDetail /> },
 
   // KaryaFlow software delivery workspaces
@@ -70,9 +82,11 @@ export const projectManagementRoutes: FrontendRoute[] = [
   { path: "pms/software", element: <SoftwarePlanningPage /> },
   { path: "pms/live", element: <LiveWorkManagementPage /> },
   { path: "pms/teams-live", element: <LiveWorkManagementPage /> },
-  { path: "pms/backlog", element: <SoftwarePlanningPage /> },
+  { path: "pms/backlog", element: <BacklogPage /> },
   { path: "pms/issues", element: <SoftwarePlanningPage /> },
-  { path: "pms/roadmap", element: <SoftwarePlanningPage /> },
+  { path: "pms/roadmap", element: <RoadmapPage /> },
+  { path: "pms/workload", element: <WorkloadPage /> },
+  { path: "pms/capacity", element: <WorkloadPage /> },
   { path: "pms/releases", element: <SoftwarePlanningPage /> },
   { path: "pms/automation", element: <AutomationAIPage /> },
   { path: "pms/goals", element: <CommandCenterPage /> },
@@ -98,6 +112,7 @@ export const projectManagementRoutes: FrontendRoute[] = [
   { path: "pms/sprints", element: <SprintsPage /> },
   { path: "pms/files", element: <FilesPage /> },
   { path: "pms/time-tracking", element: <TimeTrackingPage /> },
+  { path: "pms/timesheets", element: <TimesheetsPage /> },
   { path: "pms/reports", element: <ReportsPage /> },
   { path: "pms/client-portal", element: <ClientPortalPage /> },
   { path: "pms/settings", element: <SettingsPage /> },

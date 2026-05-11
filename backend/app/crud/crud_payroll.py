@@ -7,7 +7,7 @@ from app.models.payroll import (
     SalaryComponent, SalaryStructure, SalaryStructureComponent,
     EmployeeSalary, PayrollRun, PayrollRecord, PayrollComponent, Reimbursement,
     PayrollVarianceItem, PayrollPeriod, PayrollAttendanceInput,
-    OvertimePayLine, LeaveEncashmentLine,
+    OvertimePayLine, LeaveEncashmentLine, LeaveEncashmentRequest, PayrollLWPEntry,
     EmployeeStatutoryProfile, PayrollStatutoryContributionLine,
     PFRule, ESIRule, ProfessionalTaxSlab, LWFSlab,
 )
@@ -525,6 +525,29 @@ def run_payroll(db: Session, month: int, year: int, run_by_user_id: int) -> Payr
         for line in encashment_lines:
             line.payroll_record_id = record.id
             line.status = "Paid"
+            db.query(LeaveEncashmentRequest).filter(
+                LeaveEncashmentRequest.leave_encashment_line_id == line.id,
+            ).update(
+                {
+                    "status": "paid",
+                    "payroll_run_id": payroll_run.id,
+                },
+                synchronize_session=False,
+            )
+        if attendance_input and lop_days > 0:
+            payroll_month = f"{year:04d}-{month:02d}"
+            db.query(PayrollLWPEntry).filter(
+                PayrollLWPEntry.employee_id == emp.id,
+                PayrollLWPEntry.payroll_month == payroll_month,
+                PayrollLWPEntry.payroll_run_id.is_(None),
+            ).update(
+                {
+                    "payroll_run_id": payroll_run.id,
+                    "payroll_attendance_input_id": attendance_input.id,
+                    "amount_deducted": _money(lop_deduction),
+                },
+                synchronize_session=False,
+            )
 
         total_gross += gross
         total_deductions += total_ded

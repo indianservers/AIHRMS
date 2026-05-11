@@ -63,6 +63,7 @@ class PMSEpic(Base):
     __table_args__ = (UniqueConstraint("project_id", "epic_key", name="uq_pms_epic_project_key"),)
 
     id = Column(Integer, primary_key=True, index=True)
+    organization_id = Column(Integer, nullable=True, index=True)
     project_id = Column(Integer, ForeignKey("pms_projects.id", ondelete="CASCADE"), nullable=False, index=True)
     epic_key = Column(String(60), nullable=False, index=True)
     name = Column(String(180), nullable=False)
@@ -71,6 +72,7 @@ class PMSEpic(Base):
     owner_user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
     color = Column(String(30))
     start_date = Column(Date)
+    end_date = Column(Date, index=True)
     target_date = Column(Date, index=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
@@ -152,8 +154,29 @@ class PMSSprint(Base):
     carry_forward_task_count = Column(Integer, default=0)
     started_at = Column(DateTime(timezone=True))
     completed_at = Column(DateTime(timezone=True))
+    completed_by_user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
     commitment_snapshot = Column(Text)
     completion_summary = Column(Text)
+    review_notes = Column(Text)
+    retrospective_notes = Column(Text)
+    what_went_well = Column(Text)
+    what_did_not_go_well = Column(Text)
+    outcome = Column(Text)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+
+class PMSSprintRetroActionItem(Base):
+    __tablename__ = "pms_sprint_retro_action_items"
+
+    id = Column(Integer, primary_key=True, index=True)
+    organization_id = Column(Integer, nullable=True, index=True)
+    sprint_id = Column(Integer, ForeignKey("pms_sprints.id", ondelete="CASCADE"), nullable=False, index=True)
+    title = Column(String(220), nullable=False)
+    owner_user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    due_date = Column(Date)
+    created_task_id = Column(Integer, ForeignKey("pms_tasks.id", ondelete="SET NULL"), nullable=True, index=True)
+    status = Column(String(30), default="Open", index=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
@@ -239,7 +262,44 @@ class PMSTaskDependency(Base):
     task_id = Column(Integer, ForeignKey("pms_tasks.id", ondelete="CASCADE"), nullable=False, index=True)
     depends_on_task_id = Column(Integer, ForeignKey("pms_tasks.id", ondelete="CASCADE"), nullable=False, index=True)
     dependency_type = Column(String(40), default="Finish To Start")
+    lag_days = Column(Integer, default=0)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class PMSDevIntegration(Base):
+    __tablename__ = "pms_dev_integrations"
+    __table_args__ = (UniqueConstraint("project_id", "provider", "repo_owner", "repo_name", name="uq_pms_dev_integration_repo"),)
+
+    id = Column(Integer, primary_key=True, index=True)
+    organization_id = Column(Integer, nullable=True, index=True)
+    project_id = Column(Integer, ForeignKey("pms_projects.id", ondelete="CASCADE"), nullable=False, index=True)
+    provider = Column(String(30), nullable=False, index=True)
+    repo_owner = Column(String(160), nullable=False, index=True)
+    repo_name = Column(String(180), nullable=False, index=True)
+    access_token_encrypted = Column(Text)
+    webhook_secret_encrypted = Column(Text)
+    is_active = Column(Boolean, default=True, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+
+class PMSDevLink(Base):
+    __tablename__ = "pms_dev_links"
+    __table_args__ = (UniqueConstraint("task_id", "provider", "link_type", "external_id", name="uq_pms_dev_link_external"),)
+
+    id = Column(Integer, primary_key=True, index=True)
+    organization_id = Column(Integer, nullable=True, index=True)
+    task_id = Column(Integer, ForeignKey("pms_tasks.id", ondelete="CASCADE"), nullable=False, index=True)
+    provider = Column(String(30), nullable=False, index=True)
+    link_type = Column(String(30), nullable=False, index=True)
+    external_id = Column(String(240), nullable=False, index=True)
+    title = Column(String(300))
+    url = Column(String(800))
+    status = Column(String(60), index=True)
+    author = Column(String(160))
+    metadata_json = Column(Text)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
 
 class PMSSavedFilter(Base):
@@ -247,11 +307,18 @@ class PMSSavedFilter(Base):
     __table_args__ = (UniqueConstraint("project_id", "user_id", "name", name="uq_pms_saved_filter_owner_name"),)
 
     id = Column(Integer, primary_key=True, index=True)
-    project_id = Column(Integer, ForeignKey("pms_projects.id", ondelete="CASCADE"), nullable=False, index=True)
+    organization_id = Column(Integer, nullable=True, index=True)
+    project_id = Column(Integer, ForeignKey("pms_projects.id", ondelete="CASCADE"), nullable=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True)
     name = Column(String(140), nullable=False)
     view_type = Column(String(40), default="board", index=True)
+    entity_type = Column(String(40), default="task", index=True)
     query = Column(Text, nullable=False)
+    filters_json = Column(Text)
+    sort_json = Column(Text)
+    columns_json = Column(Text)
+    visibility = Column(String(30), default="private", index=True)
+    is_default = Column(Boolean, default=False, index=True)
     is_shared = Column(Boolean, default=False, index=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
@@ -333,6 +400,7 @@ class PMSComment(Base):
     milestone_id = Column(Integer, ForeignKey("pms_milestones.id", ondelete="CASCADE"), nullable=True, index=True)
     parent_comment_id = Column(Integer, ForeignKey("pms_comments.id", ondelete="CASCADE"), nullable=True, index=True)
     body = Column(Text, nullable=False)
+    body_format = Column(String(20), default="markdown", index=True)
     is_internal = Column(Boolean, default=True, index=True)
     is_edited = Column(Boolean, default=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
@@ -340,10 +408,25 @@ class PMSComment(Base):
     deleted_at = Column(DateTime(timezone=True))
 
 
+class PMSMention(Base):
+    __tablename__ = "pms_mentions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    project_id = Column(Integer, ForeignKey("pms_projects.id", ondelete="CASCADE"), nullable=False, index=True)
+    task_id = Column(Integer, ForeignKey("pms_tasks.id", ondelete="CASCADE"), nullable=False, index=True)
+    comment_id = Column(Integer, ForeignKey("pms_comments.id", ondelete="CASCADE"), nullable=True, index=True)
+    mentioned_user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    mentioned_by_user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    notification_id = Column(Integer, ForeignKey("notifications.id", ondelete="SET NULL"), nullable=True, index=True)
+    read_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
+
+
 class PMSTimeLog(Base):
     __tablename__ = "pms_time_logs"
 
     id = Column(Integer, primary_key=True, index=True)
+    timesheet_id = Column(Integer, ForeignKey("pms_timesheets.id", ondelete="SET NULL"), nullable=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     project_id = Column(Integer, ForeignKey("pms_projects.id", ondelete="CASCADE"), nullable=False, index=True)
     task_id = Column(Integer, ForeignKey("pms_tasks.id", ondelete="SET NULL"), nullable=True, index=True)
@@ -358,6 +441,59 @@ class PMSTimeLog(Base):
     approved_at = Column(DateTime(timezone=True))
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+
+class PMSTimesheet(Base):
+    __tablename__ = "pms_timesheets"
+    __table_args__ = (UniqueConstraint("organization_id", "user_id", "week_start_date", name="uq_pms_timesheet_user_week"),)
+
+    id = Column(Integer, primary_key=True, index=True)
+    organization_id = Column(Integer, nullable=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    week_start_date = Column(Date, nullable=False, index=True)
+    status = Column(String(30), default="draft", index=True)
+    submitted_at = Column(DateTime(timezone=True))
+    approved_by_user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    approved_at = Column(DateTime(timezone=True))
+    rejection_reason = Column(Text)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+
+class PMSUserCapacity(Base):
+    __tablename__ = "pms_user_capacity"
+    __table_args__ = (UniqueConstraint("organization_id", "user_id", "week_start_date", name="uq_pms_user_capacity_week"),)
+
+    id = Column(Integer, primary_key=True, index=True)
+    organization_id = Column(Integer, nullable=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    week_start_date = Column(Date, nullable=False, index=True)
+    capacity_hours = Column(Numeric(8, 2), nullable=False, default=40)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+
+class PMSRisk(Base):
+    __tablename__ = "pms_risks"
+
+    id = Column(Integer, primary_key=True, index=True)
+    organization_id = Column(Integer, nullable=True, index=True)
+    project_id = Column(Integer, ForeignKey("pms_projects.id", ondelete="CASCADE"), nullable=False, index=True)
+    linked_task_id = Column(Integer, ForeignKey("pms_tasks.id", ondelete="SET NULL"), nullable=True, index=True)
+    title = Column(String(220), nullable=False)
+    description = Column(Text)
+    category = Column(String(80), index=True)
+    probability = Column(Integer, default=3, index=True)
+    impact = Column(Integer, default=3, index=True)
+    risk_score = Column(Integer, default=9, index=True)
+    status = Column(String(30), default="open", index=True)
+    owner_user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    mitigation_plan = Column(Text)
+    contingency_plan = Column(Text)
+    due_date = Column(Date, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+    deleted_at = Column(DateTime(timezone=True))
 
 
 class PMSClientApproval(Base):

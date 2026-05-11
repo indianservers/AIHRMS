@@ -142,10 +142,17 @@ export const employeeApi = {
     }),
   profileCompleteness: () => api.get("/employees/me/completeness"),
   changeRequests: (params?: Record<string, unknown>) =>
-    api.get("/employees/change-requests", { params }),
+    api.get("/hrms/profile-change-requests", { params }),
+  getChangeRequest: (id: number) => api.get(`/hrms/profile-change-requests/${id}`),
   createChangeRequest: (data: unknown) => api.post("/employees/change-requests", data),
+  createProfileChangeRequest: (employeeId: number, data: unknown) =>
+    api.post(`/hrms/employees/${employeeId}/change-request`, data),
   reviewChangeRequest: (id: number, data: unknown) =>
     api.put(`/employees/change-requests/${id}/review`, data),
+  approveProfileChangeRequest: (id: number, data: unknown) =>
+    api.post(`/hrms/profile-change-requests/${id}/approve`, data),
+  rejectProfileChangeRequest: (id: number, data: unknown) =>
+    api.post(`/hrms/profile-change-requests/${id}/reject`, data),
 };
 
 export const companyApi = {
@@ -257,6 +264,15 @@ export const attendanceApi = {
   todaySummary: () => api.get("/attendance/today-summary"),
 };
 
+export const shiftRosterApi = {
+  list: (params: Record<string, unknown>) => api.get("/hrms/shift-roster", { params }),
+  assign: (data: unknown) => api.post("/hrms/shift-roster/assign", data),
+  bulkAssign: (data: unknown) => api.post("/hrms/shift-roster/bulk-assign", data),
+  copyWeek: (data: unknown) => api.post("/hrms/shift-roster/copy-week", data),
+  publish: (data: unknown) => api.post("/hrms/shift-roster/publish", data),
+  delete: (id: number) => api.delete(`/hrms/shift-roster/${id}`),
+};
+
 export const customFieldsApi = {
   definitions: (params?: Record<string, unknown>) => api.get("/custom-fields/definitions", { params }),
   createDefinition: (data: unknown) => api.post("/custom-fields/definitions", data),
@@ -296,6 +312,18 @@ export const leaveApi = {
     api.put(`/leave/requests/${id}/approve`, data),
   cancel: (id: number) => api.put(`/leave/requests/${id}/cancel`),
   pendingCount: () => api.get("/leave/pending-count"),
+};
+
+export const leavePayrollApi = {
+  encashmentRequests: (params?: Record<string, unknown>) =>
+    api.get("/hrms/leave-encashment", { params }),
+  requestEncashment: (data: unknown) => api.post("/hrms/leave-encashment/request", data),
+  approveEncashment: (id: number, data: unknown) =>
+    api.post(`/hrms/leave-encashment/${id}/approve`, data),
+  rejectEncashment: (id: number, data: unknown) =>
+    api.post(`/hrms/leave-encashment/${id}/reject`, data),
+  lwpFeed: (month: string) => api.get("/hrms/payroll/lwp-feed", { params: { month } }),
+  lwpSync: (data: unknown) => api.post("/hrms/payroll/lwp-sync", data),
 };
 
 export const payrollApi = {
@@ -408,6 +436,13 @@ export const payrollApi = {
   paymentBatches: (params?: Record<string, unknown>) => api.get("/payroll/payments/batches", { params }),
   importPaymentStatus: (batchId: number, data: unknown) =>
     api.put(`/payroll/payments/batches/${batchId}/status-import`, data),
+  bankAdvicePreview: (runId: number, params?: Record<string, unknown>) =>
+    api.get(`/hrms/payroll/${runId}/bank-advice/preview`, { params }),
+  generateBankAdvice: (runId: number, data: unknown) =>
+    api.post(`/hrms/payroll/${runId}/bank-advice/generate`, data),
+  bankAdviceExports: (runId: number) => api.get(`/hrms/payroll/${runId}/bank-exports`),
+  downloadBankAdviceExport: (exportId: number) =>
+    api.get(`/hrms/payroll/bank-exports/${exportId}/download`, { responseType: "blob" }),
   accountingLedgers: () => api.get("/payroll/accounting/ledgers"),
   createAccountingLedger: (data: unknown) => api.post("/payroll/accounting/ledgers", data),
   glMappings: () => api.get("/payroll/accounting/gl-mappings"),
@@ -468,6 +503,28 @@ export const statutoryApi = {
   markSubmitted: (id: number, data: unknown) =>
     api.put(`/statutory/submissions/${id}/mark-submitted`, data),
   complianceSummary: () => api.get("/statutory/compliance-summary"),
+  pfEcrPreview: (payrollRunId: number) =>
+    api.get("/hrms/compliance/pf-ecr/preview", { params: { payrollRunId } }),
+  generatePfEcr: (payrollRunId: number) =>
+    api.post("/hrms/compliance/pf-ecr/generate", { payroll_run_id: payrollRunId }),
+  esiPreview: (payrollRunId: number) =>
+    api.get("/hrms/compliance/esi/preview", { params: { payrollRunId } }),
+  generateEsi: (payrollRunId: number) =>
+    api.post("/hrms/compliance/esi/generate", { payroll_run_id: payrollRunId }),
+  downloadComplianceExport: (id: number) =>
+    api.get(`/hrms/compliance/exports/${id}/download`, { responseType: "blob" }),
+};
+
+export const form16Api = {
+  list: (financialYear: string, employeeId?: number) =>
+    api.get("/hrms/form16", { params: { financialYear, employeeId } }),
+  generate: (data: unknown) => api.post("/hrms/form16/generate", data),
+  uploadPartA: (id: number, formData: FormData) =>
+    api.post(`/hrms/form16/${id}/upload-part-a`, formData, {
+      headers: { "Content-Type": "multipart/form-data" },
+    }),
+  publish: (id: number) => api.post(`/hrms/form16/${id}/publish`),
+  download: (id: number) => api.get(`/hrms/form16/${id}/download`, { responseType: "blob" }),
 };
 
 export const lmsApi = {
@@ -788,4 +845,44 @@ export const exitApi = {
   createChecklistItem: (data: unknown) => api.post("/exit/checklist", data),
   completeChecklistItem: (id: number, remarks?: string) =>
     api.put(`/exit/checklist/${id}/complete`, null, { params: { remarks } }),
+};
+
+export const fnfApi = {
+  list: (params?: Record<string, unknown>) => api.get("/hrms/fnf-settlements", { params }),
+  get: (id: number) => api.get(`/hrms/fnf-settlements/${id}`),
+  generate: (data: unknown) => api.post("/hrms/fnf-settlements/generate", data),
+  update: (id: number, data: unknown) => api.patch(`/hrms/fnf-settlements/${id}`, data),
+  submit: (id: number) => api.post(`/hrms/fnf-settlements/${id}/submit`),
+  approve: (id: number, data?: unknown) => api.post(`/hrms/fnf-settlements/${id}/approve`, data ?? {}),
+  reject: (id: number, data: unknown) => api.post(`/hrms/fnf-settlements/${id}/reject`, data),
+  markPaid: (id: number, data?: unknown) => api.post(`/hrms/fnf-settlements/${id}/mark-paid`, data ?? {}),
+  pdf: (id: number) => api.get(`/hrms/fnf-settlements/${id}/pdf`, { responseType: "blob" }),
+};
+
+export const taxDeclarationApi = {
+  categories: (financialYear: string) => api.get("/hrms/tax-declaration/categories", { params: { financialYear } }),
+  createCategory: (data: unknown) => api.post("/hrms/tax-declaration/categories", data),
+  list: (params?: Record<string, unknown>) => api.get("/hrms/tax-declarations", { params }),
+  employeeDeclarations: (employeeId: number, financialYear: string) =>
+    api.get(`/hrms/employees/${employeeId}/tax-declarations`, { params: { financialYear } }),
+  create: (data: unknown) => api.post("/hrms/tax-declarations", data),
+  update: (id: number, data: unknown) => api.patch(`/hrms/tax-declarations/${id}`, data),
+  submit: (id: number) => api.post(`/hrms/tax-declarations/${id}/submit`),
+  review: (id: number, data: unknown) => api.post(`/hrms/tax-declarations/${id}/review`, data),
+  uploadProof: (id: number, formData: FormData) =>
+    api.post(`/hrms/tax-declarations/${id}/upload-proof`, formData, {
+      headers: { "Content-Type": "multipart/form-data" },
+    }),
+  downloadProof: (id: number) => api.get(`/hrms/tax-proofs/${id}/download`, { responseType: "blob" }),
+};
+
+export const probationApi = {
+  dashboard: () => api.get("/hrms/probation/dashboard"),
+  dueList: (params?: Record<string, unknown>) => api.get("/hrms/probation/due-list", { params }),
+  review: (employeeId: number, data: unknown) => api.post(`/hrms/probation/${employeeId}/review`, data),
+  confirm: (employeeId: number, data: unknown) => api.post(`/hrms/probation/${employeeId}/confirm`, data),
+  extend: (employeeId: number, data: unknown) => api.post(`/hrms/probation/${employeeId}/extend`, data),
+  terminate: (employeeId: number, data: unknown) => api.post(`/hrms/probation/${employeeId}/terminate`, data),
+  letter: (employeeId: number) => api.get(`/hrms/probation/${employeeId}/letter`, { responseType: "blob" }),
+  runAlerts: () => api.post("/hrms/probation/alerts/run"),
 };

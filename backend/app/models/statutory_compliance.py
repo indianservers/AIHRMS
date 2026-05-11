@@ -52,6 +52,26 @@ class Form16Document(Base):
     employee = relationship("Employee")
 
 
+class Form16Record(Base):
+    __tablename__ = "form16_records"
+
+    id = Column(Integer, primary_key=True, index=True)
+    organization_id = Column(Integer, ForeignKey("companies.id", ondelete="SET NULL"), nullable=True, index=True)
+    employee_id = Column(Integer, ForeignKey("employees.id", ondelete="CASCADE"), nullable=False, index=True)
+    financial_year = Column(String(20), nullable=False, index=True)
+    part_a_file_path = Column(String(500))
+    part_b_file_path = Column(String(500))
+    combined_file_path = Column(String(500))
+    status = Column(String(30), default="draft", index=True)
+    taxable_income = Column(Numeric(14, 2), default=0)
+    tax_deducted = Column(Numeric(14, 2), default=0)
+    generated_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    generated_at = Column(DateTime(timezone=True))
+    published_at = Column(DateTime(timezone=True))
+
+    employee = relationship("Employee")
+
+
 class TDSReturnFiling(Base):
     __tablename__ = "tds_return_filings"
 

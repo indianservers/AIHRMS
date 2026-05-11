@@ -183,7 +183,7 @@ export default function LiveWorkManagementPage() {
             <div className="space-y-3">
               {events.map((event) => (
                 <div key={event.id} className="rounded-lg border bg-muted/30 p-3 text-sm">
-                  <p><span className="font-semibold">{event.actor}</span> {event.action}</p>
+                  <p><span className="font-semibold">{typeof event.actor === "string" ? event.actor : event.actor?.name || "Someone"}</span> {event.action}</p>
                   <p className="text-muted-foreground">{event.target}</p>
                 </div>
               ))}

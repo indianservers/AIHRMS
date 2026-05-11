@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Link } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Clock, CheckCircle2, XCircle, CalendarDays, MapPin,
@@ -112,8 +113,18 @@ export default function AttendancePage() {
   return (
     <div className="space-y-4 sm:space-y-6">
       <div>
-        <h1 className="page-title">Attendance</h1>
-        <p className="page-description">Track your daily attendance and monthly summary.</p>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <h1 className="page-title">Attendance</h1>
+            <p className="page-description">Track your daily attendance and monthly summary.</p>
+          </div>
+          <Button asChild variant="outline">
+            <Link to="/hrms/attendance/shift-roster">
+              <CalendarDays className="h-4 w-4" />
+              Shift Roster
+            </Link>
+          </Button>
+        </div>
       </div>
 
       {/* Today's action card */}

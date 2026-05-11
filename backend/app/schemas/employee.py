@@ -340,6 +340,8 @@ class EmployeeChangeRequestCreate(BaseModel):
     effective_date: Optional[date] = None
     field_changes_json: Any
     reason: Optional[str] = None
+    field_name: Optional[str] = None
+    document_path: Optional[str] = None
 
 
 class EmployeeChangeRequestReview(BaseModel):
@@ -350,6 +352,9 @@ class EmployeeChangeRequestReview(BaseModel):
 
 class EmployeeChangeRequestSchema(EmployeeChangeRequestCreate):
     id: int
+    organization_id: Optional[int] = None
+    old_value_json: Optional[Any] = None
+    new_value_json: Optional[Any] = None
     status: str
     requested_by: Optional[int] = None
     reviewed_by: Optional[int] = None

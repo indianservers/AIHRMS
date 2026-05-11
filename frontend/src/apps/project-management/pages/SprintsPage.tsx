@@ -8,8 +8,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { formatDate, statusColor } from "@/lib/utils";
-import { projectsAPI, reportsAPI, sprintsAPI } from "../services/api";
-import type { PMSProject, PMSSprint, ProjectVelocity, SprintBurndown, WorkloadResponse } from "../types";
+import { projectsAPI, reportsAPI, sprintsAPI, tasksAPI } from "../services/api";
+import type { PMSProject, PMSSprint, PMSSprintActionItem, PMSTaskListItem, ProjectVelocity, SprintBurndown, WorkloadResponse } from "../types";
 
 export default function SprintsPage() {
   const [projects, setProjects] = useState<PMSProject[]>([]);
@@ -23,6 +23,20 @@ export default function SprintsPage() {
   const [burndown, setBurndown] = useState<SprintBurndown | null>(null);
   const [velocity, setVelocity] = useState<ProjectVelocity | null>(null);
   const [workload, setWorkload] = useState<WorkloadResponse | null>(null);
+  const [backlogTasks, setBacklogTasks] = useState<PMSTaskListItem[]>([]);
+  const [completeTarget, setCompleteTarget] = useState<PMSSprint | null>(null);
+  const [reviewLoading, setReviewLoading] = useState(false);
+  const [completeDraft, setCompleteDraft] = useState({
+    incompleteAction: "move_to_next_sprint",
+    carryForwardSprintId: "",
+    reviewNotes: "",
+    retrospectiveNotes: "",
+    whatWentWell: "",
+    whatDidNotGoWell: "",
+    outcome: "",
+    createActionItemTasks: false,
+    actionItems: [{ title: "", due_date: "" }] as Array<Partial<PMSSprintActionItem> & { title: string; due_date?: string }>,
+  });
 
   useEffect(() => {
     projectsAPI.list().then((items) => {
@@ -34,14 +48,16 @@ export default function SprintsPage() {
   }, []);
 
   const loadProject = async (id: number) => {
-    const [sprintItems, velocityData, workloadData] = await Promise.all([
+    const [sprintItems, velocityData, workloadData, taskData] = await Promise.all([
       sprintsAPI.list(id),
       sprintsAPI.velocity(id).catch(() => null),
       reportsAPI.workload(id, { group_by: "sprint" }).catch(() => null),
+      tasksAPI.listAll({ projectId: id, pageSize: 200, sortBy: "updatedDate", sortOrder: "desc" }).catch(() => null),
     ]);
     setSprints(sprintItems);
     setVelocity(velocityData);
     setWorkload(workloadData);
+    setBacklogTasks(taskData?.items || []);
     if (sprintItems[0]) {
       sprintsAPI.burndown(sprintItems[0].id).then(setBurndown).catch(() => setBurndown(null));
     } else {
@@ -79,10 +95,60 @@ export default function SprintsPage() {
     refreshSprint(await sprintsAPI.start(sprint.id));
   };
 
-  const completeSprint = async (sprint: PMSSprint) => {
+  const openSprintReview = async (sprint: PMSSprint) => {
     const carryForward = sprints.find((item) => item.id !== sprint.id && item.status === "Planned")?.id;
-    refreshSprint(await sprintsAPI.complete(sprint.id, carryForward));
+    setCompleteTarget(sprint);
+    setCompleteDraft({
+      incompleteAction: carryForward ? "move_to_next_sprint" : "keep_in_sprint",
+      carryForwardSprintId: carryForward ? String(carryForward) : "",
+      reviewNotes: sprint.review_notes || "",
+      retrospectiveNotes: sprint.retrospective_notes || "",
+      whatWentWell: sprint.what_went_well || "",
+      whatDidNotGoWell: sprint.what_did_not_go_well || "",
+      outcome: sprint.outcome || "",
+      createActionItemTasks: false,
+      actionItems: [{ title: "", due_date: "" }],
+    });
+    setReviewLoading(true);
+    try {
+      const review = await sprintsAPI.review(sprint.id);
+      setCompleteDraft((current) => ({
+        ...current,
+        reviewNotes: review.sprint.review_notes || current.reviewNotes,
+        retrospectiveNotes: review.sprint.retrospective_notes || current.retrospectiveNotes,
+        whatWentWell: review.sprint.what_went_well || current.whatWentWell,
+        whatDidNotGoWell: review.sprint.what_did_not_go_well || current.whatDidNotGoWell,
+        outcome: review.sprint.outcome || current.outcome,
+        actionItems: review.action_items.length ? review.action_items.map((item) => ({ title: item.title, due_date: item.due_date || "", owner_user_id: item.owner_user_id || undefined, status: item.status })) : current.actionItems,
+      }));
+    } finally {
+      setReviewLoading(false);
+    }
   };
+
+  const saveSprintReview = async () => {
+    if (!completeTarget) return;
+    const actionItems = completeDraft.actionItems.filter((item) => item.title.trim());
+    const payload = {
+      incomplete_action: completeDraft.incompleteAction as "move_to_backlog" | "move_to_next_sprint" | "keep_in_sprint",
+      carry_forward_sprint_id: completeDraft.carryForwardSprintId ? Number(completeDraft.carryForwardSprintId) : undefined,
+      review_notes: completeDraft.reviewNotes,
+      retrospective_notes: completeDraft.retrospectiveNotes,
+      what_went_well: completeDraft.whatWentWell,
+      what_did_not_go_well: completeDraft.whatDidNotGoWell,
+      outcome: completeDraft.outcome,
+      create_action_item_tasks: completeDraft.createActionItemTasks,
+      action_items: actionItems,
+    };
+    const review = completeTarget.status === "Completed"
+      ? await sprintsAPI.updateReview(completeTarget.id, payload)
+      : { sprint: await sprintsAPI.complete(completeTarget.id, payload) };
+    refreshSprint(review.sprint);
+    setCompleteTarget(null);
+  };
+
+  const completeTasks = completeTarget ? backlogTasks.filter((task) => task.sprint_id === completeTarget.id && ["Done", "Completed", "Closed", "Resolved"].includes(task.status)) : [];
+  const incompleteTasks = completeTarget ? backlogTasks.filter((task) => task.sprint_id === completeTarget.id && !["Done", "Completed", "Closed", "Resolved"].includes(task.status)) : [];
 
   return (
     <div className="space-y-6">
@@ -144,6 +210,27 @@ export default function SprintsPage() {
           </CardContent>
         </Card>
       </div>
+      <Card>
+        <CardHeader><CardTitle>Sprint backlog</CardTitle></CardHeader>
+        <CardContent className="space-y-2">
+          {backlogTasks.slice(0, 12).map((task) => (
+            <div key={task.id} className="grid gap-2 rounded-md border p-3 text-sm md:grid-cols-[8rem_minmax(0,1fr)_10rem_6rem_12rem] md:items-center">
+              <span className="font-semibold text-muted-foreground">{task.task_key}</span>
+              <span className="min-w-0 truncate font-medium">{task.title}</span>
+              <Badge className={statusColor(task.status)}>{task.status}</Badge>
+              <span>{task.story_points ?? 0} pts</span>
+              <div className="flex flex-wrap gap-1">
+                {(task.tags || []).slice(0, 3).map((tag) => {
+                  const label = typeof tag === "string" ? tag : tag.name;
+                  return <Badge key={label} variant="outline" className="h-5 rounded px-1.5 text-[11px]">{label}</Badge>;
+                })}
+                {!task.tags?.length ? <span className="text-xs text-muted-foreground">No tags</span> : null}
+              </div>
+            </div>
+          ))}
+          {!backlogTasks.length ? <EmptyState text="No tasks found for this project backlog." /> : null}
+        </CardContent>
+      </Card>
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         {sprints.map((sprint) => (
           <Card key={sprint.id}>
@@ -161,14 +248,87 @@ export default function SprintsPage() {
               </div>
               <div className="mt-4 flex flex-wrap gap-2">
                 <Button size="sm" onClick={() => startSprint(sprint)} disabled={sprint.status === "Active" || sprint.status === "Completed"}><Play className="h-4 w-4" />Start</Button>
-                <Button size="sm" variant="outline" onClick={() => completeSprint(sprint)} disabled={sprint.status === "Completed"}><CheckCircle2 className="h-4 w-4" />Complete</Button>
+                <Button size="sm" variant="outline" onClick={() => openSprintReview(sprint)}><CheckCircle2 className="h-4 w-4" />{sprint.status === "Completed" ? "Review" : "Complete"}</Button>
                 <Button size="sm" variant="ghost" onClick={() => sprintsAPI.burndown(sprint.id).then(setBurndown)}><BarChart3 className="h-4 w-4" />Burndown</Button>
               </div>
+              {(sprint.outcome || sprint.review_notes || sprint.retrospective_notes) ? (
+                <div className="mt-4 rounded-md border bg-muted/30 p-3 text-sm">
+                  <p className="font-medium">Review outcome</p>
+                  <p className="mt-1 line-clamp-2 text-muted-foreground">{sprint.outcome || sprint.review_notes || sprint.retrospective_notes}</p>
+                </div>
+              ) : null}
             </CardContent>
           </Card>
         ))}
         {!sprints.length ? <div className="rounded-lg border border-dashed p-6 text-sm text-muted-foreground">Create your first sprint to unlock lifecycle controls.</div> : null}
       </div>
+      {completeTarget ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="max-h-[90vh] w-full max-w-4xl overflow-y-auto rounded-lg bg-background shadow-xl">
+            <div className="border-b p-5">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <h2 className="text-lg font-semibold">{completeTarget.status === "Completed" ? "Sprint review" : "Complete sprint"}: {completeTarget.name}</h2>
+                  <p className="text-sm text-muted-foreground">Capture review outcomes, retrospective notes, and follow-up action items.</p>
+                </div>
+                <Button variant="ghost" onClick={() => setCompleteTarget(null)}>Close</Button>
+              </div>
+            </div>
+            <div className="grid gap-5 p-5 lg:grid-cols-[1fr_1.1fr]">
+              <div className="space-y-4">
+                <TaskSummary title="Completed tasks" tasks={completeTasks} empty="No completed tasks in this sprint." />
+                <TaskSummary title="Incomplete tasks" tasks={incompleteTasks} empty="No incomplete tasks." />
+                {completeTarget.status !== "Completed" ? (
+                  <Field label="Incomplete task handling">
+                    <select value={completeDraft.incompleteAction} onChange={(event) => setCompleteDraft((draft) => ({ ...draft, incompleteAction: event.target.value }))} className="h-10 w-full rounded-md border bg-background px-3 text-sm">
+                      <option value="move_to_backlog">Move to backlog</option>
+                      <option value="move_to_next_sprint">Move to next sprint</option>
+                      <option value="keep_in_sprint">Keep in current sprint</option>
+                    </select>
+                  </Field>
+                ) : null}
+                {completeDraft.incompleteAction === "move_to_next_sprint" && completeTarget.status !== "Completed" ? (
+                  <Field label="Next sprint">
+                    <select value={completeDraft.carryForwardSprintId} onChange={(event) => setCompleteDraft((draft) => ({ ...draft, carryForwardSprintId: event.target.value }))} className="h-10 w-full rounded-md border bg-background px-3 text-sm">
+                      <option value="">Select sprint</option>
+                      {sprints.filter((sprint) => sprint.id !== completeTarget.id && sprint.status === "Planned").map((sprint) => <option key={sprint.id} value={sprint.id}>{sprint.name}</option>)}
+                    </select>
+                  </Field>
+                ) : null}
+              </div>
+              <div className="space-y-4">
+                {reviewLoading ? <div className="rounded-md border p-3 text-sm text-muted-foreground">Loading saved review notes...</div> : null}
+                <TextareaField label="Sprint outcome" value={completeDraft.outcome} onChange={(value) => setCompleteDraft((draft) => ({ ...draft, outcome: value }))} />
+                <TextareaField label="Review notes" value={completeDraft.reviewNotes} onChange={(value) => setCompleteDraft((draft) => ({ ...draft, reviewNotes: value }))} />
+                <TextareaField label="What went well" value={completeDraft.whatWentWell} onChange={(value) => setCompleteDraft((draft) => ({ ...draft, whatWentWell: value }))} />
+                <TextareaField label="What did not go well" value={completeDraft.whatDidNotGoWell} onChange={(value) => setCompleteDraft((draft) => ({ ...draft, whatDidNotGoWell: value }))} />
+                <TextareaField label="Retrospective notes" value={completeDraft.retrospectiveNotes} onChange={(value) => setCompleteDraft((draft) => ({ ...draft, retrospectiveNotes: value }))} />
+                <div className="space-y-2">
+                  <Label>Action items</Label>
+                  {completeDraft.actionItems.map((item, index) => (
+                    <div key={index} className="grid gap-2 md:grid-cols-[1fr_10rem_auto]">
+                      <Input placeholder="Follow-up action" value={item.title} onChange={(event) => setCompleteDraft((draft) => ({ ...draft, actionItems: draft.actionItems.map((current, itemIndex) => itemIndex === index ? { ...current, title: event.target.value } : current) }))} />
+                      <Input type="date" value={item.due_date || ""} onChange={(event) => setCompleteDraft((draft) => ({ ...draft, actionItems: draft.actionItems.map((current, itemIndex) => itemIndex === index ? { ...current, due_date: event.target.value } : current) }))} />
+                      <Button type="button" variant="outline" onClick={() => setCompleteDraft((draft) => ({ ...draft, actionItems: draft.actionItems.filter((_, itemIndex) => itemIndex !== index) }))}>Remove</Button>
+                    </div>
+                  ))}
+                  <Button type="button" variant="outline" onClick={() => setCompleteDraft((draft) => ({ ...draft, actionItems: [...draft.actionItems, { title: "", due_date: "" }] }))}>Add action item</Button>
+                  <label className="flex items-center gap-2 text-sm">
+                    <input type="checkbox" checked={completeDraft.createActionItemTasks} onChange={(event) => setCompleteDraft((draft) => ({ ...draft, createActionItemTasks: event.target.checked }))} />
+                    Create action items as backlog tasks
+                  </label>
+                </div>
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 border-t p-5">
+              <Button variant="outline" onClick={() => setCompleteTarget(null)}>Cancel</Button>
+              <Button onClick={saveSprintReview} disabled={completeTarget.status !== "Completed" && completeDraft.incompleteAction === "move_to_next_sprint" && !completeDraft.carryForwardSprintId}>
+                {completeTarget.status === "Completed" ? "Save review" : "Complete sprint"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -187,5 +347,37 @@ function Fact({ icon: Icon, label, value }: { icon: typeof Activity; label: stri
 
 function EmptyState({ text }: { text: string }) {
   return <div className="flex h-full min-h-32 items-center justify-center rounded-lg border border-dashed text-sm text-muted-foreground">{text}</div>;
+}
+
+function TextareaField({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
+  return (
+    <div className="space-y-2">
+      <Label>{label}</Label>
+      <textarea value={value} onChange={(event) => onChange(event.target.value)} className="min-h-24 w-full rounded-md border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring" />
+    </div>
+  );
+}
+
+function TaskSummary({ title, tasks, empty }: { title: string; tasks: PMSTaskListItem[]; empty: string }) {
+  return (
+    <div className="rounded-md border p-3">
+      <div className="mb-2 flex items-center justify-between text-sm">
+        <span className="font-medium">{title}</span>
+        <Badge variant="outline">{tasks.length}</Badge>
+      </div>
+      <div className="max-h-56 space-y-2 overflow-y-auto">
+        {tasks.map((task) => (
+          <div key={task.id} className="rounded border bg-muted/30 p-2 text-sm">
+            <div className="flex items-center justify-between gap-2">
+              <span className="font-medium">{task.task_key}</span>
+              <Badge className={statusColor(task.status)}>{task.status}</Badge>
+            </div>
+            <p className="mt-1 line-clamp-2 text-muted-foreground">{task.title}</p>
+          </div>
+        ))}
+        {!tasks.length ? <p className="py-4 text-center text-sm text-muted-foreground">{empty}</p> : null}
+      </div>
+    </div>
+  );
 }
 

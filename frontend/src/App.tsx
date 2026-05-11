@@ -9,6 +9,7 @@ import { getDefaultPathForUser, getLoginPathForContext } from "@/lib/products";
 import { hrmsRoutes } from "@/apps/hrms/routes";
 import { crmRoutes } from "@/apps/crm/routes";
 import { projectManagementRoutes } from "@/apps/project-management/routes";
+import PMSRealtimeBridge from "@/apps/project-management/PMSRealtimeBridge";
 
 const LoginPage = React.lazy(() => import("@/pages/auth/LoginPage"));
 
@@ -73,6 +74,7 @@ export default function App() {
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </Suspense>
+      <PMSRealtimeBridge />
       <Toaster />
     </>
   );

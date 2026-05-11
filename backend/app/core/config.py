@@ -70,6 +70,23 @@ class Settings(BaseSettings):
     MAIL_STARTTLS: bool = True
     MAIL_SSL_TLS: bool = False
 
+    # CRM messaging
+    CRM_MESSAGE_PROVIDER: str = "mock"
+    CRM_SMS_PROVIDER: str = "mock"
+    CRM_WHATSAPP_PROVIDER: str = "mock"
+    CRM_SMS_API_KEY: str = ""
+    CRM_SMS_API_SECRET: str = ""
+    CRM_SMS_SENDER_ID: str = ""
+    CRM_WHATSAPP_ACCESS_TOKEN: str = ""
+    CRM_WHATSAPP_PHONE_NUMBER_ID: str = ""
+    CRM_WHATSAPP_BUSINESS_ACCOUNT_ID: str = ""
+    CRM_GOOGLE_CALENDAR_CLIENT_ID: str = ""
+    CRM_GOOGLE_CALENDAR_CLIENT_SECRET: str = ""
+    CRM_OUTLOOK_CALENDAR_CLIENT_ID: str = ""
+    CRM_OUTLOOK_CALENDAR_CLIENT_SECRET: str = ""
+    CRM_CALENDAR_WEBHOOK_SECRET: str = ""
+    CRM_WEBHOOK_BLOCK_PRIVATE_URLS: bool = True
+
     # File storage
     UPLOAD_DIR: str = "./uploads"
     MAX_UPLOAD_SIZE_MB: int = 10

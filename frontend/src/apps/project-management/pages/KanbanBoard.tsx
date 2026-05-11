@@ -3,7 +3,7 @@
  * Interactive Kanban board using DnD Kit for task management
  * This is the CORE Click & Drag feature
  */
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
 import {
   DndContext,
@@ -41,6 +41,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useKanbanStore, useProjectStore, useTaskStore } from "../store";
 import { kanbanAPI, projectsAPI } from "../services/api";
+import { usePMSRealtime } from "../realtime";
 
 import KanbanColumn from "../components/KanbanColumn";
 import CreateTaskModal from "../components/CreateTaskModal";
@@ -82,17 +83,16 @@ const KanbanBoard: React.FC = () => {
     })
   );
 
-  // Load board and tasks
-  useEffect(() => {
-    const loadBoard = async () => {
+  const loadBoard = useCallback(async (active = true) => {
       if (!projectIdNum) return;
       try {
         setLoading(true);
         if (!selectedProject) {
           const project = await projectsAPI.get(projectIdNum);
-          setSelectedProject(project);
+          if (active) setSelectedProject(project);
         }
         const boardData = await kanbanAPI.getBoard(projectIdNum);
+        if (!active) return;
         setBoard(boardData);
 
         // Flatten all tasks from columns
@@ -102,13 +102,32 @@ const KanbanBoard: React.FC = () => {
         setError("Failed to load Kanban board");
         console.error("Error loading board:", err);
       } finally {
-        setLoading(false);
-        setHasLoaded(true);
+        if (active) {
+          setLoading(false);
+          setHasLoaded(true);
+        }
       }
-    };
+    }, [projectIdNum, selectedProject, setBoard, setLoading, setSelectedProject, setTasks]);
 
-    loadBoard();
-  }, [projectIdNum, selectedProject, setBoard, setLoading, setSelectedProject, setTasks]);
+  // Load board and tasks
+  useEffect(() => {
+    let active = true;
+    loadBoard(active);
+    return () => {
+      active = false;
+    };
+  }, [loadBoard]);
+
+  usePMSRealtime({
+    projectId: projectIdNum || undefined,
+    onEvent: (event) => {
+      if (event.type.startsWith("task.") || event.type === "sprint.updated" || event.type === "project.updated") {
+        loadBoard(true);
+      }
+    },
+    onFallbackPoll: () => loadBoard(true),
+    showToast: false,
+  });
 
   // Handle drag start
   const handleDragStart = (event: DragStartEvent) => {

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { BarChart3, CalendarDays, CheckCircle2, Clock, Kanban, ListChecks, Milestone, Timer } from "lucide-react";
+import { AlertTriangle, BarChart3, CheckCircle2, Clock, Kanban, ListChecks, Milestone, ShieldAlert, Timer } from "lucide-react";
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -51,14 +51,16 @@ export default function ProjectDashboard() {
         </div>
         <div className="flex flex-wrap gap-2">
           <Button asChild variant="outline"><Link to={`/pms/projects/${id}/milestones`}><Milestone className="h-4 w-4" />Milestones</Link></Button>
+          <Button asChild variant="outline"><Link to={`/pms/projects/${id}/risks`}><ShieldAlert className="h-4 w-4" />Risks</Link></Button>
           <Button asChild><Link to={`/pms/projects/${id}/board`}><Kanban className="h-4 w-4" />Open board</Link></Button>
         </div>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
         <Metric icon={ListChecks} label="Total tasks" value={dashboard?.metrics.total_tasks ?? tasks.length} />
         <Metric icon={CheckCircle2} label="Completed" value={dashboard?.metrics.completed_tasks ?? tasks.filter((task) => task.status === "Done").length} />
         <Metric icon={Clock} label="Overdue" value={dashboard?.metrics.overdue_tasks ?? overdue.length} tone="text-red-600" />
+        <Metric icon={AlertTriangle} label="High risks" value={dashboard?.metrics.high_risks ?? 0} tone="text-amber-600" />
         <Metric icon={Timer} label="Progress" value={`${project.progress_percent}%`} />
       </div>
 
@@ -100,8 +102,8 @@ export default function ProjectDashboard() {
         </CardHeader>
         <CardContent className="grid gap-3 md:grid-cols-3">
           <Insight text={`${overdue.length} tasks are overdue and need attention.`} />
+          <Insight text={`${dashboard?.metrics.high_risks ?? 0} open high risks are on the project register.`} />
           <Insight text={`Project progress is ${project.progress_percent}% against the current delivery window.`} />
-          <Insight text={`${tasks.filter((task) => task.status === "In Review").length} tasks are waiting in review.`} />
         </CardContent>
       </Card>
     </div>

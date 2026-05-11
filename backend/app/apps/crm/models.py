@@ -11,6 +11,7 @@ class CRMCompany(Base):
     id = Column(Integer, primary_key=True, index=True)
     organization_id = Column(Integer, nullable=True, index=True)
     owner_user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    territory_id = Column(Integer, ForeignKey("crm_territories.id", ondelete="SET NULL"), nullable=True, index=True)
     parent_company_id = Column(Integer, ForeignKey("crm_companies.id", ondelete="SET NULL"), nullable=True, index=True)
     name = Column(String(180), nullable=False, index=True)
     industry = Column(String(120), index=True)
@@ -55,9 +56,15 @@ class CRMContact(Base):
     lifecycle_stage = Column(String(60), default="Lead", index=True)
     source = Column(String(80), index=True)
     date_of_birth = Column(Date)
+    company_name = Column(String(180), index=True)
+    company_website = Column(String(200))
+    industry = Column(String(120), index=True)
+    employee_count = Column(Integer)
     website = Column(String(200))
     linkedin_url = Column(String(300))
     twitter_url = Column(String(300))
+    email_verification_status = Column(String(40), index=True)
+    social_profiles_json = Column(JSON)
     city = Column(String(100), index=True)
     state = Column(String(100))
     country = Column(String(100), default="India")
@@ -85,6 +92,7 @@ class CRMLead(Base):
     organization_id = Column(Integer, nullable=True, index=True)
     owner_user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
     assigned_team_id = Column(Integer, nullable=True, index=True)
+    territory_id = Column(Integer, ForeignKey("crm_territories.id", ondelete="SET NULL"), nullable=True, index=True)
     first_name = Column(String(100), nullable=False)
     last_name = Column(String(100))
     full_name = Column(String(220), nullable=False, index=True)
@@ -96,8 +104,17 @@ class CRMLead(Base):
     source = Column(String(80), default="Other", index=True)
     status = Column(String(40), default="New", index=True)
     rating = Column(String(20), default="Warm", index=True)
+    lead_score = Column(Integer, default=0, index=True)
+    lead_score_label = Column(String(20), default="Cold", index=True)
+    lead_score_mode = Column(String(20), default="automatic", index=True)
+    last_score_calculated_at = Column(DateTime(timezone=True))
     industry = Column(String(120), index=True)
     website = Column(String(200))
+    linkedin_url = Column(String(300))
+    company_website = Column(String(200))
+    employee_count = Column(Integer)
+    email_verification_status = Column(String(40), index=True)
+    social_profiles_json = Column(JSON)
     city = Column(String(100), index=True)
     state = Column(String(100))
     country = Column(String(100), default="India")
@@ -122,6 +139,25 @@ class CRMLead(Base):
     converted_contact = relationship("CRMContact", foreign_keys=[converted_contact_id])
     converted_company = relationship("CRMCompany", foreign_keys=[converted_company_id])
     converted_deal = relationship("CRMDeal", foreign_keys=[converted_deal_id])
+
+
+class CRMLeadScoringRule(Base):
+    __tablename__ = "crm_lead_scoring_rules"
+    __table_args__ = (UniqueConstraint("organization_id", "name", name="uq_crm_lead_scoring_rule_org_name"),)
+
+    id = Column(Integer, primary_key=True, index=True)
+    organization_id = Column(Integer, nullable=True, index=True)
+    name = Column(String(160), nullable=False, index=True)
+    field = Column(String(100), nullable=False, index=True)
+    operator = Column(String(40), nullable=False, index=True)
+    value = Column(String(240))
+    points = Column(Integer, nullable=False, default=0)
+    is_active = Column(Boolean, default=True, index=True)
+    created_by_user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    updated_by_user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+    deleted_at = Column(DateTime(timezone=True))
 
 
 class CRMPipeline(Base):
@@ -171,6 +207,7 @@ class CRMDeal(Base):
     id = Column(Integer, primary_key=True, index=True)
     organization_id = Column(Integer, nullable=True, index=True)
     owner_user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    territory_id = Column(Integer, ForeignKey("crm_territories.id", ondelete="SET NULL"), nullable=True, index=True)
     company_id = Column(Integer, ForeignKey("crm_companies.id", ondelete="SET NULL"), nullable=True, index=True)
     contact_id = Column(Integer, ForeignKey("crm_contacts.id", ondelete="SET NULL"), nullable=True, index=True)
     pipeline_id = Column(Integer, ForeignKey("crm_pipelines.id", ondelete="CASCADE"), nullable=False, index=True)
@@ -185,7 +222,12 @@ class CRMDeal(Base):
     actual_close_date = Column(Date)
     status = Column(String(30), default="Open", index=True)
     loss_reason = Column(Text)
+    lost_reason = Column(Text)
     lead_source = Column(String(80), index=True)
+    source = Column(String(80), index=True)
+    won_at = Column(DateTime(timezone=True), index=True)
+    lost_at = Column(DateTime(timezone=True), index=True)
+    closed_at = Column(DateTime(timezone=True), index=True)
     discount_amount = Column(Numeric(12, 2))
     position = Column(Integer, default=0)
     next_follow_up_at = Column(DateTime(timezone=True), index=True)
@@ -260,6 +302,11 @@ class CRMQuotation(Base):
     total_amount = Column(Numeric(12, 2), default=0)
     terms = Column(Text)
     notes = Column(Text)
+    pdf_url = Column(String(500))
+    pdf_file_name = Column(String(180))
+    pdf_status = Column(String(30))
+    pdf_generated_at = Column(DateTime(timezone=True))
+    pdf_generated_by_user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     created_by_user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     updated_by_user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
@@ -287,15 +334,21 @@ class CRMActivity(Base):
     id = Column(Integer, primary_key=True, index=True)
     organization_id = Column(Integer, nullable=True, index=True)
     owner_user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    entity_type = Column(String(40), index=True)
+    entity_id = Column(Integer, index=True)
     lead_id = Column(Integer, ForeignKey("crm_leads.id", ondelete="CASCADE"), nullable=True, index=True)
     contact_id = Column(Integer, ForeignKey("crm_contacts.id", ondelete="CASCADE"), nullable=True, index=True)
     company_id = Column(Integer, ForeignKey("crm_companies.id", ondelete="CASCADE"), nullable=True, index=True)
     deal_id = Column(Integer, ForeignKey("crm_deals.id", ondelete="CASCADE"), nullable=True, index=True)
     activity_type = Column(String(40), nullable=False, index=True)
+    title = Column(String(220))
     subject = Column(String(180), nullable=False)
+    body = Column(Text)
     description = Column(Text)
+    metadata_json = Column(JSON)
     status = Column(String(30), default="Pending", index=True)
     priority = Column(String(30), default="Medium", index=True)
+    activity_date = Column(DateTime(timezone=True), index=True)
     due_date = Column(DateTime(timezone=True), index=True)
     completed_at = Column(DateTime(timezone=True))
     outcome = Column(Text)
@@ -350,18 +403,56 @@ class CRMNote(Base):
     deleted_at = Column(DateTime(timezone=True))
 
 
+class CRMNoteMention(Base):
+    __tablename__ = "crm_note_mentions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    organization_id = Column(Integer, nullable=True, index=True)
+    note_id = Column(Integer, ForeignKey("crm_notes.id", ondelete="CASCADE"), nullable=True, index=True)
+    activity_id = Column(Integer, ForeignKey("crm_activities.id", ondelete="CASCADE"), nullable=True, index=True)
+    mentioned_user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    mentioned_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    entity_type = Column(String(40), index=True)
+    entity_id = Column(Integer, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
+    read_at = Column(DateTime(timezone=True))
+
+
+class CRMEnrichmentLog(Base):
+    __tablename__ = "crm_enrichment_logs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    organization_id = Column(Integer, nullable=True, index=True)
+    entity_type = Column(String(40), nullable=False, index=True)
+    entity_id = Column(Integer, nullable=False, index=True)
+    provider = Column(String(80), nullable=False, index=True)
+    old_values_json = Column(JSON)
+    new_values_json = Column(JSON)
+    applied_fields_json = Column(JSON)
+    status = Column(String(30), default="previewed", index=True)
+    created_by_user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
+
+
 class CRMEmailLog(Base):
     __tablename__ = "crm_email_logs"
 
     id = Column(Integer, primary_key=True, index=True)
     organization_id = Column(Integer, nullable=True, index=True)
     owner_user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    entity_type = Column(String(40), index=True)
+    entity_id = Column(Integer, index=True)
     subject = Column(String(220), nullable=False)
     body = Column(Text)
     from_email = Column(String(150))
     to_email = Column(String(150), nullable=False, index=True)
     cc = Column(String(500))
+    bcc = Column(String(500))
     direction = Column(String(20), default="Outbound", index=True)
+    status = Column(String(30), default="draft", index=True)
+    provider_message_id = Column(String(160))
+    failure_reason = Column(Text)
+    sent_by_user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     lead_id = Column(Integer, ForeignKey("crm_leads.id", ondelete="CASCADE"), nullable=True, index=True)
     contact_id = Column(Integer, ForeignKey("crm_contacts.id", ondelete="CASCADE"), nullable=True, index=True)
     company_id = Column(Integer, ForeignKey("crm_companies.id", ondelete="CASCADE"), nullable=True, index=True)
@@ -370,6 +461,84 @@ class CRMEmailLog(Base):
     created_by_user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     updated_by_user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+    deleted_at = Column(DateTime(timezone=True))
+
+
+class CRMEmailTemplate(Base):
+    __tablename__ = "crm_email_templates"
+    __table_args__ = (UniqueConstraint("organization_id", "name", name="uq_crm_email_template_org_name"),)
+
+    id = Column(Integer, primary_key=True, index=True)
+    organization_id = Column(Integer, nullable=True, index=True)
+    name = Column(String(160), nullable=False, index=True)
+    subject = Column(String(220), nullable=False)
+    body = Column(Text, nullable=False)
+    entity_type = Column(String(40), index=True)
+    is_active = Column(Boolean, default=True, index=True)
+    created_by_user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    updated_by_user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+    deleted_at = Column(DateTime(timezone=True))
+
+
+class CRMMessage(Base):
+    __tablename__ = "crm_messages"
+
+    id = Column(Integer, primary_key=True, index=True)
+    organization_id = Column(Integer, nullable=True, index=True)
+    entity_type = Column(String(40), nullable=False, index=True)
+    entity_id = Column(Integer, nullable=False, index=True)
+    channel = Column(String(20), nullable=False, index=True)
+    to = Column(String(40), nullable=False, index=True)
+    body = Column(Text, nullable=False)
+    status = Column(String(30), default="queued", index=True)
+    provider = Column(String(80), nullable=False, default="mock", index=True)
+    provider_message_id = Column(String(160))
+    failure_reason = Column(Text)
+    template_id = Column(Integer, ForeignKey("crm_message_templates.id", ondelete="SET NULL"), nullable=True, index=True)
+    sent_by_user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    sent_at = Column(DateTime(timezone=True), index=True)
+    created_by_user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    updated_by_user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+    deleted_at = Column(DateTime(timezone=True))
+
+
+class CRMMessageTemplate(Base):
+    __tablename__ = "crm_message_templates"
+    __table_args__ = (UniqueConstraint("organization_id", "name", "channel", name="uq_crm_message_template_org_name_channel"),)
+
+    id = Column(Integer, primary_key=True, index=True)
+    organization_id = Column(Integer, nullable=True, index=True)
+    name = Column(String(160), nullable=False, index=True)
+    channel = Column(String(20), nullable=False, default="sms", index=True)
+    body = Column(Text, nullable=False)
+    entity_type = Column(String(40), index=True)
+    is_active = Column(Boolean, default=True, index=True)
+    created_by_user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    updated_by_user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+    deleted_at = Column(DateTime(timezone=True))
+
+
+class CRMCalendarIntegration(Base):
+    __tablename__ = "calendar_integrations"
+
+    id = Column(Integer, primary_key=True, index=True)
+    organization_id = Column(Integer, nullable=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    provider = Column(String(40), nullable=False, index=True)
+    access_token_encrypted = Column(Text)
+    refresh_token_encrypted = Column(Text)
+    expires_at = Column(DateTime(timezone=True))
+    is_active = Column(Boolean, default=True, index=True)
+    created_by_user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    updated_by_user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
     deleted_at = Column(DateTime(timezone=True))
 
@@ -410,6 +579,10 @@ class CRMMeeting(Base):
     end_time = Column(DateTime(timezone=True), nullable=False)
     outcome = Column(Text)
     status = Column(String(30), default="Scheduled", index=True)
+    external_provider = Column(String(40), index=True)
+    external_event_id = Column(String(180), index=True)
+    sync_status = Column(String(30), default="not_synced", index=True)
+    last_synced_at = Column(DateTime(timezone=True))
     lead_id = Column(Integer, ForeignKey("crm_leads.id", ondelete="CASCADE"), nullable=True, index=True)
     contact_id = Column(Integer, ForeignKey("crm_contacts.id", ondelete="CASCADE"), nullable=True, index=True)
     company_id = Column(Integer, ForeignKey("crm_companies.id", ondelete="CASCADE"), nullable=True, index=True)
@@ -527,12 +700,27 @@ class CRMTerritory(Base):
     state = Column(String(100), index=True)
     city = Column(String(100), index=True)
     description = Column(Text)
+    rules_json = Column(JSON)
+    priority = Column(Integer, default=100, index=True)
+    is_active = Column(Boolean, default=True, index=True)
     status = Column(String(30), default="Active", index=True)
     created_by_user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     updated_by_user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
     deleted_at = Column(DateTime(timezone=True))
+
+
+class CRMTerritoryUser(Base):
+    __tablename__ = "crm_territory_users"
+    __table_args__ = (UniqueConstraint("territory_id", "user_id", name="uq_crm_territory_user"),)
+
+    id = Column(Integer, primary_key=True, index=True)
+    organization_id = Column(Integer, nullable=True, index=True)
+    territory_id = Column(Integer, ForeignKey("crm_territories.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    created_by_user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
 
 
 class CRMTeam(Base):
@@ -582,10 +770,14 @@ class CRMCustomField(Base):
     organization_id = Column(Integer, nullable=True, index=True)
     entity = Column(String(80), nullable=False, index=True)
     field_key = Column(String(100), nullable=False, index=True)
+    field_name = Column(String(160))
     label = Column(String(160), nullable=False)
     field_type = Column(String(40), default="text", index=True)
     options_json = Column(JSON)
     is_required = Column(Boolean, default=False)
+    is_unique = Column(Boolean, default=False, index=True)
+    is_visible = Column(Boolean, default=True, index=True)
+    is_filterable = Column(Boolean, default=False, index=True)
     is_active = Column(Boolean, default=True, index=True)
     position = Column(Integer, default=0)
     created_by_user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
@@ -619,3 +811,107 @@ class CRMCustomFieldValue(Base):
     deleted_at = Column(DateTime(timezone=True))
 
     custom_field = relationship("CRMCustomField", back_populates="values")
+
+
+class CRMWebhook(Base):
+    __tablename__ = "crm_webhooks"
+
+    id = Column(Integer, primary_key=True, index=True)
+    organization_id = Column(Integer, nullable=True, index=True)
+    name = Column(String(180), nullable=False, index=True)
+    url = Column(String(500), nullable=False)
+    secret = Column(String(160), nullable=False)
+    events = Column(JSON)
+    is_active = Column(Boolean, default=True, index=True)
+    created_by_user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    updated_by_user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+    deleted_at = Column(DateTime(timezone=True))
+
+
+class CRMWebhookDelivery(Base):
+    __tablename__ = "crm_webhook_deliveries"
+
+    id = Column(Integer, primary_key=True, index=True)
+    organization_id = Column(Integer, nullable=True, index=True)
+    webhook_id = Column(Integer, ForeignKey("crm_webhooks.id", ondelete="CASCADE"), nullable=False, index=True)
+    event_type = Column(String(80), nullable=False, index=True)
+    payload = Column(JSON)
+    status = Column(String(30), default="pending", index=True)
+    response_code = Column(Integer)
+    response_body = Column(Text)
+    attempt_count = Column(Integer, default=0)
+    next_retry_at = Column(DateTime(timezone=True), index=True)
+    created_by_user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    updated_by_user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+    deleted_at = Column(DateTime(timezone=True))
+
+    webhook = relationship("CRMWebhook")
+
+
+class CRMApprovalWorkflow(Base):
+    __tablename__ = "crm_approval_workflows"
+
+    id = Column(Integer, primary_key=True, index=True)
+    organization_id = Column(Integer, nullable=True, index=True)
+    name = Column(String(180), nullable=False, index=True)
+    entity_type = Column(String(40), nullable=False, index=True)
+    trigger_type = Column(String(80), nullable=False, index=True)
+    conditions = Column(JSON)
+    is_active = Column(Boolean, default=True, index=True)
+    created_by_user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    updated_by_user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+    deleted_at = Column(DateTime(timezone=True))
+
+    steps = relationship("CRMApprovalStep", back_populates="workflow", cascade="all, delete-orphan", order_by="CRMApprovalStep.step_order")
+
+
+class CRMApprovalStep(Base):
+    __tablename__ = "crm_approval_steps"
+
+    id = Column(Integer, primary_key=True, index=True)
+    workflow_id = Column(Integer, ForeignKey("crm_approval_workflows.id", ondelete="CASCADE"), nullable=False, index=True)
+    step_order = Column(Integer, nullable=False, default=1, index=True)
+    approver_type = Column(String(30), nullable=False, default="user", index=True)
+    approver_id = Column(Integer, nullable=True, index=True)
+    action_on_reject = Column(String(30), default="stop", index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    workflow = relationship("CRMApprovalWorkflow", back_populates="steps")
+
+
+class CRMApprovalRequest(Base):
+    __tablename__ = "crm_approval_requests"
+
+    id = Column(Integer, primary_key=True, index=True)
+    organization_id = Column(Integer, nullable=True, index=True)
+    workflow_id = Column(Integer, ForeignKey("crm_approval_workflows.id", ondelete="SET NULL"), nullable=True, index=True)
+    entity_type = Column(String(40), nullable=False, index=True)
+    entity_id = Column(Integer, nullable=False, index=True)
+    status = Column(String(30), default="pending", nullable=False, index=True)
+    submitted_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    submitted_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
+    completed_at = Column(DateTime(timezone=True))
+
+    workflow = relationship("CRMApprovalWorkflow")
+    steps = relationship("CRMApprovalRequestStep", back_populates="request", cascade="all, delete-orphan", order_by="CRMApprovalRequestStep.id")
+
+
+class CRMApprovalRequestStep(Base):
+    __tablename__ = "crm_approval_request_steps"
+
+    id = Column(Integer, primary_key=True, index=True)
+    request_id = Column(Integer, ForeignKey("crm_approval_requests.id", ondelete="CASCADE"), nullable=False, index=True)
+    step_id = Column(Integer, ForeignKey("crm_approval_steps.id", ondelete="SET NULL"), nullable=True, index=True)
+    approver_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    status = Column(String(30), default="pending", nullable=False, index=True)
+    comments = Column(Text)
+    acted_at = Column(DateTime(timezone=True))
+
+    request = relationship("CRMApprovalRequest", back_populates="steps")
+    step = relationship("CRMApprovalStep")
