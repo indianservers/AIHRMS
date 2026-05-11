@@ -94,6 +94,11 @@ class Settings(BaseSettings):
 
     # AI
     OPENAI_API_KEY: str = ""
+    OPENAI_MODEL: str = "gpt-4.1-mini"
+    AI_AGENT_DEFAULT_TEMPERATURE: float = 0.2
+    AI_AGENT_MAX_TOOL_CALLS: int = 8
+    AI_AGENT_ENABLE_STREAMING: bool = False
+    AI_AGENT_AUDIT_LOGGING: bool = True
     ANTHROPIC_API_KEY: str = ""
     ANTHROPIC_MODEL: str = "claude-sonnet-4-20250514"
 

@@ -55,6 +55,12 @@ async def lifespan(app: FastAPI):
             from app.apps.project_management.schema import ensure_pms_schema
 
             ensure_pms_schema(db)
+        from app.ai_agents.services.registry import AiAgentRegistryService
+        from app.ai_agents.tools.ai_tool_registry_service import AiToolRegistryService
+
+        AiAgentRegistryService(db).ensure_seed_data()
+        AiToolRegistryService(db).ensure_seed_data()
+        db.commit()
     finally:
         db.close()
 

@@ -23,6 +23,7 @@ COMMON_ROUTER_MODULES = (
     "app.api.v1.logs",
     "app.api.v1.users",
     "app.api.v1.workflow_engine",
+    "app.ai_agents.api",
 )
 
 COMMON_MODEL_MODULES = (
@@ -31,6 +32,7 @@ COMMON_MODEL_MODULES = (
     "app.models.notification",
     "app.models.sso",
     "app.models.workflow_engine",
+    "app.ai_agents.models",
 )
 
 APP_MODULES: dict[str, AppModule] = {
