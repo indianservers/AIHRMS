@@ -1,4 +1,4 @@
-from sqlalchemy import Boolean, Column, DateTime, Float, ForeignKey, Integer, JSON, String, Text
+from sqlalchemy import Boolean, Column, DateTime, Float, ForeignKey, Integer, JSON, Numeric, String, Text
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 
@@ -80,7 +80,7 @@ class AiActionApproval(Base):
     __tablename__ = "ai_action_approvals"
 
     id = Column(Integer, primary_key=True, index=True)
-    conversation_id = Column(Integer, ForeignKey("ai_conversations.id", ondelete="CASCADE"), nullable=False, index=True)
+    conversation_id = Column(Integer, ForeignKey("ai_conversations.id", ondelete="CASCADE"), nullable=True, index=True)
     agent_id = Column(Integer, ForeignKey("ai_agents.id", ondelete="SET NULL"), nullable=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
     module = Column(String(40), nullable=False, index=True)
@@ -91,6 +91,11 @@ class AiActionApproval(Base):
     status = Column(String(30), default="pending", index=True)
     approved_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     approved_at = Column(DateTime(timezone=True))
+    execution_status = Column(String(30), default="pending", index=True)
+    executed_at = Column(DateTime(timezone=True))
+    execution_result_json = Column(JSON)
+    execution_error = Column(Text)
+    idempotency_key = Column(String(160), index=True)
     rejected_reason = Column(Text)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
@@ -133,3 +138,122 @@ class AiAgentSetting(Base):
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
     agent = relationship("AiAgent")
+
+
+class AiUsageLimit(Base):
+    __tablename__ = "ai_usage_limits"
+
+    id = Column(Integer, primary_key=True, index=True)
+    company_id = Column(Integer, ForeignKey("companies.id", ondelete="CASCADE"), nullable=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True)
+    agent_id = Column(Integer, ForeignKey("ai_agents.id", ondelete="CASCADE"), nullable=True, index=True)
+    module = Column(String(40), nullable=True, index=True)
+    limit_type = Column(String(40), nullable=False, index=True)
+    max_requests = Column(Integer, nullable=False)
+    period = Column(String(20), nullable=False, index=True)
+    is_active = Column(Boolean, default=True, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    agent = relationship("AiAgent")
+
+
+class AiUsageEvent(Base):
+    __tablename__ = "ai_usage_events"
+
+    id = Column(Integer, primary_key=True, index=True)
+    company_id = Column(Integer, ForeignKey("companies.id", ondelete="SET NULL"), nullable=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    agent_id = Column(Integer, ForeignKey("ai_agents.id", ondelete="SET NULL"), nullable=True, index=True)
+    module = Column(String(40), nullable=True, index=True)
+    event_type = Column(String(40), nullable=False, index=True)
+    token_input = Column(Integer, default=0)
+    token_output = Column(Integer, default=0)
+    estimated_cost = Column(Numeric(12, 6))
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
+
+    agent = relationship("AiAgent")
+
+
+class AiAgentPermission(Base):
+    __tablename__ = "ai_agent_permissions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    company_id = Column(Integer, ForeignKey("companies.id", ondelete="CASCADE"), nullable=True, index=True)
+    agent_id = Column(Integer, ForeignKey("ai_agents.id", ondelete="CASCADE"), nullable=False, index=True)
+    role_id = Column(Integer, ForeignKey("roles.id", ondelete="CASCADE"), nullable=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True)
+    can_use = Column(Boolean, default=True)
+    can_configure = Column(Boolean, default=False)
+    can_approve_actions = Column(Boolean, default=False)
+    can_view_logs = Column(Boolean, default=False)
+    can_export_conversations = Column(Boolean, default=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    agent = relationship("AiAgent")
+
+
+class AiSecuritySetting(Base):
+    __tablename__ = "ai_security_settings"
+
+    id = Column(Integer, primary_key=True, index=True)
+    company_id = Column(Integer, ForeignKey("companies.id", ondelete="CASCADE"), nullable=True, unique=True, index=True)
+    ai_enabled = Column(Boolean, default=True)
+    crm_ai_enabled = Column(Boolean, default=True)
+    pms_ai_enabled = Column(Boolean, default=True)
+    hrms_ai_enabled = Column(Boolean, default=True)
+    cross_ai_enabled = Column(Boolean, default=True)
+    emergency_message = Column(Text)
+    updated_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+class AiCostLog(Base):
+    __tablename__ = "ai_cost_logs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    company_id = Column(Integer, ForeignKey("companies.id", ondelete="SET NULL"), nullable=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    agent_id = Column(Integer, ForeignKey("ai_agents.id", ondelete="SET NULL"), nullable=True, index=True)
+    conversation_id = Column(Integer, ForeignKey("ai_conversations.id", ondelete="SET NULL"), nullable=True, index=True)
+    model = Column(String(80), index=True)
+    input_tokens = Column(Integer, default=0)
+    output_tokens = Column(Integer, default=0)
+    total_tokens = Column(Integer, default=0)
+    estimated_cost = Column(Numeric(12, 6))
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
+
+
+class AiMessageFeedback(Base):
+    __tablename__ = "ai_message_feedback"
+
+    id = Column(Integer, primary_key=True, index=True)
+    message_id = Column(Integer, ForeignKey("ai_messages.id", ondelete="CASCADE"), nullable=False, index=True)
+    conversation_id = Column(Integer, ForeignKey("ai_conversations.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    agent_id = Column(Integer, ForeignKey("ai_agents.id", ondelete="SET NULL"), nullable=True, index=True)
+    rating = Column(String(20), nullable=False, index=True)
+    feedback_text = Column(Text)
+    feedback_type = Column(String(40), nullable=False, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
+
+
+class AiHandoffNote(Base):
+    __tablename__ = "ai_handoff_notes"
+
+    id = Column(Integer, primary_key=True, index=True)
+    conversation_id = Column(Integer, ForeignKey("ai_conversations.id", ondelete="CASCADE"), nullable=True, index=True)
+    agent_id = Column(Integer, ForeignKey("ai_agents.id", ondelete="SET NULL"), nullable=True, index=True)
+    module = Column(String(40), nullable=False, index=True)
+    related_entity_type = Column(String(80), index=True)
+    related_entity_id = Column(String(80), index=True)
+    assigned_to = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    priority = Column(String(20), default="medium", index=True)
+    summary = Column(String(300), nullable=False)
+    reason = Column(Text)
+    recommended_action = Column(Text)
+    status = Column(String(30), default="open", index=True)
+    created_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())

@@ -1,7 +1,7 @@
 """Add PMS saved task view fields.
 
 Revision ID: 20260511_017
-Revises: 20260511_016
+Revises: 20260511_016_pms_mentions_markdown_comments
 Create Date: 2026-05-11
 """
 from alembic import op
@@ -9,7 +9,7 @@ import sqlalchemy as sa
 
 
 revision = "20260511_017"
-down_revision = "20260511_016"
+down_revision = "20260511_016_pms_mentions_markdown_comments"
 branch_labels = None
 depends_on = None
 

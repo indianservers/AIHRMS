@@ -10,7 +10,14 @@ from app.ai_agents.adapters.crm_ai_adapter import CrmAiAdapter
 from app.ai_agents.adapters.cross_module_ai_adapter import CrossModuleAiAdapter
 from app.ai_agents.adapters.hrms_ai_adapter import HrmsAiAdapter
 from app.ai_agents.adapters.pms_ai_adapter import PmsAiAdapter
-from app.ai_agents.models import AiActionApproval, AiAgent, AiConversation
+from app.ai_agents.models import AiActionApproval, AiAgent, AiAgentSetting, AiConversation
+from app.ai_agents.services.advanced_security import (
+    AiAgentPermissionService,
+    AiDataRedactionService,
+    AiPromptSecurityService,
+    AiSecuritySettingsService,
+    AiUsageService,
+)
 from app.ai_agents.services.audit import AiAuditService
 from app.ai_agents.tools.ai_tool_registry_service import AiToolRegistryService
 from app.ai_agents.tools.definitions import AiToolDefinition
@@ -43,6 +50,13 @@ class AiToolExecutionService:
             return self._fail(user, agent, "CROSS", tool_name, input, "TOOL_NOT_FOUND", "Tool is not registered.", ip_address, user_agent, base)
         if not agent or not agent.is_active:
             return self._fail(user, agent, tool.module, tool_name, input, "AGENT_NOT_FOUND", "Agent is not active or not registered.", ip_address, user_agent, base)
+        try:
+            AiSecuritySettingsService(self.db).ensure_enabled(user=user, module=tool.module)
+        except HTTPException as exc:
+            detail = exc.detail if isinstance(exc.detail, dict) else {"message": str(exc.detail)}
+            return self._fail(user, agent, tool.module, tool_name, input, detail.get("error_code", "AI_AGENT_DISABLED"), detail.get("message", "AI Agents are temporarily disabled by administrator."), ip_address, user_agent, base)
+        if not AiAgentPermissionService(self.db).can_use_agent(user, agent.id):
+            return self._fail(user, agent, tool.module, tool_name, input, "PERMISSION_DENIED", "You do not have permission to use this AI Agent.", ip_address, user_agent, base)
         if agent_code not in tool.allowed_agent_codes:
             return self._fail(user, agent, tool.module, tool_name, input, "TOOL_NOT_ALLOWED", "This agent is not allowed to use the requested tool.", ip_address, user_agent, base)
         if not self.registry.is_active_for_agent(tool_name, agent_code):
@@ -58,7 +72,8 @@ class AiToolExecutionService:
 
         if tool.requires_approval:
             try:
-                proposed_data = self._dispatch(tool, user, input)
+                proposed_data = self._dispatch(tool, user, {**input, "_ai_data_access_scope": self._effective_scope(user, agent)})
+                proposed_data = self._strip_internal_fields(proposed_data)
             except MissingServiceMethodError as exc:
                 result = {**base, "success": False, "error_code": "SERVICE_METHOD_MISSING", "message": "Required existing module service method is not available yet.", "missing_method": exc.method, "data": None}
                 self._audit(user, agent, tool.module, "AI_TOOL_FAILED", tool_name, input, result, "failed", ip_address, user_agent, related_entity_type, related_entity_id)
@@ -69,6 +84,7 @@ class AiToolExecutionService:
                 self._audit(user, agent, tool.module, "AI_TOOL_FAILED", tool_name, input, result, "failed", ip_address, user_agent, related_entity_type, related_entity_id)
                 return result
             approval = self._create_approval(user, agent, tool, proposed_data, conversation_id, related_entity_type, related_entity_id)
+            AiUsageService(self.db).record_event(user=user, agent_id=agent.id, module=tool.module, event_type="approval_created")
             result = {
                 **base,
                 "success": True,
@@ -81,8 +97,18 @@ class AiToolExecutionService:
             return result
 
         try:
-            data = self._dispatch(tool, user, input)
-            result = {**base, "success": True, "data": data, "message": "Tool executed successfully."}
+            scoped_input = {**input, "_ai_data_access_scope": self._effective_scope(user, agent)}
+            data = self._dispatch(tool, user, scoped_input)
+            prompt_security = AiPromptSecurityService()
+            scan = prompt_security.scan_tool_result(data)
+            sanitized, sanitized_changed = prompt_security.sanitize_value(data)
+            redacted = AiDataRedactionService().redact_for_ai(user, tool.module, sanitized)
+            if scan["risk_level"] in {"high", "critical"}:
+                AiAuditService(self.db).log(user=user, agent_id=agent.id, module=tool.module, action="AI_CONTEXT_SANITIZED", input_json={"tool_name": tool_name, "risk": scan}, output_json={"sanitized": True}, status="warning", related_entity_type=related_entity_type, related_entity_id=related_entity_id, ip_address=ip_address, user_agent=user_agent)
+            elif sanitized_changed:
+                AiAuditService(self.db).log(user=user, agent_id=agent.id, module=tool.module, action="AI_CONTEXT_SANITIZED", input_json={"tool_name": tool_name}, output_json={"sanitized": True}, status="warning", related_entity_type=related_entity_type, related_entity_id=related_entity_id, ip_address=ip_address, user_agent=user_agent)
+            AiUsageService(self.db).record_event(user=user, agent_id=agent.id, module=tool.module, event_type="tool_call")
+            result = {**base, "success": True, "data": redacted, "message": "Tool executed successfully."}
             self._audit(user, agent, tool.module, "AI_TOOL_EXECUTED", tool_name, input, result, "success", ip_address, user_agent, related_entity_type, related_entity_id)
             return result
         except MissingServiceMethodError as exc:
@@ -109,6 +135,22 @@ class AiToolExecutionService:
         }[namespace]
         method = getattr(adapter, method_name)
         return method(user, input)
+
+    def _effective_scope(self, user: User, agent: AiAgent) -> str:
+        if user.is_superuser:
+            return "company_records"
+        company_id = getattr(getattr(user, "employee", None), "organization_id", None) or getattr(user, "company_id", None)
+        query = self.db.query(AiAgentSetting).filter(AiAgentSetting.agent_id == agent.id)
+        query = query.filter(AiAgentSetting.company_id == company_id) if company_id is not None else query.filter(AiAgentSetting.company_id.is_(None))
+        setting = query.first()
+        return setting.data_access_scope if setting and setting.data_access_scope else "own_records"
+
+    def _strip_internal_fields(self, value: Any) -> Any:
+        if isinstance(value, dict):
+            return {key: self._strip_internal_fields(item) for key, item in value.items() if not str(key).startswith("_ai_")}
+        if isinstance(value, list):
+            return [self._strip_internal_fields(item) for item in value]
+        return value
 
     def _create_approval(
         self,
@@ -143,7 +185,20 @@ class AiToolExecutionService:
         if not permission or user.is_superuser:
             return True
         permissions = {item.name for item in (user.role.permissions if user.role else [])}
-        return permission in permissions or "*" in permissions
+        if "*" in permissions or permission in permissions:
+            return True
+        aliases = {
+            "crm_manage": {"crm_admin"},
+            "crm_view": {"crm_manage", "crm_admin"},
+            "pms_manage_tasks": {"pms_manage_projects", "pms_admin"},
+            "pms_view": {"pms_manage_tasks", "pms_manage_projects", "pms_admin"},
+            "employee_view": {"employee_update", "employee_sensitive_view"},
+            "attendance_view": {"attendance_manage"},
+            "leave_view": {"leave_manage", "leave_approve"},
+            "recruitment_view": {"recruitment_manage"},
+            "notification_view": {"notification_manage"},
+        }
+        return bool(permissions.intersection(aliases.get(permission, set())))
 
     def _validate_input(self, input_schema: dict[str, Any], input: dict[str, Any]) -> list[dict[str, Any]]:
         errors: list[dict[str, Any]] = []

@@ -5,6 +5,7 @@ import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxi
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import AskAiButton from "@/components/ai-agents/AskAiButton";
 import { formatCurrency, formatDate, statusColor } from "@/lib/utils";
 import { projectsAPI, tasksAPI } from "../services/api";
 import { useProjectStore, useTaskStore } from "../store";
@@ -50,6 +51,13 @@ export default function ProjectDashboard() {
           <p className="page-description">{project.description || "Project workspace overview"}</p>
         </div>
         <div className="flex flex-wrap gap-2">
+          <AskAiButton
+            module="PMS"
+            relatedEntityType="project"
+            relatedEntityId={id}
+            defaultAgentCode="pms_project_status"
+            defaultPrompt="Summarize this project status with delays, blockers, and risks."
+          />
           <Button asChild variant="outline"><Link to={`/pms/projects/${id}/milestones`}><Milestone className="h-4 w-4" />Milestones</Link></Button>
           <Button asChild variant="outline"><Link to={`/pms/projects/${id}/risks`}><ShieldAlert className="h-4 w-4" />Risks</Link></Button>
           <Button asChild><Link to={`/pms/projects/${id}/board`}><Kanban className="h-4 w-4" />Open board</Link></Button>

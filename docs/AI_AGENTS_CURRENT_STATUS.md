@@ -349,14 +349,248 @@ finally:
 - `cross_get_alerts` is intentionally mapped to `SERVICE_METHOD_MISSING` until an existing alert aggregation service is available.
 - Chat uses non-streaming responses only.
 - Conversation history is limited to the last 20 user/assistant messages.
+- Approval execution is intentionally limited to the supported first-release actions listed in `docs/AI_AGENTS_APPROVAL_EXECUTION.md`.
+- In-memory AI rate limiting is suitable for a single backend process. Use Redis or the platform rate limiter for multi-instance production deployments.
 
 ## Not Implemented Yet
 
-- Risky action execution after approval
-- Frontend AI Agent pages
-- Ask AI buttons
 - Streaming responses
+- Full rich markdown rendering package in chat. The current renderer safely handles plain text and basic headings/lists without evaluating HTML.
+- Automatic prompt sending from URL. The chat page fills the prompt input and waits for the user to click Send.
+- Unsupported critical actions such as deleting records, sending external messages, salary changes, attendance mutation, final leave approval/rejection, deal closure, and project deadline changes.
 
 ## Next Recommended Step
 
-Build the frontend AI Agent dashboard/chat UI and add scoped "Ask AI" buttons in CRM, HRMS, and PMS pages.
+Run staging end-to-end QA using `docs/AI_AGENTS_FINAL_QA.md`, apply the migration, and enable production monitoring/rate limiting.
+
+## Part 5 Frontend AI Agent UI
+
+Completed in this step:
+
+- Added a frontend AI Agents API client: `frontend/src/services/aiAgentsApi.ts`
+- Added AI Agent routes:
+  - `/ai-agents`
+  - `/ai-agents/chat/:agentId`
+  - `/ai-agents/config`
+  - `/ai-agents/approvals`
+  - `/ai-agents/logs`
+- Added dashboard, chat, configuration, approvals, and audit logs pages under `frontend/src/pages/ai-agents/`.
+- Added reusable AI components under `frontend/src/components/ai-agents/`:
+  - `AgentCard`
+  - `AgentList`
+  - `AgentChat` functionality in `AiAgentChatPage`
+  - `ConversationSidebar`
+  - `MessageBubble`
+  - `SuggestedPromptChips`
+  - `ToolCallPreview`
+  - `ProposedActionCard`
+  - `ApprovalPanel`
+  - `AgentConfigForm`
+  - `AuditLogTable`
+  - `ModuleContextPanel`
+  - `AskAiButton`
+- Added AI Agents navigation entries to HRMS, CRM, PMS, and the AI Agents route context.
+- Added scoped Ask AI buttons to existing pages without changing module business logic:
+  - CRM record details: leads, contacts/accounts, deals, quotations
+  - PMS project detail/dashboard
+  - PMS task detail
+  - HRMS employee detail
+  - HRMS leave page
+  - HRMS attendance page
+  - HRMS recruitment page
+
+## Frontend Security Notes
+
+- Frontend calls only backend endpoints under `/api/v1/ai-agents/...`.
+- No frontend OpenAI SDK was added.
+- No direct browser calls to `api.openai.com` were added.
+- No `OPENAI_API_KEY` reference exists in frontend source or public assets.
+- Proposed actions are displayed as approval cards and require explicit user clicks for approve/reject.
+
+## Frontend Verification
+
+Build command passed:
+
+```powershell
+cd frontend
+npm run build
+```
+
+Security search command returned no matches:
+
+```powershell
+rg -n "OPENAI_API_KEY|api\.openai\.com|openai" frontend\src frontend\public frontend\index.html
+```
+
+## Part 6 Approval Execution, Hardening, and Production Readiness
+
+Completed in this step:
+
+- Added approval execution result fields to `ai_action_approvals`:
+  - `executed_at`
+  - `execution_result_json`
+- Added migration `backend/alembic/versions/20260512_032_ai_approval_execution.py`.
+- Added `AiApprovalExecutorService` for safe execution of approved AI proposed actions.
+- Updated `POST /api/ai-agents/approvals/:id/approve` so approval now executes supported actions instead of only changing status.
+- Added adapter execution methods that use existing module models/services:
+  - CRM follow-up task creation
+  - CRM lead score/status update
+  - CRM email draft save
+  - PMS task creation
+  - PMS sub-task creation
+  - PMS risk log creation
+  - HRMS leave request creation through existing leave CRUD
+  - HRMS attendance alert as helpdesk ticket
+  - HRMS letter draft as generated document draft
+  - Candidate screening summary saved to existing candidate AI fields
+- Added basic in-memory AI rate limiting for:
+  - `POST /api/ai-agents/:agentId/chat`
+  - `POST /api/ai-agents/tools/test`
+- Strengthened prompt-injection hardening:
+  - Tool results are labelled as untrusted backend business data.
+  - System prompt explicitly rejects instructions inside CRM notes, HR records, project comments, resumes, emails, and uploaded files.
+  - AI is reminded not to reveal prompts, secrets, schemas, or generate SQL.
+- Improved minimum-context handling:
+  - Conversation history remains limited to recent messages.
+  - PMS comments are truncated before sending to AI.
+  - HRMS employee data masks account/Aadhaar/PAN-style identifiers and removes salary/bank fields unless payroll/salary permission exists.
+- Updated frontend approval cards:
+  - Confirmation dialog before approval execution.
+  - Failed execution state.
+  - Execution result summary display.
+
+Supported approval action types:
+
+- `CREATE_CRM_FOLLOWUP_TASK`
+- `UPDATE_CRM_LEAD_SCORE_STATUS`
+- `CREATE_CRM_DRAFT_MESSAGE`
+- `CREATE_PMS_TASK`
+- `CREATE_PMS_SUBTASK`
+- `CREATE_PMS_RISK_LOG`
+- `CREATE_HRMS_LEAVE_REQUEST`
+- `CREATE_HRMS_ATTENDANCE_ALERT`
+- `CREATE_HRMS_LETTER_DRAFT`
+- `SAVE_CANDIDATE_SCREENING_SUMMARY`
+
+Unsupported high-risk actions remain blocked:
+
+- Record deletion
+- External email/WhatsApp/SMS send
+- Final leave approval/rejection
+- Salary changes
+- Direct attendance mutation
+- Employee termination
+- Final warning letter issue
+- Deal closure
+- Project deadline changes
+- Project owner reassignment
+- Invoice/payment/accounting changes
+
+Additional documentation created:
+
+- `docs/AI_AGENTS_APPROVAL_EXECUTION.md`
+- `docs/AI_AGENTS_SECURITY.md`
+- `docs/AI_AGENTS_FINAL_QA.md`
+- `docs/AI_AGENTS_PRODUCTION_CHECKLIST.md`
+
+Part 6 verification:
+
+```powershell
+python -m py_compile backend/app/ai_agents/models.py backend/app/ai_agents/schemas.py backend/app/ai_agents/api.py backend/app/ai_agents/services/approval_executor.py backend/app/ai_agents/services/rate_limit.py backend/app/ai_agents/services/system_prompt_builder.py backend/app/ai_agents/services/orchestrator.py backend/app/ai_agents/adapters/crm_ai_adapter.py backend/app/ai_agents/adapters/pms_ai_adapter.py backend/app/ai_agents/adapters/hrms_ai_adapter.py
+cd backend
+python -c "from app.main import app; print('routes', len(app.routes))"
+cd ..\frontend
+npm run build
+rg -n "OPENAI_API_KEY|api\.openai\.com|openai" frontend\src frontend\public frontend\index.html
+```
+
+Results:
+
+- Backend Python compile passed.
+- FastAPI app import and route registration passed.
+- Frontend production build passed.
+- Frontend OpenAI/API-key scan returned no matches.
+
+No dummy CRM, HRMS, or PMS records/modules were created.
+
+## Final Stabilization Audit
+
+Final audit report: `docs/AI_AGENTS_FINAL_AUDIT_REPORT.md`.
+
+Issues found and fixed during final review:
+
+- AI Agents access now requires existing `ai_assistant` permission or admin/settings permission.
+- AI config and agent status APIs now require admin/settings-level access.
+- Approval tool schemas now match approval executor required fields.
+- Tool/approval permission checks now account for existing admin/manage permission aliases.
+- Alembic chain was corrected by pointing `20260511_017_pms_saved_task_views.py` at the actual `20260511_016_pms_mentions_markdown_comments` revision id.
+- Added `docs/AI_AGENTS_INTEGRATION_PLAN.md`.
+
+Final verification summary:
+
+- Backend AI files compile.
+- FastAPI app import passes with 844 routes.
+- Alembic head check passes with `20260512_032`.
+- Frontend lint passes.
+- Frontend build passes.
+- Frontend OpenAI/API-key scan returns no matches.
+- Full backend pytest timed out in local audit environment after 184 seconds; `pytest --collect-only -q` passed with 147 tests collected.
+- Seed check requires running `alembic upgrade head` first because the configured local database does not yet contain AI tables.
+
+## Advanced Security And Analytics Update
+
+Added advanced AI-only database structures:
+
+- `ai_usage_limits`
+- `ai_usage_events`
+- `ai_agent_permissions`
+- `ai_security_settings`
+- `ai_cost_logs`
+- `ai_message_feedback`
+- `ai_handoff_notes`
+
+Extended `ai_action_approvals` with replay-protection fields:
+
+- `execution_status`
+- `execution_error`
+- `idempotency_key`
+
+Backend services added/updated:
+
+- `AiPromptSecurityService`
+- `AiDataRedactionService`
+- `AiResponseSafetyService`
+- `AiSecuritySettingsService`
+- `AiAgentPermissionService`
+- `AiUsageService`
+- `AiCostTrackingService`
+
+Backend APIs added:
+
+- Usage limits and summary APIs.
+- Security summary/events/settings APIs.
+- Permission matrix APIs.
+- Analytics and cost APIs.
+- Conversation export API for JSON/CSV/PDF.
+- Message feedback APIs.
+- Handoff note APIs.
+
+Frontend pages added:
+
+- `/ai-agents/analytics`
+- `/ai-agents/usage`
+- `/ai-agents/security`
+- `/ai-agents/security/permissions`
+- `/ai-agents/feedback`
+- `/ai-agents/handoff`
+
+Documentation added:
+
+- `docs/AI_AGENTS_ADVANCED_FEATURES.md`
+
+Important boundaries remain unchanged:
+
+- No CRM/PMS/HRMS data or modules were duplicated.
+- OpenAI remains backend-only.
+- Tool calls still go through `AiToolExecutionService`.
+- Approval-required actions still use the approval workflow.

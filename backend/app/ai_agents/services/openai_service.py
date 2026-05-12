@@ -71,6 +71,11 @@ class OpenAiService:
                     "id": response.id,
                     "model": response.model,
                     "finish_reason": choice.finish_reason,
+                    "usage": {
+                        "input_tokens": getattr(response.usage, "prompt_tokens", 0) if response.usage else 0,
+                        "output_tokens": getattr(response.usage, "completion_tokens", 0) if response.usage else 0,
+                        "total_tokens": getattr(response.usage, "total_tokens", 0) if response.usage else 0,
+                    },
                 },
             }
         except RateLimitError as exc:

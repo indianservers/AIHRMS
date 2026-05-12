@@ -8,6 +8,8 @@ AiModule = Literal["CRM", "HRMS", "PMS", "CROSS"]
 AiMessageRole = Literal["user", "assistant", "system", "tool"]
 AiConversationStatus = Literal["active", "archived", "closed"]
 AiDataAccessScope = Literal["own_records", "team", "company"]
+AiApprovalStatus = Literal["pending", "approved", "rejected", "expired", "cancelled", "failed"]
+AiAdvancedDataAccessScope = Literal["own_records", "team_records", "department_records", "company_records", "custom"]
 
 
 class AiAgentRead(BaseModel):
@@ -109,6 +111,8 @@ class AiApprovalRead(BaseModel):
     status: str
     approved_by: int | None
     approved_at: datetime | None
+    executed_at: datetime | None = None
+    execution_result_json: dict[str, Any] | None = None
     rejected_reason: str | None
     created_at: datetime
     updated_at: datetime | None
@@ -124,7 +128,62 @@ class AiConfigUpdate(BaseModel):
     is_enabled: bool | None = None
     auto_action_enabled: bool | None = None
     approval_required: bool | None = None
-    data_access_scope: AiDataAccessScope | None = None
+    data_access_scope: AiAdvancedDataAccessScope | AiDataAccessScope | None = None
+
+
+class AiUsageLimitPayload(BaseModel):
+    id: int | None = None
+    user_id: int | None = None
+    agent_id: int | None = None
+    module: AiModule | None = None
+    limit_type: Literal["per_user", "per_agent", "per_company", "per_module"]
+    max_requests: int = Field(..., ge=1)
+    period: Literal["hourly", "daily", "monthly"]
+    is_active: bool = True
+
+
+class AiPermissionPayload(BaseModel):
+    id: int | None = None
+    agent_id: int
+    role_id: int | None = None
+    user_id: int | None = None
+    can_use: bool = True
+    can_configure: bool = False
+    can_approve_actions: bool = False
+    can_view_logs: bool = False
+    can_export_conversations: bool = False
+
+
+class AiSecuritySettingsPayload(BaseModel):
+    ai_enabled: bool = True
+    crm_ai_enabled: bool = True
+    pms_ai_enabled: bool = True
+    hrms_ai_enabled: bool = True
+    cross_ai_enabled: bool = True
+    emergency_message: str | None = None
+
+
+class AiFeedbackCreate(BaseModel):
+    rating: Literal["thumbs_up", "thumbs_down"]
+    feedback_type: Literal["inaccurate", "incomplete", "unsafe", "helpful", "too_long", "wrong_tool", "other"] = "other"
+    feedback_text: str | None = Field(default=None, max_length=2000)
+
+
+class AiHandoffCreate(BaseModel):
+    conversation_id: int | None = None
+    agent_id: int | None = None
+    module: AiModule
+    related_entity_type: str | None = Field(default=None, max_length=80)
+    related_entity_id: str | None = Field(default=None, max_length=80)
+    assigned_to: int | None = None
+    priority: Literal["low", "medium", "high", "urgent"] = "medium"
+    summary: str = Field(..., min_length=1, max_length=300)
+    reason: str | None = None
+    recommended_action: str | None = None
+
+
+class AiHandoffStatusUpdate(BaseModel):
+    status: Literal["open", "in_review", "resolved", "cancelled"]
 
 
 class AiToolTestRequest(BaseModel):

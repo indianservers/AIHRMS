@@ -9,6 +9,7 @@ import { getDefaultPathForUser, getLoginPathForContext } from "@/lib/products";
 import { hrmsRoutes } from "@/apps/hrms/routes";
 import { crmRoutes } from "@/apps/crm/routes";
 import { projectManagementRoutes } from "@/apps/project-management/routes";
+import { aiAgentRoutes } from "@/pages/ai-agents/routes";
 import PMSRealtimeBridge from "@/apps/project-management/PMSRealtimeBridge";
 
 const LoginPage = React.lazy(() => import("@/pages/auth/LoginPage"));
@@ -49,6 +50,7 @@ function ProductHomeRedirect() {
 
 export default function App() {
   const enabledRoutes = getEnabledRoutes();
+  const routes = [...enabledRoutes, ...aiAgentRoutes];
 
   return (
     <>
@@ -67,7 +69,7 @@ export default function App() {
             }
           >
             <Route index element={<ProductHomeRedirect />} />
-            {enabledRoutes.map((route) => (
+            {routes.map((route) => (
               <Route key={route.path} path={route.path} element={route.element} />
             ))}
           </Route>

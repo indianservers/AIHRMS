@@ -27,6 +27,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { formatCurrency, formatDate, statusColor } from "@/lib/utils";
+import AskAiButton from "@/components/ai-agents/AskAiButton";
 import { crmApi, type CRMApiRecord, type CRMApiValue, type CRMApprovalRequest, type CRMEnrichmentPreview } from "./api";
 
 type DetailKind = "leads" | "contacts" | "accounts" | "deals" | "quotations";
@@ -196,6 +197,7 @@ export default function CRMRecordDetailPage({ kind }: { kind: DetailKind }) {
   const approvalStatus = valueText(approval?.status);
   const finalActionBlocked = approvalStatus === "pending" || approvalStatus === "rejected";
   const duplicateCount = duplicateCountFor(record);
+  const aiContext = getAiContext(kind);
 
   const updateRecord = (data: CRMApiRecord) => {
     setSaving(true);
@@ -342,6 +344,13 @@ export default function CRMRecordDetailPage({ kind }: { kind: DetailKind }) {
                 </div>
               </div>
               <div className="flex flex-wrap gap-2">
+                <AskAiButton
+                  module="CRM"
+                  relatedEntityType={aiContext.entityType}
+                  relatedEntityId={recordId}
+                  defaultAgentCode={aiContext.agentCode}
+                  defaultPrompt={aiContext.prompt}
+                />
                 <Button variant="outline" onClick={() => setEditOpen(true)}><Edit3 className="h-4 w-4" />Edit</Button>
                 <Button variant="outline" onClick={() => setAction("note")}><Plus className="h-4 w-4" />Add Note</Button>
                 <Button variant="outline" onClick={() => setAction("task")}><CalendarDays className="h-4 w-4" />Add Task</Button>
@@ -1196,6 +1205,35 @@ function duplicateCountFor(record: DetailRecord | null | undefined) {
   const duplicates = record?.related?.duplicates;
   if (!duplicates || typeof duplicates !== "object") return 0;
   return Number((duplicates as CRMApiRecord).count || 0);
+}
+
+function getAiContext(kind: DetailKind) {
+  if (kind === "leads") {
+    return {
+      entityType: "lead",
+      agentCode: "crm_lead_qualification",
+      prompt: "Analyze this lead and suggest next action.",
+    };
+  }
+  if (kind === "deals") {
+    return {
+      entityType: "deal",
+      agentCode: "crm_deal_analyzer",
+      prompt: "Analyze this deal health, risk, and next best action.",
+    };
+  }
+  if (kind === "accounts" || kind === "contacts") {
+    return {
+      entityType: kind === "accounts" ? "customer" : "contact",
+      agentCode: "crm_customer_summary",
+      prompt: "Summarize this customer and show key risks/opportunities.",
+    };
+  }
+  return {
+    entityType: "quotation",
+    agentCode: "crm_deal_analyzer",
+    prompt: "Analyze this quotation context and suggest next action.",
+  };
 }
 
 function renderTemplate(template: string, record: CRMApiRecord, recordName: string) {

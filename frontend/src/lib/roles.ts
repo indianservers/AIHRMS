@@ -155,6 +155,7 @@ const hrNav: RoleNavItem[] = [
   { label: "Exit", icon: LogOut, to: "/exit", group: "Platform" },
   { label: "WhatsApp ESS", icon: MessageCircle, to: "/whatsapp-ess", group: "Platform" },
   { label: "Custom Fields", icon: SlidersHorizontal, to: "/custom-fields", group: "Platform" },
+  { label: "AI Agents", icon: Sparkles, to: "/ai-agents", badge: "AI", group: "Platform" },
   { label: "AI Assistant", icon: Sparkles, to: "/ai-assistant", badge: "AI", group: "Platform" },
 ];
 
@@ -189,6 +190,7 @@ const adminNav: RoleNavItem[] = [
   { label: "Enterprise", icon: Network, to: "/enterprise", group: "Platform" },
   { label: "Reports", icon: BarChart3, to: "/reports", group: "Platform" },
   { label: "Advanced Analytics", icon: Gauge, to: "/advanced-analytics", group: "Platform", badge: "AI" },
+  { label: "AI Agents", icon: Sparkles, to: "/ai-agents", badge: "AI", group: "Platform" },
   { label: "Onboarding", icon: ClipboardCheck, to: "/onboarding", group: "Platform" },
   { label: "Documents", icon: FileText, to: "/documents", group: "Platform" },
   { label: "Assets", icon: Package, to: "/assets", group: "Platform" },
@@ -214,6 +216,7 @@ const ceoNav: RoleNavItem[] = [
   { label: "Employee Directory", icon: UserRound, to: "/employee-directory", group: "Organisation" },
   { label: "Company", icon: Building2, to: "/company", group: "Organisation" },
   { label: "Org Chart", icon: GitBranch, to: "/org-chart", group: "Organisation" },
+  { label: "AI Agents", icon: Sparkles, to: "/ai-agents", badge: "AI", group: "Insights" },
   { label: "AI Assistant", icon: Sparkles, to: "/ai-assistant", badge: "AI", group: "Insights" },
 ];
 
@@ -236,6 +239,7 @@ const managerNav: RoleNavItem[] = [
   { label: "Reports", icon: BarChart3, to: "/reports", group: "Insights" },
   { label: "Advanced Analytics", icon: Gauge, to: "/advanced-analytics", group: "Insights", badge: "AI" },
   { label: "Org Chart", icon: GitBranch, to: "/org-chart", group: "Insights" },
+  { label: "AI Agents", icon: Sparkles, to: "/ai-agents", badge: "AI", group: "Insights" },
   { label: "AI Assistant", icon: Sparkles, to: "/ai-assistant", badge: "AI", group: "Insights" },
 ];
 
@@ -257,11 +261,13 @@ const employeeNav: RoleNavItem[] = [
   { label: "Engagement", icon: Megaphone, to: "/engagement", group: "Growth" },
   { label: "Helpdesk", icon: HelpCircle, to: "/helpdesk", group: "Support" },
   { label: "Documents", icon: FileText, to: "/documents", group: "Support" },
+  { label: "AI Agents", icon: Sparkles, to: "/ai-agents", badge: "AI", group: "Support" },
   { label: "AI Assistant", icon: Sparkles, to: "/ai-assistant", badge: "AI", group: "Support" },
 ];
 
 const crmNav: RoleNavItem[] = [
   { label: "CRM Dashboard", icon: LayoutDashboard, to: "/crm", group: "CRM", exact: true },
+  { label: "AI Agents", icon: Sparkles, to: "/ai-agents", group: "AI Agents", badge: "AI" },
   { label: "Leads", icon: Users, to: "/crm/leads", group: "CRM" },
   { label: "Contacts", icon: UserRound, to: "/crm/contacts", group: "CRM" },
   { label: "Companies", icon: Building2, to: "/crm/companies", group: "CRM" },
@@ -295,6 +301,7 @@ const crmNav: RoleNavItem[] = [
 
 const projectManagementNav: RoleNavItem[] = [
   { label: "PM Dashboard", icon: LayoutDashboard, to: "/pms", group: "Project Management", exact: true },
+  { label: "AI Agents", icon: Sparkles, to: "/ai-agents", group: "AI Agents", badge: "AI" },
   { label: "Command Center", icon: Globe2, to: "/pms/command-center", group: "Project Management", badge: "New" },
   { label: "Enterprise Engine", icon: ShieldCheck, to: "/pms/enterprise-engine", group: "Project Management", badge: "Pro" },
   { label: "Product Launch", icon: Package, to: "/pms/product-launch", group: "Project Management", badge: "Launch" },
@@ -344,15 +351,33 @@ const projectManagementNav: RoleNavItem[] = [
   { label: "PM Admin", icon: ShieldCheck, to: "/pms/admin", group: "Project Admin" },
 ];
 
+const aiAgentsNav: RoleNavItem[] = [
+  { label: "Dashboard", icon: Sparkles, to: "/ai-agents", group: "AI Agents", exact: true },
+  { label: "Chat", icon: MessageCircle, to: "/ai-agents", group: "AI Agents" },
+  { label: "Approvals", icon: FileCheck2, to: "/ai-agents/approvals", group: "AI Agents" },
+  { label: "Analytics", icon: BarChart3, to: "/ai-agents/analytics", group: "AI Agents" },
+  { label: "Usage", icon: Gauge, to: "/ai-agents/usage", group: "AI Agents" },
+  { label: "Security", icon: ShieldCheck, to: "/ai-agents/security", group: "AI Agents" },
+  { label: "Permissions", icon: SlidersHorizontal, to: "/ai-agents/security/permissions", group: "AI Agents" },
+  { label: "Feedback", icon: HeartPulse, to: "/ai-agents/feedback", group: "AI Agents" },
+  { label: "Handoff Notes", icon: Inbox, to: "/ai-agents/handoff", group: "AI Agents" },
+  { label: "Configuration", icon: Settings, to: "/ai-agents/config", group: "AI Agents" },
+  { label: "Logs", icon: ScrollText, to: "/ai-agents/logs", group: "AI Agents" },
+  { label: "CRM", icon: Briefcase, to: "/crm", group: "Applications", exact: true },
+  { label: "PMS", icon: Target, to: "/pms", group: "Applications", exact: true },
+  { label: "HRMS", icon: Building2, to: "/hrms", group: "Applications", exact: true },
+];
+
 function withPrefix(items: RoleNavItem[], prefix: string) {
   return items.map((item) => ({
     ...item,
-    to: `${prefix}${item.to}`,
+    to: item.to.startsWith("/ai-agents") ? item.to : `${prefix}${item.to}`,
   }));
 }
 
 export function getActiveModule(pathname: string) {
   if (pathname === "/" || pathname === "") return "suite";
+  if (pathname.startsWith("/ai-agents")) return "ai_agents";
   if (pathname.startsWith("/crm")) return "crm";
   if (pathname.startsWith("/pms")) return "project_management";
   return "hrms";
@@ -379,6 +404,10 @@ export function getRoleNav(role?: string | null, isSuperuser = false, pathname =
     return installedApps.includes("project_management") && isProjectManagementRole(role) ? projectManagementNav : [];
   }
 
+  if (activeModule === "ai_agents") {
+    return aiAgentsNav;
+  }
+
   if (activeModule === "suite") {
     const suiteNav: RoleNavItem[] = [];
     if (installedApps.includes("hrms") && isHrmsRole(role, isSuperuser)) {
@@ -390,6 +419,7 @@ export function getRoleNav(role?: string | null, isSuperuser = false, pathname =
     if (installedApps.includes("project_management") && isProjectManagementRole(role)) {
       suiteNav.push({ label: "KaryaFlow", icon: Target, to: "/pms", group: "Applications", exact: true });
     }
+    suiteNav.push({ label: "AI Agents", icon: Sparkles, to: "/ai-agents", group: "Applications", badge: "AI", exact: true });
     return suiteNav;
   }
 
@@ -435,12 +465,14 @@ const routeAccess: Record<string, RoleKey[]> = {
   "/onboarding": ["admin", "hr"],
   "/exit": ["admin", "hr"],
   "/ai-assistant": ["admin", "ceo", "hr", "manager", "employee"],
+  "/ai-agents": ["admin", "ceo", "hr", "manager", "employee"],
   "/crm": ["admin", "ceo", "hr", "manager"],
   "/pms": ["admin", "ceo", "hr", "manager", "employee"],
 };
 
 export function canAccessRoute(pathname: string, role?: string | null, isSuperuser = false) {
   if (pathname === "/") return true;
+  if (pathname.startsWith("/ai-agents")) return true;
   if (pathname === "/hrms") return isHrmsRole(role, isSuperuser);
   if (pathname.startsWith("/crm")) return isCrmRole(role);
   if (pathname.startsWith("/pms")) return isProjectManagementRole(role);

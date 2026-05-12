@@ -6,7 +6,7 @@ from typing import Any
 from sqlalchemy import or_
 
 from app.ai_agents.adapters.base import AiAdapterBase, model_to_dict, not_found
-from app.apps.crm.models import CRMActivity, CRMCompany, CRMDeal, CRMLead, CRMNote, CRMTask
+from app.apps.crm.models import CRMActivity, CRMCompany, CRMDeal, CRMEmailLog, CRMLead, CRMNote, CRMTask
 from app.models.user import User
 
 
@@ -127,3 +127,130 @@ class CrmAiAdapter(AiAdapterBase):
                 "note": "Draft structure only. Message generation and sending are not connected in this step.",
             }
         }
+
+    def execute_create_followup_task(self, user: User, proposed_action: dict[str, Any]) -> dict[str, Any]:
+        input = self._approval_input(proposed_action)
+        entity_type = str(input.get("related_entity_type", "")).lower()
+        entity_id = int(input["related_entity_id"])
+        task_kwargs: dict[str, Any] = {}
+        organization_id = self.org_id(user)
+
+        if entity_type == "lead":
+            record = self._get_lead(user, entity_id)
+            task_kwargs["lead_id"] = record.id
+            organization_id = record.organization_id
+        elif entity_type == "deal":
+            record = self._get_deal(user, entity_id)
+            task_kwargs["deal_id"] = record.id
+            organization_id = record.organization_id
+        elif entity_type in {"customer", "company", "account"}:
+            record = self._get_customer(user, entity_id)
+            task_kwargs["company_id"] = record.id
+            organization_id = record.organization_id
+        else:
+            raise ValueError("related_entity_type must be lead, deal, or customer")
+
+        task = CRMTask(
+            organization_id=organization_id,
+            owner_user_id=user.id,
+            title=str(input["title"])[:220],
+            description=input.get("description"),
+            status="To Do",
+            priority=self._priority(input.get("priority")),
+            due_date=self._parse_datetime(input.get("due_date")),
+            created_by_user_id=user.id,
+            updated_by_user_id=user.id,
+            **task_kwargs,
+        )
+        self.db.add(task)
+        self.db.flush()
+        return {"success": True, "record_type": "crm_task", "record_id": task.id, "title": task.title}
+
+    def execute_lead_score_status_update(self, user: User, proposed_action: dict[str, Any]) -> dict[str, Any]:
+        input = self._approval_input(proposed_action)
+        lead = self._get_lead(user, int(input["lead_id"]))
+        changes: dict[str, Any] = {}
+        if input.get("proposed_score") not in (None, ""):
+            score = int(input["proposed_score"])
+            if score < 0 or score > 100:
+                raise ValueError("proposed_score must be between 0 and 100")
+            lead.lead_score = score
+            lead.lead_score_mode = "manual"
+            changes["lead_score"] = score
+        if input.get("proposed_status"):
+            lead.status = str(input["proposed_status"])[:40]
+            changes["status"] = lead.status
+        lead.updated_by_user_id = user.id
+        note = CRMNote(
+            organization_id=lead.organization_id,
+            author_user_id=user.id,
+            lead_id=lead.id,
+            body=f"AI-approved lead update. Reason: {input.get('reason', 'No reason provided')}",
+            is_internal=True,
+            created_by_user_id=user.id,
+        )
+        self.db.add(note)
+        self.db.flush()
+        return {"success": True, "record_type": "crm_lead", "record_id": lead.id, "changes": changes}
+
+    def execute_create_draft_message(self, user: User, proposed_action: dict[str, Any]) -> dict[str, Any]:
+        input = self._approval_input(proposed_action)
+        if str(input.get("message_type", "email")).lower() != "email":
+            return {
+                "success": False,
+                "error_code": "ACTION_NOT_SUPPORTED_IN_FIRST_RELEASE",
+                "message": "Only CRM email drafts are supported for AI approval execution in the first release.",
+            }
+
+        entity_type = str(input.get("related_entity_type", "")).lower()
+        entity_id = int(input["related_entity_id"])
+        entity_kwargs: dict[str, Any] = {"entity_type": entity_type, "entity_id": entity_id}
+        organization_id = self.org_id(user)
+        to_email = input.get("to_email")
+        if entity_type == "lead":
+            record = self._get_lead(user, entity_id)
+            entity_kwargs["lead_id"] = record.id
+            organization_id = record.organization_id
+            to_email = to_email or record.email
+        elif entity_type == "deal":
+            record = self._get_deal(user, entity_id)
+            entity_kwargs["deal_id"] = record.id
+            organization_id = record.organization_id
+        elif entity_type in {"customer", "company", "account"}:
+            record = self._get_customer(user, entity_id)
+            entity_kwargs["company_id"] = record.id
+            organization_id = record.organization_id
+
+        if not to_email:
+            raise ValueError("A recipient email address is required to save a CRM email draft")
+
+        body = input.get("body") or "\n".join(str(item) for item in input.get("key_points", [])) or input.get("purpose") or ""
+        draft = CRMEmailLog(
+            organization_id=organization_id,
+            owner_user_id=user.id,
+            subject=str(input.get("subject") or input.get("purpose") or "AI drafted follow-up")[:220],
+            body=body,
+            to_email=str(to_email)[:150],
+            status="draft",
+            direction="Outbound",
+            created_by_user_id=user.id,
+            updated_by_user_id=user.id,
+            **entity_kwargs,
+        )
+        self.db.add(draft)
+        self.db.flush()
+        return {"success": True, "record_type": "crm_email_log", "record_id": draft.id, "status": draft.status}
+
+    def _approval_input(self, proposed_action: dict[str, Any]) -> dict[str, Any]:
+        return proposed_action.get("input") if isinstance(proposed_action.get("input"), dict) else proposed_action
+
+    def _parse_datetime(self, value: Any) -> datetime | None:
+        if not value:
+            return None
+        if isinstance(value, datetime):
+            return value
+        return datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+
+    def _priority(self, value: Any) -> str:
+        mapping = {"low": "Low", "medium": "Medium", "high": "High", "critical": "Critical"}
+        return mapping.get(str(value or "medium").lower(), "Medium")

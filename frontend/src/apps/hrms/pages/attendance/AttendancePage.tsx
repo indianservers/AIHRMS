@@ -8,6 +8,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import AskAiButton from "@/components/ai-agents/AskAiButton";
 import { attendanceApi } from "@/services/api";
 import { formatDateTime, statusColor } from "@/lib/utils";
 import { toast } from "@/hooks/use-toast";
@@ -118,12 +119,15 @@ export default function AttendancePage() {
             <h1 className="page-title">Attendance</h1>
             <p className="page-description">Track your daily attendance and monthly summary.</p>
           </div>
-          <Button asChild variant="outline">
-            <Link to="/hrms/attendance/shift-roster">
-              <CalendarDays className="h-4 w-4" />
-              Shift Roster
-            </Link>
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <AskAiButton module="HRMS" defaultAgentCode="hrms_attendance_anomaly" defaultPrompt="Analyze attendance anomalies for this employee." />
+            <Button asChild variant="outline">
+              <Link to="/hrms/attendance/shift-roster">
+                <CalendarDays className="h-4 w-4" />
+                Shift Roster
+              </Link>
+            </Button>
+          </div>
         </div>
       </div>
 

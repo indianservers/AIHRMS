@@ -34,6 +34,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import AskAiButton from "@/components/ai-agents/AskAiButton";
 import { cn, formatDate, formatDateTime, statusColor } from "@/lib/utils";
 import { commentsAPI, filesAPI, planningAPI, projectsAPI, tagsAPI, tasksAPI, timeLogsAPI, sprintsAPI, pmsUsersAPI } from "../services/api";
 import { usePMSRealtime } from "../realtime";
@@ -677,6 +678,13 @@ export default function TaskDetail() {
               </div>
             </div>
             <div className="flex flex-wrap gap-2">
+              <AskAiButton
+                module="PMS"
+                relatedEntityType="task"
+                relatedEntityId={task.id}
+                defaultAgentCode="pms_deadline_risk"
+                defaultPrompt="Analyze deadline risk for this task/project."
+              />
               <Button onClick={() => updateTask({ title: task.title, description: task.description })} disabled={saving}>
                 <Save className="h-4 w-4" />{saving ? "Saving" : "Save"}
               </Button>

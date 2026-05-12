@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import AskAiButton from "@/components/ai-agents/AskAiButton";
 import { recruitmentApi } from "@/services/api";
 import { formatDate, statusColor } from "@/lib/utils";
 import { usePageTitle } from "@/hooks/use-page-title";
@@ -109,12 +110,21 @@ export default function RecruitmentPage() {
           <h1 className="page-title">Recruitment</h1>
           <p className="page-description">Manage job postings, candidates, and hiring pipeline.</p>
         </div>
-        {activeTab === "jobs" && (
-          <Button size="sm" onClick={() => setShowJobForm((v) => !v)}>
-            <Plus className="h-4 w-4 mr-2" />
-            Post Job
-          </Button>
-        )}
+        <div className="flex flex-wrap justify-end gap-2">
+          <AskAiButton
+            module="HRMS"
+            relatedEntityType={activeTab === "candidates" ? "candidate" : "job"}
+            relatedEntityId={selectedCandidate?.id || selectedJob || undefined}
+            defaultAgentCode="hrms_recruitment_screening"
+            defaultPrompt="Screen this candidate against the job requirement."
+          />
+          {activeTab === "jobs" && (
+            <Button size="sm" onClick={() => setShowJobForm((v) => !v)}>
+              <Plus className="h-4 w-4 mr-2" />
+              Post Job
+            </Button>
+          )}
+        </div>
       </div>
 
       {/* Stats */}

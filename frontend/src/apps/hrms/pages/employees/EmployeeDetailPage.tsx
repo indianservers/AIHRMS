@@ -5,6 +5,7 @@ import { Activity, Banknote, Briefcase, CalendarDays, Camera, ChevronLeft, Clock
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import AskAiButton from "@/components/ai-agents/AskAiButton";
 import { employeeApi } from "@/services/api";
 import { assetUrl, formatDate, getInitials, statusColor } from "@/lib/utils";
 import { useEffect, useState } from "react";
@@ -310,6 +311,13 @@ export default function EmployeeDetailPage() {
               </div>
             </div>
             <div className="flex gap-2">
+              <AskAiButton
+                module="HRMS"
+                relatedEntityType="employee"
+                relatedEntityId={id}
+                defaultAgentCode="hrms_letter_drafting"
+                defaultPrompt="Help me prepare HR action or summary for this employee."
+              />
               <Button variant="outline" size="sm" onClick={() => setParams(editing ? {} : { edit: "true" })}>
                 {editing ? "Cancel Edit" : "Edit"}
               </Button>

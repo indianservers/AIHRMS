@@ -10,8 +10,10 @@ from app.crud import crud_leave
 from app.crud.crud_attendance import crud_attendance
 from app.crud.crud_employee import crud_employee
 from app.models.attendance import Shift
-from app.models.document import CompanyPolicy, DocumentTemplate
+from app.models.document import CompanyPolicy, DocumentTemplate, GeneratedDocument
 from app.models.employee import Employee
+from app.models.helpdesk import HelpdeskTicket
+from app.models.leave import LeaveType
 from app.models.recruitment import Candidate, Job
 from app.models.user import User
 
@@ -39,8 +41,7 @@ class HrmsAiAdapter(AiAdapterBase):
     def get_employee_by_id(self, user: User, input: dict[str, Any]) -> dict[str, Any]:
         employee = self._get_employee(user, int(input["employee_id"]))
         data = model_to_dict(employee)
-        data.pop("account_number", None)
-        data.pop("aadhaar_number", None)
+        data = self._mask_employee_data(user, data)
         return {"employee": data}
 
     def get_leave_balance(self, user: User, input: dict[str, Any]) -> dict[str, Any]:
@@ -129,3 +130,105 @@ class HrmsAiAdapter(AiAdapterBase):
             return {"message": "Employee context is unavailable."}
         rows = crud_leave.get_employee_leave_balances(self.db, employee.id, date.today().year)
         return {"leave_balances": [model_to_dict(row) for row in rows]}
+
+    def execute_create_leave_request(self, user: User, proposed_action: dict[str, Any]) -> dict[str, Any]:
+        input = self._approval_input(proposed_action)
+        employee = self._get_employee(user, int(input["employee_id"]))
+        leave_type = self._find_leave_type(str(input["leave_type"]))
+        if not leave_type:
+            not_found("Leave type not found")
+        try:
+            request = crud_leave.create_leave_request(
+                self.db,
+                employee.id,
+                {
+                    "leave_type_id": leave_type.id,
+                    "from_date": date.fromisoformat(str(input["from_date"])[:10]),
+                    "to_date": date.fromisoformat(str(input["to_date"])[:10]),
+                    "reason": input.get("reason"),
+                    "is_half_day": False,
+                },
+            )
+        except ValueError as exc:
+            raise ValueError(str(exc))
+        return {"success": True, "record_type": "leave_request", "record_id": request.id, "status": request.status}
+
+    def execute_create_attendance_alert(self, user: User, proposed_action: dict[str, Any]) -> dict[str, Any]:
+        input = self._approval_input(proposed_action)
+        employee = self._get_employee(user, int(input["employee_id"]))
+        ticket = HelpdeskTicket(
+            ticket_number=self._next_ticket_number(),
+            employee_id=employee.id,
+            subject=f"AI Attendance Alert: {str(input['alert_type']).replace('_', ' ').title()}"[:300],
+            description=f"{input.get('details', '')}\n\nRecommended action: {input.get('recommended_action', '')}".strip(),
+            priority="High" if input.get("alert_type") in {"frequent_absence", "unusual_pattern"} else "Medium",
+            status="Open",
+        )
+        self.db.add(ticket)
+        self.db.flush()
+        return {"success": True, "record_type": "helpdesk_ticket", "record_id": ticket.id, "ticket_number": ticket.ticket_number}
+
+    def execute_create_letter_draft(self, user: User, proposed_action: dict[str, Any]) -> dict[str, Any]:
+        input = self._approval_input(proposed_action)
+        employee = self._get_employee(user, int(input["employee_id"]))
+        template = self.db.query(DocumentTemplate).filter(DocumentTemplate.template_type.ilike(f"%{input['letter_type']}%"), DocumentTemplate.is_active == True).first()
+        document = GeneratedDocument(
+            template_id=template.id if template else None,
+            employee_id=employee.id,
+            document_type=str(input["letter_type"])[:100],
+            document_name=f"AI Draft - {str(input['letter_type']).replace('_', ' ').title()}",
+            file_url=None,
+            generated_by=user.id,
+            is_signed=False,
+        )
+        self.db.add(document)
+        self.db.flush()
+        return {"success": True, "record_type": "generated_document", "record_id": document.id, "draft_only": True}
+
+    def execute_save_candidate_screening_summary(self, user: User, proposed_action: dict[str, Any]) -> dict[str, Any]:
+        input = self._approval_input(proposed_action)
+        candidate = self.db.query(Candidate).filter(Candidate.id == int(input["candidate_id"])).first()
+        if not candidate:
+            not_found("Candidate not found")
+        candidate.ai_summary = str(input.get("summary") or input.get("screening_summary") or "")[:5000]
+        if input.get("score") is not None:
+            candidate.ai_score = input.get("score")
+        self.db.flush()
+        return {"success": True, "record_type": "candidate", "record_id": candidate.id, "saved_fields": ["ai_summary", "ai_score" if input.get("score") is not None else None]}
+
+    def _approval_input(self, proposed_action: dict[str, Any]) -> dict[str, Any]:
+        return proposed_action.get("input") if isinstance(proposed_action.get("input"), dict) else proposed_action
+
+    def _find_leave_type(self, value: str) -> LeaveType | None:
+        if value.isdigit():
+            row = self.db.query(LeaveType).filter(LeaveType.id == int(value), LeaveType.is_active == True).first()
+            if row:
+                return row
+        return (
+            self.db.query(LeaveType)
+            .filter(LeaveType.is_active == True, or_(LeaveType.code.ilike(value), LeaveType.name.ilike(value), LeaveType.name.ilike(f"%{value}%")))
+            .first()
+        )
+
+    def _next_ticket_number(self) -> str:
+        count = self.db.query(HelpdeskTicket).count()
+        while True:
+            count += 1
+            ticket_number = f"AI-{date.today().strftime('%Y%m%d')}-{count:04d}"
+            exists = self.db.query(HelpdeskTicket.id).filter(HelpdeskTicket.ticket_number == ticket_number).first()
+            if not exists:
+                return ticket_number
+
+    def _mask_employee_data(self, user: User, data: dict[str, Any]) -> dict[str, Any]:
+        permissions = self._permission_names(user)
+        masked = dict(data)
+        for field in ("account_number", "bank_account_number", "aadhaar_number", "uan", "pan_number", "passport_number"):
+            if field in masked and "*" not in permissions:
+                value = str(masked[field] or "")
+                masked[field] = f"***{value[-4:]}" if value else None
+        if "*" not in permissions and not permissions.intersection({"payroll_view", "salary_view", "payroll_manage"}):
+            for field in ("salary", "basic_salary", "gross_salary", "ctc", "current_ctc", "bank_name", "ifsc_code"):
+                masked.pop(field, None)
+        for field in ("medical_notes", "health_information", "confidential_notes"):
+            masked.pop(field, None)
+        return masked
